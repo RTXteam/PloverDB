@@ -57,14 +57,15 @@ def convert_to_list(input_item: Union[List[str], str, None]):
         return []
 
 
-def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -> Tuple[Dict[str, Dict[str, Dict[str, any]]], List[List[str]]]:
+def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -> Tuple[Dict[str, Dict[str, Dict[str, any]]], List[Dict[str, any]]]:
     # Load the query and grab the relevant pieces of it
     with open(json_file_name, "r") as query_file:
         trapi_query = json.load(query_file)
     qnodes_with_curies = [qnode_key for qnode_key in trapi_query["nodes"] if trapi_query["nodes"][qnode_key].get("id")]
     input_qnode_key = qnodes_with_curies[0]
     output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
-    qedge = next(qedge for qedge in trapi_query["edges"].values())
+    qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
+    qedge = trapi_query["edges"][qedge_key]
     # TODO: also support curie--curie queries, and curie lists, and multiple categories, etc...
     input_curie = trapi_query["nodes"][input_qnode_key]["id"]
     output_category = trapi_query["nodes"][output_qnode_key]["category"]
@@ -94,8 +95,11 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
         answer_kg["edges"][answer_edge_id] = edge
         answer_kg["nodes"][subject_curie] = node_lookup_map[subject_curie]
         answer_kg["nodes"][object_curie] = node_lookup_map[object_curie]
-        results.append([subject_curie, answer_edge_id, object_curie])  # TODO: make these actual results...
-
+        result = {"node_bindings": {input_qnode_key: [{"id": input_curie}],
+                                    output_qnode_key: [{"id": object_curie if object_curie != input_curie else subject_curie}]},
+                  "edge_bindings": {qedge_key: [{"id": [answer_edge_id]}]}}
+        results.append(result)
+        # Ok that different edges between same two nodes go in different results? Can fix if needed.
     return answer_kg, results
 
 
