@@ -10,12 +10,12 @@ def add_to_index(node_a_id: str, node_b_id: str, node_b_categories: List[str], p
                  main_index: Dict[str, Dict[str, Dict[str, Dict[str, str]]]]):
     if node_a_id not in main_index:
         main_index[node_a_id] = dict()
-    if predicate not in main_index[node_a_id]:
-        main_index[node_a_id][predicate] = dict()
     for category in node_b_categories:
-        if category not in main_index[node_a_id][predicate]:
-            main_index[node_a_id][predicate][category] = dict()
-        main_index[node_a_id][predicate][category][node_b_id] = edge_id
+        if category not in main_index[node_a_id]:
+            main_index[node_a_id][category] = dict()
+        if predicate not in main_index[node_a_id][category]:
+            main_index[node_a_id][category][predicate] = dict()
+        main_index[node_a_id][category][predicate][node_b_id] = edge_id
 
 
 def build_indexes(is_test: bool):
@@ -65,7 +65,7 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
     input_qnode_key = qnodes_with_curies[0]
     output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
     qedge = next(qedge for qedge in trapi_query["edges"].values())
-    # TODO: also support curie--curie queries, and curie lists, and multiple categories
+    # TODO: also support curie--curie queries, and curie lists, and multiple categories, etc...
     input_curie = trapi_query["nodes"][input_qnode_key]["id"]
     output_category = trapi_query["nodes"][output_qnode_key]["category"]
     predicates = convert_to_list(qedge.get("predicate"))
@@ -74,14 +74,15 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
     # Use our main index to find results to the query
     answer_edge_ids = []
     if input_curie in main_index:
-        # Consider ALL predicates if none were specified in the QG
-        if not predicates:
-            predicates_to_inspect = set(main_index[input_curie])
-        else:
-            predicates_to_inspect = set(predicates).intersection(set(main_index[input_curie]))
-        for predicate in predicates_to_inspect:
-            if output_category in main_index[input_curie][predicate]:
-                answer_edge_ids += list(main_index[input_curie][predicate][output_category].values())
+        if output_category in main_index[input_curie]:
+            # Consider ALL predicates if none were specified in the QG
+            predicates_present = set(main_index[input_curie][output_category])
+            if not predicates:
+                predicates_to_inspect = predicates_present
+            else:
+                predicates_to_inspect = set(predicates).intersection(predicates_present)
+            for predicate in predicates_to_inspect:
+                answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
 
     answer_kg = {"nodes": {}, "edges": {}}
     results = []
@@ -109,7 +110,7 @@ def main():
     # Wait for and run queries (have menu option for now? queries could be in JSON files to start)
     answer_kg, results = answer_query("test_query.json", main_index, node_lookup_map, edge_lookup_map)
     # print(answer_kg)
-    pp = PrettyPrinter(indent=2)
+    pp = PrettyPrinter()
     pp.pprint(answer_kg)
     pp.pprint(results)
     pp.pprint(main_index["CHEMBL.COMPOUND:CHEMBL833"])
