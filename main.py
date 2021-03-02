@@ -3,7 +3,7 @@ import argparse
 import json
 from pprint import PrettyPrinter
 from time import sleep
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Union
 
 
 def add_to_index(node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str, edge_id: str,
@@ -48,6 +48,15 @@ def build_indexes(is_test: bool):
     return main_index, node_lookup_map, edge_lookup_map
 
 
+def convert_to_list(input_item: Union[List[str], str, None]):
+    if isinstance(input_item, str):
+        return [input_item]
+    elif isinstance(input_item, list):
+        return input_item
+    else:
+        return []
+
+
 def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -> Tuple[Dict[str, Dict[str, Dict[str, any]]], List[List[str]]]:
     # Load the query and grab the relevant pieces of it
     with open(json_file_name, "r") as query_file:
@@ -59,13 +68,18 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
     # TODO: also support curie--curie queries, and curie lists, and multiple categories
     input_curie = trapi_query["nodes"][input_qnode_key]["id"]
     output_category = trapi_query["nodes"][output_qnode_key]["category"]
-    predicate = qedge["predicate"]
-    print(f"Query to answer is: {input_curie}--{predicate}--{output_category}")
+    predicates = convert_to_list(qedge.get("predicate"))
+    print(f"Query to answer is: {input_curie}--{predicates}--{output_category}")
 
-    # Figure out if this curie has any edges
+    # Use our main index to find results to the query
     answer_edge_ids = []
     if input_curie in main_index:
-        if predicate in main_index[input_curie]:
+        # Consider ALL predicates if none were specified in the QG
+        if not predicates:
+            predicates_to_inspect = set(main_index[input_curie])
+        else:
+            predicates_to_inspect = set(predicates).intersection(set(main_index[input_curie]))
+        for predicate in predicates_to_inspect:
             if output_category in main_index[input_curie][predicate]:
                 answer_edge_ids += list(main_index[input_curie][predicate][output_category].values())
 
@@ -94,8 +108,11 @@ def main():
 
     # Wait for and run queries (have menu option for now? queries could be in JSON files to start)
     answer_kg, results = answer_query("test_query.json", main_index, node_lookup_map, edge_lookup_map)
-    print(answer_kg)
-    print(results)
+    # print(answer_kg)
+    pp = PrettyPrinter(indent=2)
+    pp.pprint(answer_kg)
+    pp.pprint(results)
+    pp.pprint(main_index["CHEMBL.COMPOUND:CHEMBL833"])
 
 
 if __name__ == "__main__":
