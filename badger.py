@@ -14,12 +14,17 @@ class BadgerDB:
         self._build_indexes()
 
     def _build_indexes(self):
+        # Build simple node and edge lookup maps for storing the node/edge objects
         kg2c_file_name = "kg2c.json" if not self.is_test else "kg2c_test.json"
         with open(kg2c_file_name, "r") as nodes_file:
             kg2c_dict = json.load(nodes_file)
-        # TODO: Remove node/edge ID properties from actual node/edge objects (TRAPI doesn't want that)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        # Remove node/edge ID properties from actual node/edge objects (TRAPI doesn't want those)
+        for node in self.node_lookup_map.values():
+            del node["id"]
+        for edge in self.edge_lookup_map.values():
+            del edge["id"]
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
             node_ids_used_by_edges = {edge["subject"] for edge in self.edge_lookup_map.values()}.union(edge["object"] for edge in self.edge_lookup_map.values())
