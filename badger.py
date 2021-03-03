@@ -133,7 +133,7 @@ class BadgerDB:
         output_categories = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
         predicates = self._convert_to_set(qedge.get("predicate"))
-        print(f"Query to answer is: {input_curies}--{predicates}--{output_curies if output_curies else ''}{output_categories}")
+        print(f"Query to answer is: ({len(input_curies)} curies)--{list(predicates)}--({len(output_curies)} curies, {output_categories if output_categories else 'no categories'})")
 
         # Use our main index to find results to the query
         answer_kg = {"nodes": {input_qnode_key: dict(), output_qnode_key: dict()},
