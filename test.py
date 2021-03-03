@@ -161,5 +161,28 @@ def test_6():
     _print_kg(kg)
 
 
+def test_7():
+    # Multiple curie to multiple curie query
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01"
+            }
+        },
+        "nodes": {
+            "n00": {
+                "id": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL833"]
+            },
+            "n01": {
+                "id": ["CHEMBL.COMPOUND:CHEMBL411", "CHEBI:57305"]
+            }
+        }
+    }
+    kg = _run_query(query)
+    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
+    _print_kg(kg)
+
+
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])
