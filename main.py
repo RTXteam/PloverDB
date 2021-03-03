@@ -68,22 +68,23 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
     qedge = trapi_query["edges"][qedge_key]
     # TODO: also support curie--curie queries, and curie lists, and multiple categories, etc...
     input_curie = trapi_query["nodes"][input_qnode_key]["id"]
-    output_category = trapi_query["nodes"][output_qnode_key]["category"]
+    output_categories = convert_to_list(trapi_query["nodes"][output_qnode_key].get("category"))
     predicates = convert_to_list(qedge.get("predicate"))
-    print(f"Query to answer is: {input_curie}--{predicates}--{output_category}")
+    print(f"Query to answer is: {input_curie}--{predicates}--{output_categories}")
 
     # Use our main index to find results to the query
     answer_edge_ids = []
     if input_curie in main_index:
-        if output_category in main_index[input_curie]:
-            # Consider ALL predicates if none were specified in the QG
-            predicates_present = set(main_index[input_curie][output_category])
-            if not predicates:
-                predicates_to_inspect = predicates_present
-            else:
-                predicates_to_inspect = set(predicates).intersection(predicates_present)
-            for predicate in predicates_to_inspect:
-                answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
+        for output_category in output_categories:
+            if output_category in main_index[input_curie]:
+                # Consider ALL predicates if none were specified in the QG
+                predicates_present = set(main_index[input_curie][output_category])
+                if not predicates:
+                    predicates_to_inspect = predicates_present
+                else:
+                    predicates_to_inspect = set(predicates).intersection(predicates_present)
+                for predicate in predicates_to_inspect:
+                    answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
 
     answer_kg = {"nodes": {}, "edges": {}}
     results = []
