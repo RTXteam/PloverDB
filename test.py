@@ -1,8 +1,8 @@
 import requests
-from typing import Dict
+from typing import Dict, Union, List
 
 
-def _print_kg(kg):
+def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]]):
     nodes_by_qg_id = kg["nodes"]
     edges_by_qg_id = kg["edges"]
     for qnode_key, nodes in sorted(nodes_by_qg_id.items()):
@@ -13,7 +13,7 @@ def _print_kg(kg):
             print(f"{qedge_key}: {edge_key}, {edge['subject']}--{edge['simplified_edge_label']}->{edge['object']}")
 
 
-def _run_query(trapi_qg):
+def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
     kp_response = requests.post("http://localhost:105/query", json=trapi_qg, headers={'accept': 'application/json'})
     return kp_response.json()
 

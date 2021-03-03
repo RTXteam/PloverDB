@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
-from typing import List, Dict, Tuple, Union, Set
+from typing import List, Dict, Union, Set
 
 
 class BadgerDB:
@@ -67,7 +67,7 @@ class BadgerDB:
             return set()
 
     @staticmethod
-    def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, any]]):
+    def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, Union[str, List[str], None]]]) -> str:
         # The input qnode should be the one with the larger number of curies (way more efficient for our purposes)
         qnode_key_with_most_curies = ""
         most_curies = 0
@@ -77,7 +77,7 @@ class BadgerDB:
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
 
-    def answer_query(self, trapi_query) -> Dict[str, any]:
+    def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]]:
         # Load the query and grab the relevant pieces of it
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
