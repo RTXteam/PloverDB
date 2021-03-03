@@ -8,15 +8,41 @@ class BadgerDB:
 
     def __init__(self, is_test: bool = False):
         self.is_test = is_test
+        self.kg2c_file_name = "kg2c.json" if not is_test else "kg2c_test.json"
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
         self.main_index = dict()
         self._build_indexes()
 
     def _build_indexes(self):
+        if self.is_test:
+            # In test mode, building indexes is a little less efficient, so that's separated out to keep things clean
+            self._build_test_indexes()
+        else:
+            # Build simple node lookup map for storing node objects
+            with open(self.kg2c_file_name, "r") as nodes_file:
+                kg2c_dict = json.load(nodes_file)
+            for node in kg2c_dict["nodes"]:
+                self.node_lookup_map[node["id"]] = node
+                del node["id"]  # TRAPI doesn't want IDs stored as properties on nodes
+
+            # Build our edge lookup map and main index (modified adjacency list kind of structure)
+            for edge in kg2c_dict["edges"]:
+                edge_id = edge["id"]
+                self.edge_lookup_map[edge_id] = edge
+                del edge["id"]  # TRAPI doesn't want IDs stored as properties on edges
+                subject_id = edge["subject"]
+                object_id = edge["object"]
+                predicate = edge["simplified_edge_label"]
+                subject_categories = self.node_lookup_map[subject_id]["types"]
+                object_categories = self.node_lookup_map[object_id]["types"]
+                # Record this edge in both the forwards and backwards direction (we only support undirected queries)
+                self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, "-->")
+                self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, "<--")
+
+    def _build_test_indexes(self):
         # Build simple node and edge lookup maps for storing the node/edge objects
-        kg2c_file_name = "kg2c.json" if not self.is_test else "kg2c_test.json"
-        with open(kg2c_file_name, "r") as nodes_file:
+        with open(self.kg2c_file_name, "r") as nodes_file:
             kg2c_dict = json.load(nodes_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
@@ -25,15 +51,15 @@ class BadgerDB:
             del node["id"]
         for edge in self.edge_lookup_map.values():
             del edge["id"]
-        if self.is_test:
-            # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
-            node_ids_used_by_edges = {edge["subject"] for edge in self.edge_lookup_map.values()}.union(edge["object"] for edge in self.edge_lookup_map.values())
-            node_lookup_map_trimmed = {node_id: self.node_lookup_map[node_id] for node_id in node_ids_used_by_edges
-                                       if node_id in self.node_lookup_map}
-            self.node_lookup_map = node_lookup_map_trimmed
-            edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
-                                       edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
-            self.edge_lookup_map = edge_lookup_map_trimmed
+
+        # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
+        node_ids_used_by_edges = {edge["subject"] for edge in self.edge_lookup_map.values()}.union(edge["object"] for edge in self.edge_lookup_map.values())
+        node_lookup_map_trimmed = {node_id: self.node_lookup_map[node_id] for node_id in node_ids_used_by_edges
+                                   if node_id in self.node_lookup_map}
+        self.node_lookup_map = node_lookup_map_trimmed
+        edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
+                                   edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
+        self.edge_lookup_map = edge_lookup_map_trimmed
 
         # Build our main index (modified adjacency list kind of structure)
         for edge_id, edge in self.edge_lookup_map.items():
