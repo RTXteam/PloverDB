@@ -130,3 +130,5 @@ dmypy.json
 
 *.idea
 *.tsv
+*.DS_Store
+kg2c*.json
