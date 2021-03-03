@@ -21,6 +21,7 @@ def build_indexes(is_test: bool):
     kg2c_file_name = "kg2c.json" if not is_test else "kg2c_test.json"
     with open(kg2c_file_name, "r") as nodes_file:
         kg2c_dict = json.load(nodes_file)
+    # TODO: Remove node/edge IDs from actual node/edge objects (TRAPI doesn't want that)
     node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
     edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
 
@@ -56,10 +57,8 @@ def convert_to_list(input_item: Union[List[str], str, None]):
         return []
 
 
-def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -> Tuple[Dict[str, Dict[str, Dict[str, any]]], List[Dict[str, any]]]:
+def answer_query(trapi_query, main_index, node_lookup_map, edge_lookup_map) -> Dict[str, any]:
     # Load the query and grab the relevant pieces of it
-    with open(json_file_name, "r") as query_file:
-        trapi_query = json.load(query_file)
     qnodes_with_curies = [qnode_key for qnode_key in trapi_query["nodes"] if trapi_query["nodes"][qnode_key].get("id")]
     input_qnode_key = qnodes_with_curies[0]
     output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
@@ -69,9 +68,10 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
     output_categories = convert_to_list(trapi_query["nodes"][output_qnode_key].get("category"))
     predicates = convert_to_list(qedge.get("predicate"))
     print(f"Query to answer is: {input_curies}--{predicates}--{output_categories}")
-    answer_kg = {"nodes": {}, "edges": {}}
-    results_dict = {}
+    answer_kg = {"nodes": {input_qnode_key: dict(), output_qnode_key: dict()},
+                 "edges": {qedge_key: dict()}}
 
+    # TODO: support curie--curie queries
     for input_curie in input_curies:
         # Use our main index to find results to the query
         answer_edge_ids = []
@@ -86,30 +86,18 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
                     for predicate in predicates_to_inspect:
                         answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
 
-        unique_answer_edge_ids = set(answer_edge_ids)
-        for answer_edge_id in unique_answer_edge_ids:
+        for answer_edge_id in answer_edge_ids:
             edge = edge_lookup_map[answer_edge_id]
             subject_curie = edge["subject"]
             object_curie = edge["object"]
-            # Add this edge and its nodes to our answer KG
-            answer_kg["edges"][answer_edge_id] = edge
-            answer_kg["nodes"][subject_curie] = node_lookup_map[subject_curie]
-            answer_kg["nodes"][object_curie] = node_lookup_map[object_curie]
-
-            # Capture this edge and its nodes in a result object
-            result_key = "--".join(sorted([subject_curie, object_curie]))
             output_curie = object_curie if object_curie != input_curie else subject_curie
-            if result_key not in results_dict:
-                results_dict[result_key] = {"node_bindings": {input_qnode_key: [{"id": input_curie}],
-                                                              output_qnode_key: [{"id": output_curie}]},
-                                            "edge_bindings": {qedge_key: [{"id": answer_edge_id}]}}
-            else:
-                # If a result has already been created between these two nodes, add this edge ID to it
-                edge_bindings = results_dict[result_key]["edge_bindings"][qedge_key]
-                if not any(edge_binding for edge_binding in edge_bindings if edge_binding["id"] == answer_edge_id):
-                    edge_bindings.append({"id": answer_edge_id})
+            # Add this edge and its nodes to our answer KG
+            if answer_edge_id not in answer_kg["edges"][qedge_key]:
+                answer_kg["edges"][qedge_key][answer_edge_id] = edge
+                answer_kg["nodes"][input_qnode_key][input_curie] = node_lookup_map[input_curie]
+                answer_kg["nodes"][output_qnode_key][output_curie] = node_lookup_map[output_curie]
 
-    return answer_kg, list(results_dict.values())
+    return answer_kg
 
 
 def main():
@@ -121,15 +109,7 @@ def main():
     main_index, node_lookup_map, edge_lookup_map = build_indexes(args.test)
 
     pp = PrettyPrinter()
-    # Wait for and run queries (have menu option for now? queries could be in JSON files to start)
-    test_file_names = ["test_query1.json", "test_query2.json", "test_query3.json", "test_query4.json", "test_query.json"]
-    for test_file_name in test_file_names:
-        answer_kg, results = answer_query(test_file_name, main_index, node_lookup_map, edge_lookup_map)
-        pp.pprint(results)
-        print()
-
     pp.pprint(main_index["CHEMBL.COMPOUND:CHEMBL833"])
-    pp.pprint(main_index["CHEBI:51173"])
 
 
 if __name__ == "__main__":
