@@ -75,14 +75,13 @@ def answer_query(json_file_name, main_index, node_lookup_map, edge_lookup_map) -
     # Use our main index to find results to the query
     answer_edge_ids = []
     if input_curie in main_index:
-        for output_category in output_categories:
+        categories_present = set(main_index[input_curie])
+        categories_to_inspect = set(output_categories).intersection(categories_present) if output_categories else categories_present
+        for output_category in categories_to_inspect:
             if output_category in main_index[input_curie]:
                 # Consider ALL predicates if none were specified in the QG
                 predicates_present = set(main_index[input_curie][output_category])
-                if not predicates:
-                    predicates_to_inspect = predicates_present
-                else:
-                    predicates_to_inspect = set(predicates).intersection(predicates_present)
+                predicates_to_inspect = set(predicates).intersection(predicates_present) if predicates else predicates_present
                 for predicate in predicates_to_inspect:
                     answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
 
