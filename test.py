@@ -1,7 +1,5 @@
+import requests
 from typing import Dict
-
-from badger import BadgerDB
-badger = BadgerDB(is_test=True)
 
 
 def _print_kg(kg):
@@ -13,6 +11,11 @@ def _print_kg(kg):
     for qedge_key, edges in sorted(edges_by_qg_id.items()):
         for edge_key, edge in sorted(edges.items()):
             print(f"{qedge_key}: {edge_key}, {edge['subject']}--{edge['simplified_edge_label']}->{edge['object']}")
+
+
+def _run_query(trapi_qg):
+    kp_response = requests.post("http://localhost:105/query", json=trapi_qg, headers={'accept': 'application/json'})
+    return kp_response.json()
 
 
 def test_1():
@@ -35,7 +38,7 @@ def test_1():
           }
        }
     }
-    kg = badger.answer_query(query)
+    kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     _print_kg(kg)
 
@@ -59,7 +62,7 @@ def test_2():
           }
        }
     }
-    kg = badger.answer_query(query)
+    kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     _print_kg(kg)
 
@@ -83,7 +86,7 @@ def test_3():
           }
        }
     }
-    kg = badger.answer_query(query)
+    kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     _print_kg(kg)
 
@@ -106,7 +109,7 @@ def test_4():
           }
        }
     }
-    kg = badger.answer_query(query)
+    kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     _print_kg(kg)
 
@@ -130,7 +133,7 @@ def test_5():
             }
         }
     }
-    kg = badger.answer_query(query)
+    kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     _print_kg(kg)
 
@@ -153,7 +156,7 @@ def test_6():
             }
         }
     }
-    kg = badger.answer_query(query)
+    kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     _print_kg(kg)
 

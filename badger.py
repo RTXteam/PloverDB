@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import json
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Tuple, Union, Set
 
 
 class BadgerDB:
 
-    def __init__(self, is_test: bool):
+    def __init__(self, is_test: bool = False):
         self.is_test = is_test
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
@@ -58,13 +58,13 @@ class BadgerDB:
             main_index[node_a_id][category][predicate][node_b_id] = edge_id
 
     @staticmethod
-    def _convert_to_list(input_item: Union[List[str], str, None]):
+    def _convert_to_set(input_item: Union[Set[str], str, None]) -> Set[str]:
         if isinstance(input_item, str):
-            return [input_item]
+            return {input_item}
         elif isinstance(input_item, list):
-            return input_item
+            return set(input_item)
         else:
-            return []
+            return set()
 
     @staticmethod
     def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, any]]):
@@ -83,27 +83,27 @@ class BadgerDB:
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
         qedge = trapi_query["edges"][qedge_key]
-        input_curies = self._convert_to_list(trapi_query["nodes"][input_qnode_key]["id"])
-        output_categories = self._convert_to_list(trapi_query["nodes"][output_qnode_key].get("category"))
-        output_curies = set(self._convert_to_list(trapi_query["nodes"][output_qnode_key].get("id")))
-        predicates = self._convert_to_list(qedge.get("predicate"))
+        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
+        output_categories = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
+        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
+        predicates = self._convert_to_set(qedge.get("predicate"))
         print(f"Query to answer is: {input_curies}--{predicates}--{output_curies if output_curies else ''}{output_categories}")
+
+        # Use our main index to find results to the query
         answer_kg = {"nodes": {input_qnode_key: dict(), output_qnode_key: dict()},
                      "edges": {qedge_key: dict()}}
-
         main_index = self.main_index
         for input_curie in input_curies:
-            # Use our main index to find results to the query
             answer_edge_ids = []
             if input_curie in main_index:
                 categories_present = set(main_index[input_curie])
                 # Consider all output categories if none were provided or if output curies were specified
-                categories_to_inspect = set(output_categories).intersection(categories_present) if output_categories and not output_curies else categories_present
+                categories_to_inspect = output_categories.intersection(categories_present) if output_categories and not output_curies else categories_present
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
                         # Consider ALL predicates if none were specified in the QG
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = set(predicates).intersection(predicates_present) if predicates else predicates_present
+                        predicates_to_inspect = predicates.intersection(predicates_present) if predicates else predicates_present
                         for predicate in predicates_to_inspect:
                             if output_curies:
                                 # We need to look for the matching output node(s)
