@@ -90,6 +90,9 @@ class BadgerDB:
         return answer_kg
 
     def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]]:
+        # Make sure this is a query we can answer
+        if len(trapi_query["edges"]) > 1:
+            raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has {len(trapi_query['edges'])} edges.")
         # Handle edgeless queries
         if not trapi_query["edges"]:
             return self._answer_edgeless_query(trapi_query)

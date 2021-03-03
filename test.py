@@ -14,8 +14,12 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 
 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
-    kp_response = requests.post("http://localhost:105/query", json=trapi_qg, headers={'accept': 'application/json'})
-    return kp_response.json()
+    response = requests.post("http://localhost:105/query", json=trapi_qg, headers={'accept': 'application/json'})
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Response status code was {response.status_code}. Response was: {response.text}")
+        return dict()
 
 
 def test_1():
@@ -234,6 +238,26 @@ def test_10():
     assert len(kg["nodes"]["n00"]) == 1
     assert len(kg["nodes"]["n01"]) == 1
     _print_kg(kg)
+
+
+def test_11():
+    # Verify catches larger than one-hop query
+    query = {
+        "edges": {
+            "e00": {},
+            "e01": {}
+        },
+        "nodes": {
+            "n00": {
+                "id": "CHEMBL.COMPOUND:CHEMBL25"
+            },
+            "n01": {
+                "id": "CHEMBL.COMPOUND:CHEMBL411"
+            }
+        }
+    }
+    kg = _run_query(query)
+    assert not kg
 
 
 if __name__ == "__main__":
