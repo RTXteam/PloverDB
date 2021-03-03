@@ -61,35 +61,53 @@ class BadgerDB:
         else:
             return []
 
+    @staticmethod
+    def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, any]]):
+        # The input qnode should be the one with the larger number of curies (way more efficient for our purposes)
+        qnode_key_with_most_curies = ""
+        most_curies = 0
+        for qnode_key, qnode in qnodes.items():
+            if qnode.get("id") and len(qnode["id"]) > most_curies:
+                most_curies = len(qnode["id"])
+                qnode_key_with_most_curies = qnode_key
+        return qnode_key_with_most_curies
+
     def answer_query(self, trapi_query) -> Dict[str, any]:
         # Load the query and grab the relevant pieces of it
-        qnodes_with_curies = [qnode_key for qnode_key in trapi_query["nodes"] if trapi_query["nodes"][qnode_key].get("id")]
-        input_qnode_key = qnodes_with_curies[0]
+        input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
         qedge = trapi_query["edges"][qedge_key]
         input_curies = self._convert_to_list(trapi_query["nodes"][input_qnode_key]["id"])
         output_categories = self._convert_to_list(trapi_query["nodes"][output_qnode_key].get("category"))
+        output_curies = set(self._convert_to_list(trapi_query["nodes"][output_qnode_key].get("id")))
         predicates = self._convert_to_list(qedge.get("predicate"))
-        print(f"Query to answer is: {input_curies}--{predicates}--{output_categories}")
+        print(f"Query to answer is: {input_curies}--{predicates}--{output_curies if output_curies else ''}{output_categories}")
         answer_kg = {"nodes": {input_qnode_key: dict(), output_qnode_key: dict()},
                      "edges": {qedge_key: dict()}}
 
-        # TODO: support curie--curie queries
         main_index = self.main_index
         for input_curie in input_curies:
             # Use our main index to find results to the query
             answer_edge_ids = []
             if input_curie in main_index:
                 categories_present = set(main_index[input_curie])
-                categories_to_inspect = set(output_categories).intersection(categories_present) if output_categories else categories_present
+                # Consider all output categories if none were provided or if output curies were specified
+                categories_to_inspect = set(output_categories).intersection(categories_present) if output_categories and not output_curies else categories_present
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
                         # Consider ALL predicates if none were specified in the QG
                         predicates_present = set(main_index[input_curie][output_category])
                         predicates_to_inspect = set(predicates).intersection(predicates_present) if predicates else predicates_present
                         for predicate in predicates_to_inspect:
-                            answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
+                            if output_curies:
+                                # We need to look for the matching output node(s)
+                                curies_present = set(main_index[input_curie][output_category][predicate])
+                                matching_output_curies = output_curies.intersection(curies_present)
+                                for output_curie in matching_output_curies:
+                                    answer_edge_ids.append(main_index[input_curie][output_category][predicate][output_curie])
+                            else:
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
 
             for answer_edge_id in answer_edge_ids:
                 edge = self.edge_lookup_map[answer_edge_id]
