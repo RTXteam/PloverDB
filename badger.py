@@ -43,10 +43,11 @@ class BadgerDB:
             subject_categories = self.node_lookup_map[subject_id]["types"]
             object_categories = self.node_lookup_map[object_id]["types"]
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
-            self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id)
-            self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id)
+            self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, "-->")
+            self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, "<--")
 
-    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str, edge_id: str):
+    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str,
+                           edge_id: str, direction: str):
         main_index = self.main_index
         if node_a_id not in main_index:
             main_index[node_a_id] = dict()
@@ -54,8 +55,8 @@ class BadgerDB:
             if category not in main_index[node_a_id]:
                 main_index[node_a_id][category] = dict()
             if predicate not in main_index[node_a_id][category]:
-                main_index[node_a_id][category][predicate] = dict()
-            main_index[node_a_id][category][predicate][node_b_id] = edge_id
+                main_index[node_a_id][category][predicate] = {"-->": dict(), "<--": dict()}
+            main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
 
     @staticmethod
     def _convert_to_set(input_item: Union[Set[str], str, None]) -> Set[str]:
@@ -126,12 +127,15 @@ class BadgerDB:
                         for predicate in predicates_to_inspect:
                             if output_curies:
                                 # We need to look for the matching output node(s)
-                                curies_present = set(main_index[input_curie][output_category][predicate])
-                                matching_output_curies = output_curies.intersection(curies_present)
-                                for output_curie in matching_output_curies:
-                                    answer_edge_ids.append(main_index[input_curie][output_category][predicate][output_curie])
+                                for direction in {"-->", "<--"}:  # Always do query undirected for now
+                                    curies_present = set(main_index[input_curie][output_category][predicate][direction])
+                                    matching_output_curies = output_curies.intersection(curies_present)
+                                    for output_curie in matching_output_curies:
+                                        answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
-                                answer_edge_ids += list(main_index[input_curie][output_category][predicate].values())
+                                # Grab both forwards and backwards edges (we only do undirected queries currently)
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate]["-->"].values())
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate]["<--"].values())
 
             for answer_edge_id in answer_edge_ids:
                 edge = self.edge_lookup_map[answer_edge_id]
