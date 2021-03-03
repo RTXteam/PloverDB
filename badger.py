@@ -77,7 +77,23 @@ class BadgerDB:
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
 
+    def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]]:
+        # When no qedges are involved, we only fulfill qnodes that have a curie
+        qnode_keys_with_curies = {qnode_key for qnode_key, qnode in trapi_query["nodes"].items() if qnode.get("id")}
+        answer_kg = {"nodes": {qnode_key: dict() for qnode_key in qnode_keys_with_curies},
+                     "edges": {}}
+        for qnode_key in qnode_keys_with_curies:
+            input_curies = self._convert_to_set(trapi_query["nodes"][qnode_key]["id"])
+            for input_curie in input_curies:
+                if input_curie in self.node_lookup_map:
+                    answer_kg["nodes"][qnode_key][input_curie] = self.node_lookup_map[input_curie]
+        return answer_kg
+
     def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]]:
+        # Handle edgeless queries
+        if not trapi_query["edges"]:
+            return self._answer_edgeless_query(trapi_query)
+
         # Load the query and grab the relevant pieces of it
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]

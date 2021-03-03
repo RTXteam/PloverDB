@@ -184,5 +184,57 @@ def test_7():
     _print_kg(kg)
 
 
+def test_8():
+    # Single-node query
+    query = {
+        "edges": {
+        },
+        "nodes": {
+            "n00": {
+                "id": "CHEMBL.COMPOUND:CHEMBL25"
+            }
+        }
+    }
+    kg = _run_query(query)
+    assert len(kg["nodes"]["n00"]) == 1
+    _print_kg(kg)
+
+
+def test_9():
+    # Single-node query with multiple curies
+    query = {
+        "edges": {
+        },
+        "nodes": {
+            "n00": {
+                "id": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL411"]
+            }
+        }
+    }
+    kg = _run_query(query)
+    assert len(kg["nodes"]["n00"]) == 2
+    _print_kg(kg)
+
+
+def test_10():
+    # Edgeless query with multiple nodes
+    query = {
+        "edges": {
+        },
+        "nodes": {
+            "n00": {
+                "id": "CHEMBL.COMPOUND:CHEMBL25"
+            },
+            "n01": {
+                "id": "CHEMBL.COMPOUND:CHEMBL411"
+            }
+        }
+    }
+    kg = _run_query(query)
+    assert len(kg["nodes"]["n00"]) == 1
+    assert len(kg["nodes"]["n01"]) == 1
+    _print_kg(kg)
+
+
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])
