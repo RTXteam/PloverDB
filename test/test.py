@@ -14,7 +14,7 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 
 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
-    response = requests.post("http://localhost:2244/query", json=trapi_qg, headers={'accept': 'application/json'})
+    response = requests.post("http://localhost:2244/query/", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
         return response.json()
     else:
@@ -258,6 +258,29 @@ def test_11():
     }
     kg = _run_query(query)
     assert not kg
+
+
+def test_12():
+    # Do a bunch of rapid requests
+    query = {
+       "edges": {
+          "e00": {
+             "subject": "n00",
+             "object": "n01"
+          }
+       },
+       "nodes": {
+          "n00": {
+             "id": "CHEMBL.COMPOUND:CHEMBL411"
+          },
+          "n01": {
+              "category": ["protein", "procedure"]
+          }
+       }
+    }
+    for num in range(100):
+        kg = _run_query(query)
+        assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
 
 
 if __name__ == "__main__":
