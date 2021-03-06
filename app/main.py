@@ -7,7 +7,7 @@ from badger import BadgerDB
 app = Flask(__name__)
 print("Starting to load data..")
 start = time.time()
-badger = BadgerDB()
+badger = BadgerDB(is_test=True)
 print(f"Finished loading data. Took {round((time.time() - start) / 60, 1)} minutes.")
 
 

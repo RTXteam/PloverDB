@@ -158,7 +158,7 @@ def main():
     args = arg_parser.parse_args()
 
     # Create our indexes
-    badger_db = BadgerDB(is_test=True)
+    badger_db = BadgerDB(is_test=args.is_test)
 
 
 if __name__ == "__main__":
