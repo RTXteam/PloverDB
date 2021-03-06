@@ -4,7 +4,7 @@ import json
 from typing import List, Dict, Union, Set
 
 
-class BadgerDB:
+class PloverDB:
 
     def __init__(self, is_test: bool = False):
         self.is_test = is_test
@@ -158,7 +158,7 @@ def main():
     args = arg_parser.parse_args()
 
     # Create our indexes
-    badger_db = BadgerDB(is_test=args.is_test)
+    plover = PloverDB(is_test=args.is_test)
 
 
 if __name__ == "__main__":
