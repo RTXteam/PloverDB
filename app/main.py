@@ -7,7 +7,7 @@ from plover import PloverDB
 app = Flask(__name__)
 print("Starting to load data..")
 start = time.time()
-plover = PloverDB(is_test=True)
+plover = PloverDB()
 print(f"Finished loading data. Took {round((time.time() - start) / 60, 1)} minutes.")
 
 
