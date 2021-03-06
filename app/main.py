@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify
 from plover import PloverDB
 
 app = Flask(__name__)
-print("Starting to load data..")
+print("Starting to load data and build indexes..")
 start = time.time()
 plover = PloverDB()
 print(f"Finished loading data. Took {round((time.time() - start) / 60, 1)} minutes.")

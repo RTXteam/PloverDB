@@ -260,28 +260,5 @@ def test_11():
     assert not kg
 
 
-def test_12():
-    # Do a bunch of rapid requests
-    query = {
-       "edges": {
-          "e00": {
-             "subject": "n00",
-             "object": "n01"
-          }
-       },
-       "nodes": {
-          "n00": {
-             "id": "CHEMBL.COMPOUND:CHEMBL411"
-          },
-          "n01": {
-              "category": ["protein", "procedure"]
-          }
-       }
-    }
-    for num in range(100):
-        kg = _run_query(query)
-        assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-
-
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])

@@ -25,6 +25,4 @@ class APIUser(HttpUser):
                 }
             }
         }
-        response = self.client.post("/query", data=json.dumps(query), headers={'content-type': 'application/json'},
-                                    catch_response=True)
-        print(response)
+        self.client.post("/query", data=json.dumps(query), headers={'content-type': 'application/json'})
