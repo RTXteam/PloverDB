@@ -144,10 +144,9 @@ class PloverDB:
                 object_curie = edge["object"]
                 output_curie = object_curie if object_curie != input_curie else subject_curie
                 # Add this edge and its nodes to our answer KG
-                if answer_edge_id not in answer_kg["edges"][qedge_key]:
-                    answer_kg["edges"][qedge_key][answer_edge_id] = edge
-                    answer_kg["nodes"][input_qnode_key][input_curie] = self.node_lookup_map[input_curie]
-                    answer_kg["nodes"][output_qnode_key][output_curie] = self.node_lookup_map[output_curie]
+                answer_kg["edges"][qedge_key][answer_edge_id] = edge
+                answer_kg["nodes"][input_qnode_key][input_curie] = self.node_lookup_map[input_curie]
+                answer_kg["nodes"][output_qnode_key][output_curie] = self.node_lookup_map[output_curie]
 
         return answer_kg
 
