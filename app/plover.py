@@ -157,7 +157,7 @@ def main():
     args = arg_parser.parse_args()
 
     # Create our indexes
-    plover = PloverDB(is_test=args.is_test)
+    plover = PloverDB(is_test=args.test)
 
 
 if __name__ == "__main__":
