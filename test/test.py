@@ -5,12 +5,10 @@ from typing import Dict, Union, List
 def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]]):
     nodes_by_qg_id = kg["nodes"]
     edges_by_qg_id = kg["edges"]
-    for qnode_key, nodes in sorted(nodes_by_qg_id.items()):
-        for node_key, node in sorted(nodes.items()):
-            print(f"{qnode_key}: {node['types']}, {node_key}, {node['name']}")
-    for qedge_key, edges in sorted(edges_by_qg_id.items()):
-        for edge_key, edge in sorted(edges.items()):
-            print(f"{qedge_key}: {edge_key}, {edge['subject']}--{edge['simplified_edge_label']}->{edge['object']}")
+    for qnode_key, node_ids in sorted(nodes_by_qg_id.items()):
+        print(f"{qnode_key}: {node_ids}")
+    for qedge_key, edge_ids in sorted(edges_by_qg_id.items()):
+        print(f"{qedge_key}: {edge_ids}")
 
 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
@@ -29,16 +27,16 @@ def test_1():
           "e00": {
              "subject": "n00",
              "object": "n01",
-             "predicate": "related_to"
+             "predicate": "biolink:related_to"
           }
        },
        "nodes": {
           "n00": {
              "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           },
           "n01": {
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           }
        }
     }
@@ -54,13 +52,13 @@ def test_2():
           "e00": {
              "subject": "n00",
              "object": "n01",
-             "predicate": "related_to"
+             "predicate": "biolink:related_to"
           }
        },
        "nodes": {
           "n00": {
              "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           },
           "n01": {
           }
@@ -83,10 +81,10 @@ def test_3():
        "nodes": {
           "n00": {
              "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           },
           "n01": {
-              "category": "chemical_substance"
+              "category": "biolink:ChemicalSubstance"
           }
        }
     }
@@ -109,7 +107,7 @@ def test_4():
              "id": "CHEMBL.COMPOUND:CHEMBL411"
           },
           "n01": {
-              "category": ["protein", "procedure"]
+              "category": ["biolink:Protein", "biolink:Procedure"]
           }
        }
     }
@@ -125,7 +123,7 @@ def test_5():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicate": ["physically_interacts_with", "related_to"]
+                "predicate": ["biolink:physically_interacts_with", "biolink:related_to"]
             }
         },
         "nodes": {
@@ -133,7 +131,7 @@ def test_5():
                 "id": "CHEMBL.COMPOUND:CHEMBL25"
             },
             "n01": {
-                "category": ["protein", "gene"]
+                "category": ["biolink:Protein", "biolink:Gene"]
             }
         }
     }
@@ -176,10 +174,9 @@ def test_7():
         },
         "nodes": {
             "n00": {
-                "id": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL833"]
+                "id": ["CHEMBL.COMPOUND:CHEMBL25", "UniProtKB:P04070"]
             },
             "n01": {
-                "id": ["CHEMBL.COMPOUND:CHEMBL411", "CHEBI:57305"]
             }
         }
     }

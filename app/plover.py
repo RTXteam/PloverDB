@@ -11,6 +11,7 @@ class PloverDB:
         self.kg2c_file_name = "kg2c_lite.json" if not is_test else "kg2c_lite_test.json"
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
+        self.all_node_ids = set()
         self.main_index = dict()
         self._build_indexes()
 
@@ -20,11 +21,6 @@ class PloverDB:
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
-        # Remove node/edge ID properties from actual node/edge objects (don't need them there anymore)
-        for node in self.node_lookup_map.values():
-            del node["id"]
-        for edge in self.edge_lookup_map.values():
-            del edge["id"]
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
@@ -36,7 +32,7 @@ class PloverDB:
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
 
-        # Build our main index (modified adjacency list kind of structure)
+        # Build our main index (modified/nested adjacency list kind of structure)
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
@@ -46,6 +42,14 @@ class PloverDB:
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, "-->")
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, "<--")
+
+        # Remove our node lookup map and instead simply store a set of all node IDs in the KG
+        self.all_node_ids = set(self.node_lookup_map)
+        del self.node_lookup_map
+        # Remove properties from edges that we don't need stored there anymore
+        for edge in self.edge_lookup_map.values():
+            del edge["id"]
+            del edge["predicate"]
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str,
                            edge_id: str, direction: str):
@@ -87,7 +91,7 @@ class PloverDB:
         for qnode_key in qnode_keys_with_curies:
             input_curies = self._convert_to_set(trapi_query["nodes"][qnode_key]["id"])
             for input_curie in input_curies:
-                if input_curie in self.node_lookup_map:
+                if input_curie in self.all_node_ids:
                     answer_kg["nodes"][qnode_key].append(input_curie)
         # Make sure we return only distinct nodes
         for qnode_key in qnode_keys_with_curies:
