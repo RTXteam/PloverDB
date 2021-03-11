@@ -40,8 +40,8 @@ class PloverDB:
             subject_categories = self.node_lookup_map[subject_id]["all_categories"]
             object_categories = self.node_lookup_map[object_id]["all_categories"]
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
-            self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, "-->")
-            self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, "<--")
+            self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
+            self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, -1)
 
         # Remove our node lookup map and instead simply store a set of all node IDs in the KG
         self.all_node_ids = set(self.node_lookup_map)
@@ -52,7 +52,8 @@ class PloverDB:
             del edge["predicate"]
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str,
-                           edge_id: str, direction: str):
+                           edge_id: str, direction: int):
+        # Note: A direction of 1 means forwards, -1 means backwards
         main_index = self.main_index
         if node_a_id not in main_index:
             main_index[node_a_id] = dict()
@@ -60,7 +61,7 @@ class PloverDB:
             if category not in main_index[node_a_id]:
                 main_index[node_a_id][category] = dict()
             if predicate not in main_index[node_a_id][category]:
-                main_index[node_a_id][category][predicate] = {"-->": dict(), "<--": dict()}
+                main_index[node_a_id][category][predicate] = [dict(), dict()]
             main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
 
     @staticmethod
@@ -136,15 +137,15 @@ class PloverDB:
                         for predicate in predicates_to_inspect:
                             if output_curies:
                                 # We need to look for the matching output node(s)
-                                for direction in {"-->", "<--"}:  # Always do query undirected for now
+                                for direction in {1, -1}:  # Always do query undirected for now (1 means forwards)
                                     curies_present = set(main_index[input_curie][output_category][predicate][direction])
                                     matching_output_curies = output_curies.intersection(curies_present)
                                     for output_curie in matching_output_curies:
                                         answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
                                 # Grab both forwards and backwards edges (we only do undirected queries currently)
-                                answer_edge_ids += list(main_index[input_curie][output_category][predicate]["-->"].values())
-                                answer_edge_ids += list(main_index[input_curie][output_category][predicate]["<--"].values())
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][1].values())
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][-1].values())
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
