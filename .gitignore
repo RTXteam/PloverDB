@@ -132,3 +132,4 @@ dmypy.json
 *.tsv
 *.DS_Store
 kg2c*.json
+*.sqlite
