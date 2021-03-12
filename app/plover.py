@@ -36,9 +36,9 @@ class PloverDB:
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate = edge["predicate"]
-            subject_categories = self.node_lookup_map[subject_id]["all_categories"]
-            object_categories = self.node_lookup_map[object_id]["all_categories"]
+            predicate = edge["simplified_edge_label"]
+            subject_categories = self.node_lookup_map[subject_id]["types"]
+            object_categories = self.node_lookup_map[object_id]["types"]
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
@@ -49,7 +49,7 @@ class PloverDB:
         # Remove properties from edges that we don't need stored there anymore
         for edge in self.edge_lookup_map.values():
             del edge["id"]
-            del edge["predicate"]
+            del edge["simplified_edge_label"]
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str,
                            edge_id: str, direction: int):
