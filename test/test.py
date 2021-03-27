@@ -27,16 +27,16 @@ def test_1():
           "e00": {
              "subject": "n00",
              "object": "n01",
-             "predicate": "related_to"
+             "predicate": "biolink:related_to"
           }
        },
        "nodes": {
           "n00": {
              "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           },
           "n01": {
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           }
        }
     }
@@ -52,13 +52,13 @@ def test_2():
           "e00": {
              "subject": "n00",
              "object": "n01",
-             "predicate": "related_to"
+             "predicate": "biolink:related_to"
           }
        },
        "nodes": {
           "n00": {
              "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           },
           "n01": {
           }
@@ -81,10 +81,10 @@ def test_3():
        "nodes": {
           "n00": {
              "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "chemical_substance"
+             "category": "biolink:ChemicalSubstance"
           },
           "n01": {
-              "category": "chemical_substance"
+              "category": "biolink:ChemicalSubstance"
           }
        }
     }
@@ -107,7 +107,7 @@ def test_4():
              "id": "CHEMBL.COMPOUND:CHEMBL411"
           },
           "n01": {
-              "category": ["protein", "procedure"]
+              "category": ["biolink:Protein", "biolink:Procedure"]
           }
        }
     }
@@ -123,7 +123,7 @@ def test_5():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicate": ["physically_interacts_with", "related_to"]
+                "predicate": ["biolink:physically_interacts_with", "biolink:related_to"]
             }
         },
         "nodes": {
@@ -131,7 +131,7 @@ def test_5():
                 "id": "CHEMBL.COMPOUND:CHEMBL25"
             },
             "n01": {
-                "category": ["protein", "gene"]
+                "category": ["biolink:Protein", "biolink:Gene"]
             }
         }
     }

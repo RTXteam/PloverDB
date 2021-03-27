@@ -13,13 +13,13 @@ class APIUser(HttpUser):
                 "e00": {
                     "subject": "n00",
                     "object": "n01",
-                    "predicate": "related_to"
+                    "predicate": "biolink:related_to"
                 }
             },
             "nodes": {
                 "n00": {
                     "id": ["CHEMBL.COMPOUND:CHEMBL411", "CHEMBL.COMPOUND:CHEMBL:25"],
-                    "category": "chemical_substance"
+                    "category": "biolink:ChemicalSubstance"
                 },
                 "n01": {
                 }
