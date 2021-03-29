@@ -9,8 +9,8 @@ class PloverDB:
     def __init__(self):
         with open("data_config.json") as config_file:
             self.data_config = json.load(config_file)
-        self.predicate_property = self.data_config["property_names"]["predicate"]
-        self.categories_property = self.data_config["property_names"]["categories"]
+        self.predicate_property = self.data_config["property_names"]["edge_label"]
+        self.categories_property = self.data_config["property_names"]["node_labels"]
         self.is_test = self.data_config["is_test"]
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
@@ -51,8 +51,9 @@ class PloverDB:
         del self.node_lookup_map
         # Remove properties from edges that we don't need stored there anymore
         for edge in self.edge_lookup_map.values():
-            del edge["id"]
-            del edge[self.predicate_property]
+            properties_to_remove = set(edge).difference({"subject", "object", self.predicate_property})
+            for property_name in properties_to_remove:
+                del edge[property_name]
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str,
                            edge_id: str, direction: int):

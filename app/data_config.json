@@ -2,7 +2,7 @@
   "file_name": "kg2c_lite.json",
   "is_test": false,
   "property_names": {
-    "predicate": "predicate",
-    "categories": "expanded_categories"
+    "edge_label": "predicate",
+    "node_labels": "expanded_categories"
   }
 }
