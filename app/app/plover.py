@@ -6,9 +6,12 @@ from typing import List, Dict, Union, Set
 
 class PloverDB:
 
-    def __init__(self, is_test: bool = False):
-        self.is_test = is_test
-        self.kg2c_file_name = "kg2c_lite.json" if not is_test else "kg2c_lite_test.json"
+    def __init__(self):
+        with open("data_config.json") as config_file:
+            self.data_config = json.load(config_file)
+        self.predicate_property = self.data_config["property_names"]["predicate"]
+        self.categories_property = self.data_config["property_names"]["categories"]
+        self.is_test = self.data_config["is_test"]
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
         self.all_node_ids = set()
@@ -17,7 +20,7 @@ class PloverDB:
 
     def _build_indexes(self):
         # Build simple node and edge lookup maps for storing the node/edge objects
-        with open(self.kg2c_file_name, "r") as kg2c_file:
+        with open(self.data_config["file_name"], "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
@@ -36,9 +39,9 @@ class PloverDB:
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate = edge["predicate"]
-            subject_categories = self.node_lookup_map[subject_id]["expanded_categories"]
-            object_categories = self.node_lookup_map[object_id]["expanded_categories"]
+            predicate = edge[self.predicate_property]
+            subject_categories = self.node_lookup_map[subject_id][self.categories_property]
+            object_categories = self.node_lookup_map[object_id][self.categories_property]
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
@@ -49,7 +52,7 @@ class PloverDB:
         # Remove properties from edges that we don't need stored there anymore
         for edge in self.edge_lookup_map.values():
             del edge["id"]
-            del edge["predicate"]
+            del edge[self.predicate_property]
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str,
                            edge_id: str, direction: int):
