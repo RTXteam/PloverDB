@@ -32,8 +32,8 @@ It returns the IDs of the nodes and edges comprising the answer to the query in 
 Where `n00`, `n01`, and `e00` are the `key`s of the `QNode`s/`QEdge`s in the submitted query graph.
 
 In your JSON KG file, **required properties** for nodes/edges are:
-* **Nodes**: `id` and some sort of `categories` property (you need to specify its exact name in `data_config.json`)
-* **Edges**: `id`, `subject`, `object`, and some sort of `predicate` property (you need to specify its exact name in `data_config.json`)
+* **Nodes**: `id` and some sort of `categories` property (specify its exact name in `data_config.json`)
+* **Edges**: `id`, `subject`, `object`, and some sort of `predicate` property (specify its exact name in `data_config.json`)
 
 All other node/edge properties will be ignored.
 
@@ -45,7 +45,7 @@ All other node/edge properties will be ignored.
 1. Clone this repo
 1. Make sure port `9090` (or one of your choosing) is open
 1. Put your JSON KG file into `PloverDB/app/`
-1. Update `PloverDB/app/data_config.json` with your KG file name and the names of the properties you want it to use as 'types' for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
+1. Update `PloverDB/app/data_config.json` with your JSON KG file name and the names of the properties you want it to use as 'labels' for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 1. `cd` into `PloverDB/`
 1. Then build your Docker image and run a container based on it:
     * `docker build -t yourimage .`
