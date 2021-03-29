@@ -40,8 +40,8 @@ class PloverDB:
             subject_id = edge["subject"]
             object_id = edge["object"]
             predicate = edge[self.predicate_property]
-            subject_categories = self.node_lookup_map[subject_id][self.categories_property]
-            object_categories = self.node_lookup_map[object_id][self.categories_property]
+            subject_categories = self._convert_to_set(self.node_lookup_map[subject_id][self.categories_property])
+            object_categories = self._convert_to_set(self.node_lookup_map[object_id][self.categories_property])
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
@@ -55,7 +55,7 @@ class PloverDB:
             for property_name in properties_to_remove:
                 del edge[property_name]
 
-    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: List[str], predicate: str,
+    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[str], predicate: str,
                            edge_id: str, direction: int):
         # Note: A direction of 1 means forwards, 0 means backwards
         main_index = self.main_index
