@@ -7,11 +7,11 @@ from typing import List, Dict, Union, Set
 class PloverDB:
 
     def __init__(self):
-        with open("data_config.json") as config_file:
-            self.data_config = json.load(config_file)
-        self.predicate_property = self.data_config["labels"]["edges"]
-        self.categories_property = self.data_config["labels"]["nodes"]
-        self.is_test = self.data_config["is_test"]
+        with open("kg_config.json") as config_file:
+            self.kg_config = json.load(config_file)
+        self.predicate_property = self.kg_config["labels"]["edges"]
+        self.categories_property = self.kg_config["labels"]["nodes"]
+        self.is_test = self.kg_config["is_test"]
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
         self.all_node_ids = set()
@@ -20,7 +20,7 @@ class PloverDB:
 
     def _build_indexes(self):
         # Build simple node and edge lookup maps for storing the node/edge objects
-        with open(self.data_config["file_name"], "r") as kg2c_file:
+        with open(self.kg_config["file_name"], "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
