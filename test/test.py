@@ -12,7 +12,7 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 
 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
-    response = requests.post("http://localhost:2244/query/", json=trapi_qg, headers={'accept': 'application/json'})
+    response = requests.post("http://localhost:5000/query/", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
         return response.json()
     else:

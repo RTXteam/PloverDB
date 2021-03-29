@@ -2,7 +2,8 @@
 import time
 
 from flask import Flask, request, jsonify
-from plover import PloverDB
+from app.plover import PloverDB
+
 
 app = Flask(__name__)
 print("Starting to load data and build indexes..")
@@ -16,7 +17,3 @@ def run_query():
     query = request.json
     answer = plover.answer_query(query)
     return jsonify(answer)
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=2244)
