@@ -9,8 +9,8 @@ class PloverDB:
     def __init__(self):
         with open("data_config.json") as config_file:
             self.data_config = json.load(config_file)
-        self.predicate_property = self.data_config["property_names"]["edge_label"]
-        self.categories_property = self.data_config["property_names"]["node_labels"]
+        self.predicate_property = self.data_config["property_names"]["edge_type"]
+        self.categories_property = self.data_config["property_names"]["node_types"]
         self.is_test = self.data_config["is_test"]
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()

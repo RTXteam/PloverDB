@@ -45,7 +45,7 @@ All other node/edge properties will be ignored.
 1. Clone this repo
 1. Make sure port `9090` (or one of your choosing) is open
 1. Put your JSON KG file into `PloverDB/app/`
-1. Update `PloverDB/app/data_config.json` with your KG file name and the names of the properties you want it to use as 'labels' for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
+1. Update `PloverDB/app/data_config.json` with your KG file name and the names of the properties you want it to use as 'types' for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 1. `cd` into `PloverDB/`
 1. Then build your Docker image and run a container based on it:
     * `docker build -t yourimage .`
