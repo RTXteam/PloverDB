@@ -37,15 +37,15 @@ In your JSON KG file, **required properties** for nodes/edges are:
 
 All other node/edge properties will be ignored.
 
-### Deployment
+### How to run
 
 1. Install Docker (if needed)
     * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX/blob/master/code/kg2/install-docker-ubuntu18.sh)
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
 1. Clone this repo
-1. Make sure port `9090` (or one of your choosing) is open
 1. Put your JSON KG file into `PloverDB/app/`
 1. Update `PloverDB/app/kg_config.json` with your JSON KG file name and the names of the properties you want it to use as 'labels' for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
+1. If you're deploying it somewhere (not just using locally), make sure port `9090` (or one of your choosing) is open
 1. `cd` into `PloverDB/`
 1. Then build your Docker image and run a container based on it:
     * `docker build -t yourimage .`

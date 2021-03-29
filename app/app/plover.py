@@ -167,16 +167,3 @@ class PloverDB:
                                output_qnode_key: list(final_output_qnode_answers)},
                      "edges": {qedge_key: list(final_qedge_answers)}}
         return answer_kg
-
-
-def main():
-    arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument('--test', dest='test', action='store_true', default=False)
-    args = arg_parser.parse_args()
-
-    # Create our indexes
-    plover = PloverDB(is_test=args.test)
-
-
-if __name__ == "__main__":
-    main()
