@@ -1,6 +1,6 @@
 # PloverDB
 
-This is a prototype **in-memory database service** that can answer **one-hop queries** on a given biomedical knowledge graph (supplied in JSON [Biolink](https://biolink.github.io/biolink-model/) format).
+Plover is a prototype **in-memory database service** that can answer **one-hop queries** on a given biomedical knowledge graph (supplied in JSON [Biolink](https://biolink.github.io/biolink-model/) format).
 
 It accepts [TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) query graphs. More specifically, it can answer these kinds of queries:
 
@@ -45,14 +45,19 @@ All other node/edge properties will be ignored.
 1. Clone this repo
 1. Put your JSON KG file into `PloverDB/app/`
 1. Update `PloverDB/app/kg_config.json` with your JSON KG file name and the names of the properties you want it to use as 'labels' for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
-1. If you're deploying it somewhere (not just using locally), make sure port `9090` (or one of your choosing) is open
+1. If you're deploying it somewhere (not just using locally), make sure port `9990` (or one of your choosing) is open
 1. `cd` into `PloverDB/`
 1. Then build your Docker image and run a container based on it:
     * `docker build -t yourimage .`
-    * `docker run -d --name yourcontainer -p 9090:80 yourimage`
+    * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
 *Note: You may need to add `sudo` in front of all docker commands, depending on your user.*
 
 It should take a few minutes (appx. 10 minutes for [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized)) to load the data and build indexes. You can do `docker logs yourcontainer` to check on its progress.
 
-Once it's finished loading, you should be able to send it requests at the port you opened; the URL for this would look something like: `http://yourec2instance.rtx.ai:9090/query/`. Or, if you just want to use it locally: `http://localhost:9090/query/`.
+Once it's finished loading, you should be able to send it requests at the port you opened; the URL for this would look something like: `http://yourec2instance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
+
+### Credits
+
+* Author: Amy Glen
+* Inspiration/advice: Stephen Ramsey, Eric Deutsch, David Koslicki
