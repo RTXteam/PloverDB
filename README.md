@@ -55,7 +55,7 @@ All other node/edge properties will be ignored.
 
 It should take a few minutes (appx. 10 minutes for [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized)) to load the data and build indexes. You can do `docker logs yourcontainer` to check on its progress.
 
-Once it's finished loading, you should be able to send it requests at the port you opened; the URL for this would look something like: `http://yourec2instance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
+Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourec2instance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
 ### Credits
 
