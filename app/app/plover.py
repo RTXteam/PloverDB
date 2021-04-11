@@ -17,6 +17,8 @@ class PloverDB:
             self.kg_config = json.load(config_file)
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
+        self.root_category = "biolink:NamedThing"
+        self.root_predicate = "biolink:related_to"
         self.is_test = self.kg_config["is_test"]
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
@@ -42,9 +44,13 @@ class PloverDB:
         qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
         qedge = trapi_query["edges"][qedge_key]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
-        output_categories = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
+        output_categories_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
-        qg_predicates = self._convert_to_set(qedge.get("predicate"))
+        # Consider the node a NamedThing (root node category) if no category was provided OR output curies were given
+        output_categories = output_categories_raw if output_categories_raw and not output_curies else {self.root_category}
+        qg_predicates_raw = self._convert_to_set(qedge.get("predicate"))
+        # If no predicate was provided, we'll consider the predicate to be related_to (root predicate)
+        qg_predicates = qg_predicates_raw if qg_predicates_raw else {self.root_predicate}
         print(f"Query to answer is: ({len(input_curies)} curies)--{list(qg_predicates)}--({len(output_curies)} "
               f"curies, {output_categories if output_categories else 'no categories'})")
 
@@ -57,15 +63,11 @@ class PloverDB:
             answer_edge_ids = []
             if input_curie in main_index:
                 categories_present = set(main_index[input_curie])
-                # Consider all output categories if none were provided or if output curies were specified
-                categories_to_inspect = output_categories.intersection(
-                    categories_present) if output_categories and not output_curies else categories_present
+                categories_to_inspect = output_categories.intersection(categories_present)
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
-                        # Consider ALL predicates if none were specified in the QG
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = qg_predicates.intersection(
-                            predicates_present) if qg_predicates else predicates_present
+                        predicates_to_inspect = qg_predicates.intersection(predicates_present)
                         for predicate in predicates_to_inspect:
                             if output_curies:
                                 # We need to look for the matching output node(s)
@@ -195,8 +197,7 @@ class PloverDB:
                 main_index[node_a_id][category][predicate] = [dict(), dict()]
             main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
 
-    @staticmethod
-    def _build_expanded_predicates_map() -> DefaultDict[str, Set[str]]:
+    def _build_expanded_predicates_map(self) -> DefaultDict[str, Set[str]]:
         print(f"  Building expanded predicates map (ancestors and inverses)..")
         start = time.time()
 
@@ -236,9 +237,8 @@ class PloverDB:
                     inverse_name_formatted = _convert_to_trapi_predicate_format(inverse_name)
                     inverses_dict[slot_name] = inverse_name_formatted
             # Recursively build the predicates tree starting with the root
-            root = "biolink:related_to"
-            biolink_tree.create_node(root, root)
-            _create_tree_recursive(root, parent_to_child_dict, biolink_tree)
+            biolink_tree.create_node(self.root_predicate, self.root_predicate)
+            _create_tree_recursive(self.root_predicate, parent_to_child_dict, biolink_tree)
             biolink_tree.show()
         else:
             print(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink predicate "
