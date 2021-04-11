@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import json
 import requests
+from collections import defaultdict
 from typing import List, Dict, Union, Set
 
-from treelib import Node, Tree
+from treelib import Tree
 import yaml
 
 
@@ -21,6 +22,7 @@ class PloverDB:
         self.main_index = dict()
         self.predicate_descendants_lookup = None
         self.predicate_inverse_lookup = dict()
+        self.subclass_lookup = dict()
         self._build_indexes()
 
     def _build_indexes(self):
@@ -60,8 +62,9 @@ class PloverDB:
             for property_name in properties_to_remove:
                 del edge[property_name]
 
-        # Build maps of biolink predicates and their descendants/inverses
+        # Build indexes needed for KP 'reasoning' (predicate hierarchy/inverses, subclass_of relationships)
         self._build_predicate_lookups()
+        self._build_subclass_lookup()
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[str], predicate: str,
                            edge_id: str, direction: int):
@@ -124,12 +127,14 @@ class PloverDB:
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
         qedge = trapi_query["edges"][qedge_key]
-        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
+        input_curies_raw = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
+        input_curies = self._add_descendant_curies(input_curies_raw)
         output_categories = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
-        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
-        qg_predicates = self._convert_to_set(qedge.get("predicate"))
-        qg_predicates_expanded = self._get_expanded_predicates(qg_predicates)
-        print(f"Query to answer is: ({len(input_curies)} curies)--{list(qg_predicates_expanded)}--({len(output_curies)} curies, {output_categories if output_categories else 'no categories'})")
+        output_curies_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
+        output_curies = self._add_descendant_curies(output_curies_raw)
+        qg_predicates_raw = self._convert_to_set(qedge.get("predicate"))
+        qg_predicates = self._get_expanded_predicates(qg_predicates_raw)
+        print(f"Query to answer is: ({len(input_curies)} curies)--{list(qg_predicates)}--({len(output_curies)} curies, {output_categories if output_categories else 'no categories'})")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -146,7 +151,7 @@ class PloverDB:
                     if output_category in main_index[input_curie]:
                         # Consider ALL predicates if none were specified in the QG
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = qg_predicates_expanded.intersection(predicates_present) if qg_predicates_expanded else predicates_present
+                        predicates_to_inspect = qg_predicates.intersection(predicates_present) if qg_predicates else predicates_present
                         for predicate in predicates_to_inspect:
                             if output_curies:
                                 # We need to look for the matching output node(s)
@@ -185,6 +190,7 @@ class PloverDB:
                 _create_children_recursive(child_predicate, parent_to_child_map, tree)
 
         def _convert_to_trapi_predicate_format(english_predicate: str) -> str:
+            # Converts a string like "treated by" to "biolink:treated_by"
             return f"biolink:{english_predicate.replace(' ', '_')}"
 
         # Load all predicates from the Biolink model into a tree
@@ -192,27 +198,24 @@ class PloverDB:
         if response.status_code == 200:
             # Build little helper maps of slot names to their direct children/inverses
             biolink_model = yaml.safe_load(response.text)
-            parent_to_child_dict = dict()
+            parent_to_child_dict = defaultdict(set)
             inverses_dict = dict()
-            for slot_name, info in biolink_model["slots"].items():
-                slot_name_formatted = _convert_to_trapi_predicate_format(slot_name)
-                parent_name = info.get("is_a")
-                if parent_name:
-                    parent_name_formatted = _convert_to_trapi_predicate_format(parent_name)
-                    if parent_name_formatted not in parent_to_child_dict:
-                        parent_to_child_dict[parent_name_formatted] = set()
-                    parent_to_child_dict[parent_name_formatted].add(slot_name_formatted)
+            for slot_name_english, info in biolink_model["slots"].items():
+                slot_name = _convert_to_trapi_predicate_format(slot_name_english)
+                parent_name_english = info.get("is_a")
+                if parent_name_english:
+                    parent_name = _convert_to_trapi_predicate_format(parent_name_english)
+                    parent_to_child_dict[parent_name].add(slot_name)
                 inverse_name = info.get("inverse")
                 if inverse_name:
                     inverse_name_formatted = _convert_to_trapi_predicate_format(inverse_name)
-                    inverses_dict[slot_name_formatted] = inverse_name_formatted
+                    inverses_dict[slot_name] = inverse_name_formatted
             # Recursively build the predicates tree starting with the root
             root = "biolink:related_to"
             biolink_tree = Tree()
             biolink_tree.create_node(root, root)
             _create_children_recursive(root, parent_to_child_dict, biolink_tree)
             biolink_tree.show()
-
             self.predicate_tree = biolink_tree
             self.predicate_inverse_lookup = inverses_dict
         else:
@@ -234,6 +237,43 @@ class PloverDB:
                 descendant_predicates = {node.identifier for node in sub_tree.all_nodes()}
                 expanded_predicates = expanded_predicates.union(descendant_predicates)
             return expanded_predicates
+
+    def _build_subclass_lookup(self):
+
+        def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
+                             parent_to_descendants_map: Dict[str, Set[str]]):
+            for child_id in parent_to_child_map.get(node_id, []):
+                child_descendants = _get_descendants(child_id, parent_to_child_map, parent_to_descendants_map)
+                parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
+            return parent_to_descendants_map.get(node_id, set())
+
+        # Build a map of nodes to their direct 'subclass_of' children
+        parent_to_child_dict = defaultdict(set)
+        for edge_id, edge in self.edge_lookup_map.items():
+            if edge[self.predicate_property] == "biolink:subclass_of":
+                parent_node_id = edge["object"]
+                child_node_id = edge["subject"]
+                parent_to_child_dict[parent_node_id].add(child_node_id)
+            elif edge[self.predicate_property] == "biolink:superclass_of":
+                parent_node_id = edge["subject"]
+                child_node_id = edge["object"]
+                parent_to_child_dict[parent_node_id].add(child_node_id)
+
+        # Then recursively derive all 'subclass_of' descendants for each node
+        root = "root"  # Need something to act as a parent to all other parents, as a starting point
+        parent_to_child_dict[root] = set(parent_to_child_dict)
+        parent_to_descendants_dict = defaultdict(set)
+        _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict)
+        del parent_to_descendants_dict[root]  # No longer need this entry in our flat map
+
+        self.subclass_lookup = parent_to_descendants_dict
+
+    def _add_descendant_curies(self, node_ids: Set[str]) -> Set[str]:
+        all_node_ids = list(node_ids)
+        for node_id in node_ids:
+            descendants = self.subclass_lookup.get(node_id, [])
+            all_node_ids += descendants
+        return set(all_node_ids)
 
 
 def main():
