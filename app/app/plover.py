@@ -4,7 +4,7 @@ import time
 
 import requests
 from collections import defaultdict
-from typing import List, Dict, Union, Set
+from typing import List, Dict, Union, Set, DefaultDict
 
 from treelib import Tree
 import yaml
@@ -22,8 +22,6 @@ class PloverDB:
         self.edge_lookup_map = dict()
         self.all_node_ids = set()
         self.main_index = dict()
-        self.predicate_descendants_lookup = None
-        self.predicate_inverse_lookup = dict()
         self.subclass_lookup = dict()
         self._build_indexes()
 
@@ -46,8 +44,7 @@ class PloverDB:
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
         output_categories = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
-        qg_predicates_raw = self._convert_to_set(qedge.get("predicate"))
-        qg_predicates = self._get_expanded_predicates(qg_predicates_raw)
+        qg_predicates = self._convert_to_set(qedge.get("predicate"))
         print(f"Query to answer is: ({len(input_curies)} curies)--{list(qg_predicates)}--({len(output_curies)} "
               f"curies, {output_categories if output_categories else 'no categories'})")
 
@@ -119,22 +116,6 @@ class PloverDB:
             answer_kg["nodes"][qnode_key] = list(set(answer_kg["nodes"][qnode_key]))
         return answer_kg
 
-    def _get_expanded_predicates(self, qedge_predicates: Set[str]) -> Set[str]:
-        # First grab any inverses for these predicates
-        inverse_predicates = {self.predicate_inverse_lookup[predicate] for predicate in qedge_predicates
-                              if predicate in self.predicate_inverse_lookup}
-        expanded_predicates = qedge_predicates.union(inverse_predicates)
-        if expanded_predicates == {"biolink:related_to"}:
-            # More efficient to just clear the predicate in this case, since any are allowed
-            return set()
-        else:
-            # Then look for any descendants of our predicates
-            for predicate in expanded_predicates:
-                sub_tree = self.predicate_tree.subtree(predicate)
-                descendant_predicates = {node.identifier for node in sub_tree.all_nodes()}
-                expanded_predicates = expanded_predicates.union(descendant_predicates)
-            return expanded_predicates
-
     def _add_descendant_curies(self, node_ids: Set[str]) -> Set[str]:
         all_node_ids = list(node_ids)
         for node_id in node_ids:
@@ -172,18 +153,24 @@ class PloverDB:
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
 
+        # Build a map of expanded predicates for easy lookup
+        expanded_predicates_map = self._build_expanded_predicates_map()
+
         # Build our main index (modified/nested adjacency list kind of structure)
         print(f"  Building main index..")
         start = time.time()
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate = edge[self.predicate_property]
+            original_predicate = edge[self.predicate_property]
+            # Use expanded_predicates to build the biolink model predicate hierarchy into our index
+            expanded_predicates = expanded_predicates_map.get(original_predicate, {original_predicate})
             subject_categories = self.node_lookup_map[subject_id][self.categories_property]
             object_categories = self.node_lookup_map[object_id][self.categories_property]
-            # Record this edge in both the forwards and backwards direction (we only support undirected queries)
-            self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
-            self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
+            for predicate in expanded_predicates:
+                # Record this edge in both the forwards and backwards direction (we only support undirected queries)
+                self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
+                self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
         print(f"  Building main index took {round((time.time() - start) / 60, 2)} minutes.")
 
         # Remove our node lookup map and instead simply store a set of all node IDs in the KG
@@ -194,9 +181,6 @@ class PloverDB:
             properties_to_remove = set(edge).difference({"subject", "object", self.predicate_property})
             for property_name in properties_to_remove:
                 del edge[property_name]
-
-        # Build indexes needed for KP 'reasoning'
-        self._build_predicate_lookups()
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[str], predicate: str,
                            edge_id: str, direction: int):
@@ -211,26 +195,36 @@ class PloverDB:
                 main_index[node_a_id][category][predicate] = [dict(), dict()]
             main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
 
-    def _build_predicate_lookups(self):
-        print(f"  Building predicate indexes (predicate tree and inverses)..")
+    @staticmethod
+    def _build_expanded_predicates_map() -> DefaultDict[str, Set[str]]:
+        print(f"  Building expanded predicates map (ancestors and inverses)..")
         start = time.time()
 
-        def _create_children_recursive(predicate: str, parent_to_child_map: Dict[str, Set[str]], tree: Tree):
-            for child_predicate in parent_to_child_map.get(predicate, []):
-                tree.create_node(child_predicate, child_predicate, parent=predicate)
-                _create_children_recursive(child_predicate, parent_to_child_map, tree)
+        def _create_tree_recursive(root_predicate: str, parent_to_child_map: Dict[str, Set[str]], tree: Tree):
+            for child_predicate in parent_to_child_map.get(root_predicate, []):
+                tree.create_node(child_predicate, child_predicate, parent=root_predicate)
+                _create_tree_recursive(child_predicate, parent_to_child_map, tree)
 
         def _convert_to_trapi_predicate_format(english_predicate: str) -> str:
             # Converts a string like "treated by" to "biolink:treated_by"
             return f"biolink:{english_predicate.replace(' ', '_')}"
 
+        def _get_ancestors(input_predicate: str, tree: Tree) -> Set[str]:
+            ancestors = set()
+            parent = tree.parent(input_predicate)
+            while parent:
+                ancestors.add(parent.identifier)
+                parent = tree.parent(parent.identifier)
+            return ancestors
+
         # Load all predicates from the Biolink model into a tree
+        biolink_tree = Tree()
+        inverses_dict = dict()
         response = requests.get("https://raw.githubusercontent.com/biolink/biolink-model/master/biolink-model.yaml", timeout=10)
         if response.status_code == 200:
             # Build little helper maps of slot names to their direct children/inverses
             biolink_model = yaml.safe_load(response.text)
             parent_to_child_dict = defaultdict(set)
-            inverses_dict = dict()
             for slot_name_english, info in biolink_model["slots"].items():
                 slot_name = _convert_to_trapi_predicate_format(slot_name_english)
                 parent_name_english = info.get("is_a")
@@ -243,17 +237,25 @@ class PloverDB:
                     inverses_dict[slot_name] = inverse_name_formatted
             # Recursively build the predicates tree starting with the root
             root = "biolink:related_to"
-            biolink_tree = Tree()
             biolink_tree.create_node(root, root)
-            _create_children_recursive(root, parent_to_child_dict, biolink_tree)
+            _create_tree_recursive(root, parent_to_child_dict, biolink_tree)
             biolink_tree.show()
-            self.predicate_tree = biolink_tree
-            self.predicate_inverse_lookup = inverses_dict
         else:
             print(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink predicate "
                   f"inverses or descendants when answering queries.")
 
-        print(f"  Building predicate indexes took {round((time.time() - start) / 60, 2)} minutes.")
+        expanded_predicates_map = defaultdict(set)
+        for predicate_node in biolink_tree.all_nodes():
+            predicate = predicate_node.identifier
+            inverse = inverses_dict.get(predicate)
+            direct_predicates = {predicate, inverse} if inverse else {predicate}
+            expanded_predicates = direct_predicates
+            for direct_predicate in direct_predicates:
+                expanded_predicates = expanded_predicates.union(_get_ancestors(direct_predicate, biolink_tree))
+            expanded_predicates_map[predicate] = expanded_predicates
+
+        print(f"  Building expanded predicates map took {round((time.time() - start) / 60, 2)} minutes.")
+        return expanded_predicates_map
 
     def _build_subclass_lookup(self):
         # TODO: Address problem of cycles of subclass_of relationships before we can utilize this
