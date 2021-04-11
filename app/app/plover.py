@@ -242,9 +242,10 @@ class PloverDB:
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
                              parent_to_descendants_map: Dict[str, Set[str]]):
-            for child_id in parent_to_child_map.get(node_id, []):
-                child_descendants = _get_descendants(child_id, parent_to_child_map, parent_to_descendants_map)
-                parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
+            if node_id not in parent_to_descendants_map:
+                for child_id in parent_to_child_map.get(node_id, []):
+                    child_descendants = _get_descendants(child_id, parent_to_child_map, parent_to_descendants_map)
+                    parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
             return parent_to_descendants_map.get(node_id, set())
 
         # Build a map of nodes to their direct 'subclass_of' children
