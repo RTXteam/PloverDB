@@ -157,9 +157,6 @@ class PloverDB:
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
 
-        # Build a map of expanded predicates for easy lookup
-        self._build_expanded_predicates_map()
-
         # Build our main index (modified/nested adjacency list kind of structure)
         print(f"  Building main index..")
         start = time.time()
@@ -183,6 +180,9 @@ class PloverDB:
             for property_name in properties_to_remove:
                 del edge[property_name]
 
+        # Build a map of expanded predicates (descendants and inverses) for easy lookup
+        self._build_expanded_predicates_map()
+
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[str], predicate: str,
                            edge_id: str, direction: int):
         # Note: A direction of 1 means forwards, 0 means backwards
@@ -200,20 +200,6 @@ class PloverDB:
         print(f"  Building expanded predicates map (ancestors and inverses)..")
         start = time.time()
 
-        def _create_tree_recursive(root_predicate: str, parent_to_child_map: Dict[str, Set[str]], tree: Tree):
-            for child_predicate in parent_to_child_map.get(root_predicate, []):
-                tree.create_node(child_predicate, child_predicate, parent=root_predicate)
-                _create_tree_recursive(child_predicate, parent_to_child_map, tree)
-
-        def _convert_to_trapi_predicate_format(english_predicate: str) -> str:
-            # Converts a string like "treated by" to "biolink:treated_by"
-            return f"biolink:{english_predicate.replace(' ', '_')}"
-
-        def _get_descendants(input_predicate: str, tree: Tree) -> Set[str]:
-            sub_tree = tree.subtree(input_predicate)
-            descendants = {node.identifier for node in sub_tree.all_nodes()}
-            return descendants
-
         # Load all predicates from the Biolink model into a tree
         biolink_tree = Tree()
         inverses_dict = dict()
@@ -223,18 +209,18 @@ class PloverDB:
             biolink_model = yaml.safe_load(response.text)
             parent_to_child_dict = defaultdict(set)
             for slot_name_english, info in biolink_model["slots"].items():
-                slot_name = _convert_to_trapi_predicate_format(slot_name_english)
+                slot_name = self._convert_to_trapi_predicate_format(slot_name_english)
                 parent_name_english = info.get("is_a")
                 if parent_name_english:
-                    parent_name = _convert_to_trapi_predicate_format(parent_name_english)
+                    parent_name = self._convert_to_trapi_predicate_format(parent_name_english)
                     parent_to_child_dict[parent_name].add(slot_name)
                 inverse_name = info.get("inverse")
                 if inverse_name:
-                    inverse_name_formatted = _convert_to_trapi_predicate_format(inverse_name)
+                    inverse_name_formatted = self._convert_to_trapi_predicate_format(inverse_name)
                     inverses_dict[slot_name] = inverse_name_formatted
             # Recursively build the predicates tree starting with the root
             biolink_tree.create_node(self.root_predicate, self.root_predicate)
-            _create_tree_recursive(self.root_predicate, parent_to_child_dict, biolink_tree)
+            self._create_tree_recursive(self.root_predicate, parent_to_child_dict, biolink_tree)
             biolink_tree.show()
         else:
             print(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink predicate "
@@ -245,9 +231,9 @@ class PloverDB:
             predicate = predicate_node.identifier
             inverse = inverses_dict.get(predicate)
             # Get descendants of our predicate and its inverse
-            descendants = _get_descendants(predicate, biolink_tree)
+            descendants = self._get_descendants_from_tree(predicate, biolink_tree)
             if inverse:
-                descendants = descendants.union(_get_descendants(inverse, biolink_tree))
+                descendants = descendants.union(self._get_descendants_from_tree(inverse, biolink_tree))
             # Do one final search for inverses of descendants
             # Note: This isn't comprehensive - should be recursive, but that results in cycles due to biolink structure
             descendant_inverses = {inverses_dict.get(descendant_predicate) for descendant_predicate in descendants
@@ -296,6 +282,11 @@ class PloverDB:
 
     # GENERAL HELPER METHODS
 
+    def _create_tree_recursive(self, root_id: str, parent_to_child_map: Dict[str, Set[str]], tree: Tree):
+        for child_id in parent_to_child_map.get(root_id, []):
+            tree.create_node(child_id, child_id, parent=root_id)
+            self._create_tree_recursive(child_id, parent_to_child_map, tree)
+
     @staticmethod
     def _convert_to_set(input_item: Union[Set[str], str, None]) -> Set[str]:
         if isinstance(input_item, str):
@@ -304,6 +295,17 @@ class PloverDB:
             return set(input_item)
         else:
             return set()
+
+    @staticmethod
+    def _convert_to_trapi_predicate_format(english_predicate: str) -> str:
+        # Converts a string like "treated by" to "biolink:treated_by"
+        return f"biolink:{english_predicate.replace(' ', '_')}"
+
+    @staticmethod
+    def _get_descendants_from_tree(node_identifier: str, tree: Tree) -> Set[str]:
+        sub_tree = tree.subtree(node_identifier)
+        descendants = {node.identifier for node in sub_tree.all_nodes()}
+        return descendants
 
 
 def main():
