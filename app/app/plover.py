@@ -230,15 +230,21 @@ class PloverDB:
         for predicate_node in biolink_tree.all_nodes():
             predicate = predicate_node.identifier
             inverse = inverses_dict.get(predicate)
-            # Get descendants of our predicate and its inverse
             descendants = self._get_descendants_from_tree(predicate, biolink_tree)
-            if inverse:
-                descendants = descendants.union(self._get_descendants_from_tree(inverse, biolink_tree))
-            # Do one final search for inverses of descendants
-            # Note: This isn't comprehensive - should be recursive, but that results in cycles due to biolink structure
-            descendant_inverses = {inverses_dict.get(descendant_predicate) for descendant_predicate in descendants
-                                   if inverses_dict.get(descendant_predicate)}
-            expanded_predicates = descendants.union(descendant_inverses)
+            inverse_descendants = self._get_descendants_from_tree(inverse, biolink_tree) if inverse else set()
+            expanded_predicates = descendants.union(inverse_descendants)
+            # Continue (recursively) searching for inverses/descendants until we have them all
+            found_more = True
+            while found_more:
+                start_size = len(expanded_predicates)
+                updated_inverses = {inverses_dict.get(predicate_a) for predicate_a in expanded_predicates
+                                    if inverses_dict.get(predicate_a)}
+                expanded_predicates = expanded_predicates.union(updated_inverses)
+                updated_descendants = {descendant_predicate for predicate_b in expanded_predicates
+                                       for descendant_predicate in self._get_descendants_from_tree(predicate_b, biolink_tree)}
+                expanded_predicates = expanded_predicates.union(updated_descendants)
+                if len(expanded_predicates) == start_size:
+                    found_more = False
             expanded_predicates_map[predicate] = expanded_predicates
 
         print(f"  Building expanded predicates map took {round((time.time() - start) / 60, 2)} minutes.")
