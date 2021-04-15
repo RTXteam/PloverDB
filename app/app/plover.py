@@ -74,19 +74,14 @@ class PloverDB:
                             if output_curies:
                                 # We need to look for the matching output node(s)
                                 for direction in {1, 0}:  # Always do query undirected for now (1 means forwards)
-                                    curies_present = set(
-                                        main_index[input_curie][output_category][predicate][direction])
+                                    curies_present = set(main_index[input_curie][output_category][predicate][direction])
                                     matching_output_curies = output_curies.intersection(curies_present)
                                     for output_curie in matching_output_curies:
-                                        answer_edge_ids.append(
-                                            main_index[input_curie][output_category][predicate][direction][
-                                                output_curie])
+                                        answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
                                 # Grab both forwards and backwards edges (we only do undirected queries currently)
-                                answer_edge_ids += list(
-                                    main_index[input_curie][output_category][predicate][1].values())
-                                answer_edge_ids += list(
-                                    main_index[input_curie][output_category][predicate][0].values())
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][1].values())
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][0].values())
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
@@ -102,7 +97,7 @@ class PloverDB:
         # Form final response and convert our sets to lists so that they're JSON serializable
         answer_kg = {"nodes": {input_qnode_key: list(final_input_qnode_answers),
                                output_qnode_key: list(final_output_qnode_answers)},
-                     "edges": {qedge_key: list(final_qedge_answers)}}
+                     "edges": {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}}
         return answer_kg
 
     def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, List[Union[str, int]]]]:
@@ -141,7 +136,7 @@ class PloverDB:
     # METHODS FOR BUILDING INDEXES
 
     def _build_indexes(self):
-        # Build simple node and edge lookup maps for storing the node/edge objects
+        # Load our KG file and build simple node and edge lookup maps for storing the node/edge objects by ID
         with open(self.kg_config["file_name"], "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
@@ -161,6 +156,7 @@ class PloverDB:
         print(f"  Building main index..")
         start = time.time()
         for edge_id, edge in self.edge_lookup_map.items():
+            del edge["id"]  # Remove the ID property since it's now the key in our edge lookup map
             subject_id = edge["subject"]
             object_id = edge["object"]
             predicate = edge[self.predicate_property]
@@ -174,11 +170,6 @@ class PloverDB:
         # Remove our node lookup map and instead simply store a set of all node IDs in the KG
         self.all_node_ids = set(self.node_lookup_map)
         del self.node_lookup_map
-        # Remove properties from edges that we don't need stored there anymore
-        for edge in self.edge_lookup_map.values():
-            properties_to_remove = set(edge).difference({"subject", "object", self.predicate_property})
-            for property_name in properties_to_remove:
-                del edge[property_name]
 
         # Build a map of expanded predicates (descendants and inverses) for easy lookup
         self._build_expanded_predicates_map()
