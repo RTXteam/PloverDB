@@ -101,9 +101,13 @@ class PloverDB:
 
         # Form final response according to parameter passed in query
         if trapi_query.get("include_metadata"):
+            start = time.time()
             nodes = {input_qnode_key: {node_id: self.node_lookup_map[node_id] for node_id in final_input_qnode_answers},
                      output_qnode_key: {node_id: self.node_lookup_map[node_id] for node_id in final_output_qnode_answers}}
+            print(f"Grabbing node objects took: {round(start - time.time(), 5)} seconds")
+            start = time.time()
             edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
+            print(f"Grabbing edge objects took: {round(start - time.time(), 5)} seconds")
         else:
             nodes = {input_qnode_key: list(final_input_qnode_answers),
                      output_qnode_key: list(final_output_qnode_answers)}
