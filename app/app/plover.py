@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
 import json
+import os
+import pathlib
+import pickle
 import time
 
 import requests
 from collections import defaultdict
-from typing import List, Dict, Union, Set, DefaultDict
+from typing import List, Dict, Union, Set
 
 from treelib import Tree
 import yaml
+
+SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
 
 class PloverDB:
 
     def __init__(self):
-        with open("kg_config.json") as config_file:
+        self.config_file_path = f"{SCRIPT_DIR}/../kg_config.json"
+        with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
+        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pickle"
+        self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_config['file_name']}"
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.root_category_name = "biolink:NamedThing"
@@ -28,7 +36,6 @@ class PloverDB:
         self.main_index = dict()
         self.expanded_predicates_map = dict()
         self.subclass_lookup = dict()
-        self._build_indexes()
 
     # METHODS FOR ANSWERING QUERIES
 
@@ -146,9 +153,10 @@ class PloverDB:
 
     # METHODS FOR BUILDING INDEXES
 
-    def _build_indexes(self):
+    def build_indexes(self):
+        print(f"  Starting to build indexes..")
         # Load our KG file and build simple node and edge lookup maps for storing the node/edge objects by ID
-        with open(self.kg_config["file_name"], "r") as kg2c_file:
+        with open(self.kg_json_path, "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
@@ -179,6 +187,7 @@ class PloverDB:
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
         print(f"  Building main index took {round((time.time() - start) / 60, 2)} minutes.")
 
+        print(f"  Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         node_properties = ["name", "category"]
         edge_properties = ["subject", "object", "predicate", "provided_by", "publications"]
@@ -188,14 +197,44 @@ class PloverDB:
             node_tuple = [node[property_name] for property_name in node_properties]
             del node  # Make sure this is freed
             self.node_lookup_map[node_id] = node_tuple
-        del node_ids
         edge_ids = set(self.edge_lookup_map)
         for edge_id in edge_ids:
             edge = self.edge_lookup_map[edge_id]
             edge_tuple = [edge[property_name] for property_name in edge_properties]
             del edge  # Make sure this is freed
             self.edge_lookup_map[edge_id] = edge_tuple
-        del edge_ids
+
+        # Save all indexes to a big json file here
+        print(f"  Saving indexes in pickle..")
+        all_indexes = {"node_lookup_map": self.node_lookup_map,
+                       "edge_lookup_map": self.edge_lookup_map,
+                       "node_headers": node_properties,
+                       "edge_headers": edge_properties,
+                       "main_index": self.main_index,
+                       "predicate_map": self.predicate_map,
+                       "category_map": self.category_map}
+        with open(self.pickle_index_path, "wb") as index_file:
+            pickle.dump(all_indexes, index_file)
+
+    def load_indexes(self):
+        # Build our indexes if they haven't already been built
+        pickle_index_file = pathlib.Path(self.pickle_index_path)
+        if not pickle_index_file.exists():
+            self.build_indexes()
+
+        # Load our pickled indexes into memory
+        print(f"  Loading indexes from pickle..")
+        start = time.time()
+        # Load big json index file here
+        with open(self.pickle_index_path, "rb") as index_file:
+            all_indexes = pickle.load(index_file)
+            # Then convert all int IDs back to actual ints
+            self.node_lookup_map = all_indexes["node_lookup_map"]
+            self.edge_lookup_map = all_indexes["edge_lookup_map"]
+            self.main_index = all_indexes["main_index"]
+            self.predicate_map = all_indexes["predicate_map"]
+            self.category_map = all_indexes["category_map"]
+        print(f"  Loading indexes from pickle took {round((time.time() - start) / 60, 2)} minutes")
 
         # Build a map of expanded predicates (descendants and inverses) for easy lookup
         self._build_expanded_predicates_map()
@@ -344,6 +383,7 @@ class PloverDB:
 
 def main():
     plover = PloverDB()
+    plover.load_indexes()
 
 
 if __name__ == "__main__":
