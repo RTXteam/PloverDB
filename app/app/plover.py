@@ -1,40 +1,50 @@
 #!/usr/bin/env python3
 import json
+import os
+import pathlib
+import pickle
 import time
+from datetime import datetime
 
 import requests
 from collections import defaultdict
-from typing import List, Dict, Union, Set, DefaultDict
+from typing import List, Dict, Union, Set
 
 from treelib import Tree
 import yaml
+
+SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
 
 class PloverDB:
 
     def __init__(self):
-        with open("kg_config.json") as config_file:
+        self.config_file_path = f"{SCRIPT_DIR}/../kg_config.json"
+        with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
+        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pickle"
+        self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_config['file_name']}"
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
-        self.root_category = "biolink:NamedThing"
-        self.root_predicate = "biolink:related_to"
+        self.root_category_name = "biolink:NamedThing"
+        self.root_predicate_name = "biolink:related_to"
+        self.core_node_properties = {"name", "category"}
+        self.category_map = dict()
+        self.predicate_map = dict()
         self.is_test = self.kg_config["is_test"]
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
-        self.all_node_ids = set()
         self.main_index = dict()
-        self.subclass_lookup = dict()
         self.expanded_predicates_map = dict()
-        self._build_indexes()
+        self.subclass_lookup = dict()
 
     # METHODS FOR ANSWERING QUERIES
 
-    def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, List[Union[str, int]]]]:
+    def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
-            raise ValueError(
-                f"Can only answer single-hop or single-node queries. Your QG has {len(trapi_query['edges'])} edges.")
+            raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
+                             f"{len(trapi_query['edges'])} edges.")
         # Handle edgeless queries
         if not trapi_query["edges"]:
             return self._answer_edgeless_query(trapi_query)
@@ -45,14 +55,17 @@ class PloverDB:
         qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
         qedge = trapi_query["edges"][qedge_key]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
-        output_categories = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
+        output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
-        qg_predicates_raw = self._convert_to_set(qedge.get("predicate"))
+        qg_predicate_names_raw = self._convert_to_set(qedge.get("predicate"))
         # Use 'expanded' predicates so that we incorporate the biolink predicate hierarchy/inverses into our answer
-        qg_predicates = {predicate for qg_predicate in qg_predicates_raw
-                         for predicate in self.expanded_predicates_map.get(qg_predicate, {qg_predicate})}
-        print(f"Query to answer is: ({len(input_curies)} curies)--{list(qg_predicates)}--({len(output_curies)} "
-              f"curies, {output_categories if output_categories else 'no categories'})")
+        qg_predicate_names = {predicate for qg_predicate in qg_predicate_names_raw
+                              for predicate in self.expanded_predicates_map.get(qg_predicate, {qg_predicate})}
+        print(f"Query to answer is: ({len(input_curies)} curies)--{list(qg_predicate_names)}--({len(output_curies)} "
+              f"curies, {output_category_names if output_category_names else 'no categories'})")
+        # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
+        output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
+        qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names}
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -74,38 +87,39 @@ class PloverDB:
                             if output_curies:
                                 # We need to look for the matching output node(s)
                                 for direction in {1, 0}:  # Always do query undirected for now (1 means forwards)
-                                    curies_present = set(
-                                        main_index[input_curie][output_category][predicate][direction])
+                                    curies_present = set(main_index[input_curie][output_category][predicate][direction])
                                     matching_output_curies = output_curies.intersection(curies_present)
                                     for output_curie in matching_output_curies:
-                                        answer_edge_ids.append(
-                                            main_index[input_curie][output_category][predicate][direction][
-                                                output_curie])
+                                        answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
                                 # Grab both forwards and backwards edges (we only do undirected queries currently)
-                                answer_edge_ids += list(
-                                    main_index[input_curie][output_category][predicate][1].values())
-                                answer_edge_ids += list(
-                                    main_index[input_curie][output_category][predicate][0].values())
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][1].values())
+                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][0].values())
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
                 edge = self.edge_lookup_map[answer_edge_id]
-                subject_curie = edge["subject"]
-                object_curie = edge["object"]
+                subject_curie = edge[0]
+                object_curie = edge[1]
                 output_curie = object_curie if object_curie != input_curie else subject_curie
                 # Add this edge and its nodes to our answer KG
                 final_qedge_answers.add(answer_edge_id)
                 final_input_qnode_answers.add(input_curie)
                 final_output_qnode_answers.add(output_curie)
 
-        # Form final response and convert our sets to lists so that they're JSON serializable
-        answer_kg = {"nodes": {input_qnode_key: list(final_input_qnode_answers),
-                               output_qnode_key: list(final_output_qnode_answers)},
-                     "edges": {qedge_key: list(final_qedge_answers)}}
+        # Form final response according to parameter passed in query
+        if trapi_query.get("include_metadata"):
+            nodes = {input_qnode_key: {node_id: self.node_lookup_map[node_id] for node_id in final_input_qnode_answers},
+                     output_qnode_key: {node_id: self.node_lookup_map[node_id] for node_id in final_output_qnode_answers}}
+            edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
+        else:
+            nodes = {input_qnode_key: list(final_input_qnode_answers),
+                     output_qnode_key: list(final_output_qnode_answers)}
+            edges = {qedge_key: list(final_qedge_answers)}
+        answer_kg = {"nodes": nodes, "edges": edges}
         return answer_kg
 
-    def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, List[Union[str, int]]]]:
+    def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
         # When no qedges are involved, we only fulfill qnodes that have a curie
         qnode_keys_with_curies = {qnode_key for qnode_key, qnode in trapi_query["nodes"].items() if qnode.get("id")}
         answer_kg = {"nodes": {qnode_key: [] for qnode_key in qnode_keys_with_curies},
@@ -113,7 +127,7 @@ class PloverDB:
         for qnode_key in qnode_keys_with_curies:
             input_curies = self._convert_to_set(trapi_query["nodes"][qnode_key]["id"])
             for input_curie in input_curies:
-                if input_curie in self.all_node_ids:
+                if input_curie in self.node_lookup_map:
                     answer_kg["nodes"][qnode_key].append(input_curie)
         # Make sure we return only distinct nodes
         for qnode_key in qnode_keys_with_curies:
@@ -140,9 +154,11 @@ class PloverDB:
 
     # METHODS FOR BUILDING INDEXES
 
-    def _build_indexes(self):
-        # Build simple node and edge lookup maps for storing the node/edge objects
-        with open(self.kg_config["file_name"], "r") as kg2c_file:
+    def build_indexes(self):
+        self._print_log_message("Starting to build indexes..")
+        start = time.time()
+        # Load our KG file and build simple node and edge lookup maps for storing the node/edge objects by ID
+        with open(self.kg_json_path, "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
@@ -158,33 +174,76 @@ class PloverDB:
             self.edge_lookup_map = edge_lookup_map_trimmed
 
         # Build our main index (modified/nested adjacency list kind of structure)
-        print(f"  Building main index..")
-        start = time.time()
+        self._print_log_message("  Building main index..")
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate = edge[self.predicate_property]
-            subject_categories = self.node_lookup_map[subject_id][self.categories_property]
-            object_categories = self.node_lookup_map[object_id][self.categories_property]
+            predicate = self._get_predicate_id(edge[self.predicate_property])
+            subject_category_names = self.node_lookup_map[subject_id][self.categories_property]
+            subject_categories = {self._get_category_id(category) for category in subject_category_names}
+            object_category_names = self.node_lookup_map[object_id][self.categories_property]
+            object_categories = {self._get_category_id(category) for category in object_category_names}
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
-        print(f"  Building main index took {round((time.time() - start) / 60, 2)} minutes.")
 
-        # Remove our node lookup map and instead simply store a set of all node IDs in the KG
-        self.all_node_ids = set(self.node_lookup_map)
-        del self.node_lookup_map
-        # Remove properties from edges that we don't need stored there anymore
-        for edge in self.edge_lookup_map.values():
-            properties_to_remove = set(edge).difference({"subject", "object", self.predicate_property})
-            for property_name in properties_to_remove:
-                del edge[property_name]
+        self._print_log_message("  Converting node/edge objects to tuple form..")
+        # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
+        node_properties = ["name", "category"]
+        edge_properties = ["subject", "object", "predicate", "provided_by", "publications"]
+        node_ids = set(self.node_lookup_map)
+        for node_id in node_ids:
+            node = self.node_lookup_map[node_id]
+            node_tuple = [node[property_name] for property_name in node_properties]
+            del node  # Make sure this is freed
+            self.node_lookup_map[node_id] = node_tuple
+        edge_ids = set(self.edge_lookup_map)
+        for edge_id in edge_ids:
+            edge = self.edge_lookup_map[edge_id]
+            edge_tuple = [edge[property_name] for property_name in edge_properties]
+            del edge  # Make sure this is freed
+            self.edge_lookup_map[edge_id] = edge_tuple
+
+        # Save all indexes to a big json file here
+        self._print_log_message("  Saving indexes in pickle..")
+        all_indexes = {"node_lookup_map": self.node_lookup_map,
+                       "edge_lookup_map": self.edge_lookup_map,
+                       "node_headers": node_properties,
+                       "edge_headers": edge_properties,
+                       "main_index": self.main_index,
+                       "predicate_map": self.predicate_map,
+                       "category_map": self.category_map}
+        with open(self.pickle_index_path, "wb") as index_file:
+            pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
+
+        self._print_log_message(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
+
+    def load_indexes(self):
+        self._print_log_message("Starting to load indexes..")
+        start = time.time()
+        # Build our indexes if they haven't already been built
+        pickle_index_file = pathlib.Path(self.pickle_index_path)
+        if not pickle_index_file.exists():
+            self.build_indexes()
+
+        # Load our pickled indexes into memory
+        self._print_log_message("  Loading pickle of indexes..")
+        # Load big json index file here
+        with open(self.pickle_index_path, "rb") as index_file:
+            all_indexes = pickle.load(index_file)
+            # Then convert all int IDs back to actual ints
+            self.node_lookup_map = all_indexes["node_lookup_map"]
+            self.edge_lookup_map = all_indexes["edge_lookup_map"]
+            self.main_index = all_indexes["main_index"]
+            self.predicate_map = all_indexes["predicate_map"]
+            self.category_map = all_indexes["category_map"]
 
         # Build a map of expanded predicates (descendants and inverses) for easy lookup
         self._build_expanded_predicates_map()
+        self._print_log_message(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
 
-    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[str], predicate: str,
-                           edge_id: str, direction: int):
+    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[int], predicate: int,
+                           edge_id: int, direction: int):
         # Note: A direction of 1 means forwards, 0 means backwards
         main_index = self.main_index
         if node_a_id not in main_index:
@@ -196,9 +255,20 @@ class PloverDB:
                 main_index[node_a_id][category][predicate] = [dict(), dict()]
             main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
 
+    def _get_predicate_id(self, predicate_name: str) -> int:
+        if predicate_name not in self.predicate_map:
+            num_predicates = len(self.predicate_map)
+            self.predicate_map[predicate_name] = num_predicates
+        return self.predicate_map[predicate_name]
+
+    def _get_category_id(self, category_name: str) -> int:
+        if category_name not in self.category_map:
+            num_categories = len(self.category_map)
+            self.category_map[category_name] = num_categories
+        return self.category_map[category_name]
+
     def _build_expanded_predicates_map(self):
-        print(f"  Building expanded predicates map (ancestors and inverses)..")
-        start = time.time()
+        self._print_log_message("  Building expanded predicates map (ancestors and inverses)..")
 
         # Load all predicates from the Biolink model into a tree
         biolink_tree = Tree()
@@ -219,12 +289,11 @@ class PloverDB:
                     inverse_name_formatted = self._convert_to_trapi_predicate_format(inverse_name)
                     inverses_dict[slot_name] = inverse_name_formatted
             # Recursively build the predicates tree starting with the root
-            biolink_tree.create_node(self.root_predicate, self.root_predicate)
-            self._create_tree_recursive(self.root_predicate, parent_to_child_dict, biolink_tree)
-            biolink_tree.show()
+            biolink_tree.create_node(self.root_predicate_name, self.root_predicate_name)
+            self._create_tree_recursive(self.root_predicate_name, parent_to_child_dict, biolink_tree)
         else:
-            print(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink predicate "
-                  f"inverses or descendants when answering queries.")
+            self._print_log_message(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink "
+                                    f"predicate inverses or descendants when answering queries.")
 
         expanded_predicates_map = defaultdict(set)
         for predicate_node in biolink_tree.all_nodes():
@@ -247,12 +316,11 @@ class PloverDB:
                     found_more = False
             expanded_predicates_map[predicate] = expanded_predicates
 
-        print(f"  Building expanded predicates map took {round((time.time() - start) / 60, 2)} minutes.")
         self.expanded_predicates_map = expanded_predicates_map
 
     def _build_subclass_lookup(self):
         # TODO: Address problem of cycles of subclass_of relationships before we can utilize this
-        print(f"  Building subclass_of index (node descendants)..")
+        self._print_log_message(f"  Building subclass_of index (node descendants)..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
@@ -284,7 +352,7 @@ class PloverDB:
 
         self.subclass_lookup = parent_to_descendants_dict
 
-        print(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
+        self._print_log_message(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
     # GENERAL HELPER METHODS
 
@@ -313,9 +381,15 @@ class PloverDB:
         descendants = {node.identifier for node in sub_tree.all_nodes()}
         return descendants
 
+    @staticmethod
+    def _print_log_message(message: str):
+        current_time = datetime.utcfromtimestamp(time.time()).strftime('%H:%M:%S')
+        print(f"{current_time}: {message}")
+
 
 def main():
     plover = PloverDB()
+    plover.load_indexes()
 
 
 if __name__ == "__main__":
