@@ -4,6 +4,7 @@ import os
 import pathlib
 import pickle
 import time
+from datetime import datetime
 
 import requests
 from collections import defaultdict
@@ -154,7 +155,8 @@ class PloverDB:
     # METHODS FOR BUILDING INDEXES
 
     def build_indexes(self):
-        print(f"  Starting to build indexes..")
+        self._print_log_message("Starting to build indexes..")
+        start = time.time()
         # Load our KG file and build simple node and edge lookup maps for storing the node/edge objects by ID
         with open(self.kg_json_path, "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
@@ -172,8 +174,7 @@ class PloverDB:
             self.edge_lookup_map = edge_lookup_map_trimmed
 
         # Build our main index (modified/nested adjacency list kind of structure)
-        print(f"  Building main index..")
-        start = time.time()
+        self._print_log_message("  Building main index..")
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
@@ -185,9 +186,8 @@ class PloverDB:
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
-        print(f"  Building main index took {round((time.time() - start) / 60, 2)} minutes.")
 
-        print(f"  Converting node/edge objects to tuple form..")
+        self._print_log_message("  Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         node_properties = ["name", "category"]
         edge_properties = ["subject", "object", "predicate", "provided_by", "publications"]
@@ -205,7 +205,7 @@ class PloverDB:
             self.edge_lookup_map[edge_id] = edge_tuple
 
         # Save all indexes to a big json file here
-        print(f"  Saving indexes in pickle..")
+        self._print_log_message("  Saving indexes in pickle..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
                        "node_headers": node_properties,
@@ -216,15 +216,18 @@ class PloverDB:
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file)
 
+        self._print_log_message(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
+
     def load_indexes(self):
+        self._print_log_message("Starting to load indexes..")
+        start = time.time()
         # Build our indexes if they haven't already been built
         pickle_index_file = pathlib.Path(self.pickle_index_path)
         if not pickle_index_file.exists():
             self.build_indexes()
 
         # Load our pickled indexes into memory
-        print(f"  Loading indexes from pickle..")
-        start = time.time()
+        self._print_log_message("  Loading pickle of indexes..")
         # Load big json index file here
         with open(self.pickle_index_path, "rb") as index_file:
             all_indexes = pickle.load(index_file)
@@ -234,10 +237,10 @@ class PloverDB:
             self.main_index = all_indexes["main_index"]
             self.predicate_map = all_indexes["predicate_map"]
             self.category_map = all_indexes["category_map"]
-        print(f"  Loading indexes from pickle took {round((time.time() - start) / 60, 2)} minutes")
 
         # Build a map of expanded predicates (descendants and inverses) for easy lookup
         self._build_expanded_predicates_map()
+        self._print_log_message(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[int], predicate: int,
                            edge_id: int, direction: int):
@@ -265,8 +268,7 @@ class PloverDB:
         return self.category_map[category_name]
 
     def _build_expanded_predicates_map(self):
-        print(f"  Building expanded predicates map (ancestors and inverses)..")
-        start = time.time()
+        self._print_log_message("  Building expanded predicates map (ancestors and inverses)..")
 
         # Load all predicates from the Biolink model into a tree
         biolink_tree = Tree()
@@ -290,8 +292,8 @@ class PloverDB:
             biolink_tree.create_node(self.root_predicate_name, self.root_predicate_name)
             self._create_tree_recursive(self.root_predicate_name, parent_to_child_dict, biolink_tree)
         else:
-            print(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink predicate "
-                  f"inverses or descendants when answering queries.")
+            self._print_log_message(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink "
+                                    f"predicate inverses or descendants when answering queries.")
 
         expanded_predicates_map = defaultdict(set)
         for predicate_node in biolink_tree.all_nodes():
@@ -314,12 +316,11 @@ class PloverDB:
                     found_more = False
             expanded_predicates_map[predicate] = expanded_predicates
 
-        print(f"  Building expanded predicates map took {round((time.time() - start) / 60, 2)} minutes.")
         self.expanded_predicates_map = expanded_predicates_map
 
     def _build_subclass_lookup(self):
         # TODO: Address problem of cycles of subclass_of relationships before we can utilize this
-        print(f"  Building subclass_of index (node descendants)..")
+        self._print_log_message(f"  Building subclass_of index (node descendants)..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
@@ -351,7 +352,7 @@ class PloverDB:
 
         self.subclass_lookup = parent_to_descendants_dict
 
-        print(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
+        self._print_log_message(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
     # GENERAL HELPER METHODS
 
@@ -379,6 +380,11 @@ class PloverDB:
         sub_tree = tree.subtree(node_identifier)
         descendants = {node.identifier for node in sub_tree.all_nodes()}
         return descendants
+
+    @staticmethod
+    def _print_log_message(message: str):
+        current_time = datetime.utcfromtimestamp(time.time()).strftime('%H:%M:%S')
+        print(f"{current_time}: {message}")
 
 
 def main():

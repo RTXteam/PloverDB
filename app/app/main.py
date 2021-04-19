@@ -9,11 +9,9 @@ from plover import PloverDB
 
 
 app = Flask(__name__)
-print("Starting to load data and build indexes..")
 start = time.time()
 plover = PloverDB()
 plover.load_indexes()
-print(f"Finished loading data. Took {round((time.time() - start) / 60, 1)} minutes.")
 
 
 @app.route('/query/', methods=['POST'])
