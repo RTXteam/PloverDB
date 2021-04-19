@@ -32,11 +32,11 @@ class PloverDB:
 
     # METHODS FOR ANSWERING QUERIES
 
-    def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, List[Union[str, int]]]]:
+    def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
-            raise ValueError(
-                f"Can only answer single-hop or single-node queries. Your QG has {len(trapi_query['edges'])} edges.")
+            raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
+                             f"{len(trapi_query['edges'])} edges.")
         # Handle edgeless queries
         if not trapi_query["edges"]:
             return self._answer_edgeless_query(trapi_query)
@@ -91,8 +91,8 @@ class PloverDB:
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
                 edge = self.edge_lookup_map[answer_edge_id]
-                subject_curie = edge["subject"]
-                object_curie = edge["object"]
+                subject_curie = edge[0]
+                object_curie = edge[1]
                 output_curie = object_curie if object_curie != input_curie else subject_curie
                 # Add this edge and its nodes to our answer KG
                 final_qedge_answers.add(answer_edge_id)
@@ -115,7 +115,7 @@ class PloverDB:
         answer_kg = {"nodes": nodes, "edges": edges}
         return answer_kg
 
-    def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, List[Union[str, int]]]]:
+    def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
         # When no qedges are involved, we only fulfill qnodes that have a curie
         qnode_keys_with_curies = {qnode_key for qnode_key, qnode in trapi_query["nodes"].items() if qnode.get("id")}
         answer_kg = {"nodes": {qnode_key: [] for qnode_key in qnode_keys_with_curies},
@@ -171,7 +171,6 @@ class PloverDB:
         print(f"  Building main index..")
         start = time.time()
         for edge_id, edge in self.edge_lookup_map.items():
-            del edge["id"]  # Remove the ID property since it's now the key in our edge lookup map
             subject_id = edge["subject"]
             object_id = edge["object"]
             predicate = self._get_predicate_id(edge[self.predicate_property])
@@ -184,11 +183,19 @@ class PloverDB:
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
         print(f"  Building main index took {round((time.time() - start) / 60, 2)} minutes.")
 
-        # Remove properties we no longer want on node objects (only want 'core' TRAPI properties on nodes)
-        for node_id, node in self.node_lookup_map.items():
-            properties_to_delete = set(node).difference(self.core_node_properties)
-            for property_name in properties_to_delete:
-                del node[property_name]
+        # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
+        node_properties = ["name", "category"]
+        edge_properties = ["subject", "object", "predicate", "provided_by", "publications"]
+        node_ids = set(self.node_lookup_map)
+        for node_id in node_ids:
+            node = self.node_lookup_map[node_id]
+            node_tuple = [node[property_name] for property_name in node_properties]
+            self.node_lookup_map[node_id] = node_tuple
+        edge_ids = set(self.edge_lookup_map)
+        for edge_id in edge_ids:
+            edge = self.edge_lookup_map[edge_id]
+            edge_tuple = [edge[property_name] for property_name in edge_properties]
+            self.edge_lookup_map[edge_id] = edge_tuple
 
         # Build a map of expanded predicates (descendants and inverses) for easy lookup
         self._build_expanded_predicates_map()
@@ -243,7 +250,6 @@ class PloverDB:
             # Recursively build the predicates tree starting with the root
             biolink_tree.create_node(self.root_predicate_name, self.root_predicate_name)
             self._create_tree_recursive(self.root_predicate_name, parent_to_child_dict, biolink_tree)
-            biolink_tree.show()
         else:
             print(f"WARNING: Unable to load Biolink yaml file. Will not be able to consider Biolink predicate "
                   f"inverses or descendants when answering queries.")
