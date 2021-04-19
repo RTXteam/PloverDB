@@ -214,7 +214,7 @@ class PloverDB:
                        "predicate_map": self.predicate_map,
                        "category_map": self.category_map}
         with open(self.pickle_index_path, "wb") as index_file:
-            pickle.dump(all_indexes, index_file)
+            pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
         self._print_log_message(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
