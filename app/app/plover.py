@@ -202,17 +202,17 @@ class PloverDB:
 
         self._print_log_message("  Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
-        node_properties = ["name", "category"]
-        edge_properties = ["subject", "object", "predicate", "provided_by", "publications"]
+        node_properties = ("name", "category")
+        edge_properties = ("subject", "object", "predicate", "provided_by", "publications")
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
-            node_tuple = [node[property_name] for property_name in node_properties]
+            node_tuple = tuple([node[property_name] for property_name in node_properties])
             self.node_lookup_map[node_id] = node_tuple
         edge_ids = set(self.edge_lookup_map)
         for edge_id in edge_ids:
             edge = self.edge_lookup_map[edge_id]
-            edge_tuple = [edge[property_name] for property_name in edge_properties]
+            edge_tuple = tuple([edge[property_name] for property_name in edge_properties])
             self.edge_lookup_map[edge_id] = edge_tuple
 
         # Save all indexes to a big json file here
@@ -263,7 +263,7 @@ class PloverDB:
             if category not in main_index[node_a_id]:
                 main_index[node_a_id][category] = dict()
             if predicate not in main_index[node_a_id][category]:
-                main_index[node_a_id][category][predicate] = [dict(), dict()]
+                main_index[node_a_id][category][predicate] = (dict(), dict())
             main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
 
     def _get_predicate_id(self, predicate_name: str) -> int:
