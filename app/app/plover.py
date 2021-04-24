@@ -23,9 +23,10 @@ class PloverDB:
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pickle"
-        self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_config['file_name']}"
+        self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_config['kg_file_name']}"
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
+        self.biolink_version = self.kg_config["biolink_version"]
         self.root_category_name = "biolink:NamedThing"
         self.root_predicate_name = "biolink:related_to"
         self.core_node_properties = {"name", "category"}
@@ -195,13 +196,11 @@ class PloverDB:
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
             node_tuple = [node[property_name] for property_name in node_properties]
-            del node  # Make sure this is freed
             self.node_lookup_map[node_id] = node_tuple
         edge_ids = set(self.edge_lookup_map)
         for edge_id in edge_ids:
             edge = self.edge_lookup_map[edge_id]
             edge_tuple = [edge[property_name] for property_name in edge_properties]
-            del edge  # Make sure this is freed
             self.edge_lookup_map[edge_id] = edge_tuple
 
         # Save all indexes to a big json file here
@@ -273,7 +272,8 @@ class PloverDB:
         # Load all predicates from the Biolink model into a tree
         biolink_tree = Tree()
         inverses_dict = dict()
-        response = requests.get("https://raw.githubusercontent.com/biolink/biolink-model/master/biolink-model.yaml", timeout=10)
+        response = requests.get(f"https://raw.githubusercontent.com/biolink/biolink-model/{self.biolink_version}/biolink-model.yaml",
+                                timeout=10)
         if response.status_code == 200:
             # Build little helper maps of slot names to their direct children/inverses
             biolink_model = yaml.safe_load(response.text)
@@ -389,6 +389,7 @@ class PloverDB:
 
 def main():
     plover = PloverDB()
+    plover.build_indexes()
     plover.load_indexes()
 
 
