@@ -1,13 +1,13 @@
 # PloverDB
 
-Plover is a prototype **in-memory database service** that can answer **one-hop queries** on a given biomedical knowledge graph (supplied in JSON [Biolink](https://biolink.github.io/biolink-model/) format).
+Plover is a prototype **read-only in-memory database service** that can answer **one-hop queries** on a given biomedical knowledge graph (supplied in JSON [Biolink](https://biolink.github.io/biolink-model/) format).
 
 It accepts [TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) query graphs. More specifically, it can answer these kinds of queries:
 
 1. **Single-hop**: `(>=1 curies)--[>=0 predicates]--(>=0 categories, >=0 curies)`
 2. **Edge-less**: Consist only of `QNode`s (all of which must have curies specified)
 
-It currently only answers queries in an **undirected** fashion, but is poised to be able to do directed queries as well.
+It can answer queries in either an undirected (default) or directed fashion.
 
 It returns the IDs of the nodes and edges comprising the answer to the query in the following format:
 ```

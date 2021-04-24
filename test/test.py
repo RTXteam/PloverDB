@@ -257,5 +257,108 @@ def test_11():
     assert not kg
 
 
+def test_12():
+    # Test subject as input node with enforced direction
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01"
+            }
+        },
+        "nodes": {
+            "n00": {
+                "id": "CHEMBL.COMPOUND:CHEMBL650"
+            },
+            "n01": {
+            }
+        },
+        "include_metadata": True,
+        "enforce_directionality": True
+    }
+    kg = _run_query(query)
+    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
+    num_edges_enforce_direction_subject = len(kg['edges']['e00'])
+    print(f"Got back {num_edges_enforce_direction_subject} edges")
+    assert all(edge for edge in kg["edges"]["e00"].items() if edge[0] == "CHEMBL.COMPOUND:CHEMBL650")
+
+    # Test object as input node with enforced direction
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00"
+            }
+        },
+        "nodes": {
+            "n00": {
+                "id": "CHEMBL.COMPOUND:CHEMBL650"
+            },
+            "n01": {
+            }
+        },
+        "include_metadata": True,
+        "enforce_directionality": True
+    }
+    kg = _run_query(query)
+    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
+    num_edges_enforce_direction_object = len(kg['edges']['e00'])
+    print(f"Got back {num_edges_enforce_direction_object} edges")
+    assert all(edge for edge in kg["edges"]["e00"].items() if edge[1] == "CHEMBL.COMPOUND:CHEMBL650")
+
+    # Test subject as input node with ignored direction
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01"
+            }
+        },
+        "nodes": {
+            "n00": {
+                "id": "CHEMBL.COMPOUND:CHEMBL650"
+            },
+            "n01": {
+            }
+        },
+        "include_metadata": True,
+        "enforce_directionality": False
+    }
+    kg = _run_query(query)
+    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
+    num_edges_ignore_direction_subject = len(kg['edges']['e00'])
+    print(f"Got back {num_edges_ignore_direction_subject} edges")
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] == "CHEMBL.COMPOUND:CHEMBL650")
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] == "CHEMBL.COMPOUND:CHEMBL650")
+
+    # Test object as input node with ignored direction
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00"
+            }
+        },
+        "nodes": {
+            "n00": {
+                "id": "CHEMBL.COMPOUND:CHEMBL650"
+            },
+            "n01": {
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
+    num_edges_ignore_direction_object = len(kg['edges']['e00'])
+    print(f"Got back {num_edges_ignore_direction_object} edges")
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] == "CHEMBL.COMPOUND:CHEMBL650")
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] == "CHEMBL.COMPOUND:CHEMBL650")
+
+    # Final checks on edge counts to make sure all makes sense
+    assert num_edges_ignore_direction_subject == num_edges_ignore_direction_object
+    assert num_edges_enforce_direction_subject + num_edges_enforce_direction_object == num_edges_ignore_direction_object
+
+
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])

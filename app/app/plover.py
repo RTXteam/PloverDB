@@ -49,12 +49,24 @@ class PloverDB:
         # Handle edgeless queries
         if not trapi_query["edges"]:
             return self._answer_edgeless_query(trapi_query)
+        # Make sure at least one qnode has a curie
+        qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
+        qedge = trapi_query["edges"][qedge_key]
+        subject_qnode = trapi_query["nodes"][qedge["subject"]]
+        object_qnode = trapi_query["nodes"][qedge["object"]]
+        if not subject_qnode.get("id") and not object_qnode.get("id"):
+            raise ValueError(f"Can only answer queries where at least one QNode has a curie ('id') specified.")
 
         # Load the query and grab the relevant pieces of it
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
-        qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
-        qedge = trapi_query["edges"][qedge_key]
+        # Figure out which directions we need to inspect based on the QG
+        enforce_directionality = trapi_query.get("enforce_directionality")
+        if enforce_directionality:
+            # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
+            directions = {1} if input_qnode_key == qedge["subject"] else {0}
+        else:
+            directions = {0, 1}
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
         output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
@@ -87,15 +99,15 @@ class PloverDB:
                         for predicate in predicates_to_inspect:
                             if output_curies:
                                 # We need to look for the matching output node(s)
-                                for direction in {1, 0}:  # Always do query undirected for now (1 means forwards)
+                                for direction in directions:
                                     curies_present = set(main_index[input_curie][output_category][predicate][direction])
                                     matching_output_curies = output_curies.intersection(curies_present)
                                     for output_curie in matching_output_curies:
                                         answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
                                 # Grab both forwards and backwards edges (we only do undirected queries currently)
-                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][1].values())
-                                answer_edge_ids += list(main_index[input_curie][output_category][predicate][0].values())
+                                for direction in directions:
+                                    answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction].values())
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
