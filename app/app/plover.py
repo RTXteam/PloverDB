@@ -54,8 +54,8 @@ class PloverDB:
         qedge = trapi_query["edges"][qedge_key]
         subject_qnode = trapi_query["nodes"][qedge["subject"]]
         object_qnode = trapi_query["nodes"][qedge["object"]]
-        if not subject_qnode.get("id") and not object_qnode.get("id"):
-            raise ValueError(f"Can only answer queries where at least one QNode has a curie ('id') specified.")
+        if not {"id", "ids"}.intersection(set(subject_qnode)) and not {"id", "ids"}.intersection(set(object_qnode)):
+            raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
 
         # Load the query and grab the relevant pieces of it
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
@@ -67,10 +67,15 @@ class PloverDB:
             directions = {1} if input_qnode_key == qedge["subject"] else {0}
         else:
             directions = {0, 1}
-        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["id"])
-        output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("category"))
-        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("id"))
-        qg_predicate_names_raw = self._convert_to_set(qedge.get("predicate"))
+        qnode_properties = set(trapi_query["nodes"][input_qnode_key])
+        qedge_properties = set(trapi_query["edges"][qedge_key])
+        qg_ids_property = "ids" if "ids" in qnode_properties else "id"
+        qg_categories_property = "categories" if "categories" in qnode_properties else "category"
+        qg_predicates_property = "predicates" if "predicates" in qedge_properties else "predicate"
+        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key][qg_ids_property])
+        output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get(qg_categories_property))
+        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get(qg_ids_property))
+        qg_predicate_names_raw = self._convert_to_set(qedge.get(qg_predicates_property))
         # Use 'expanded' predicates so that we incorporate the biolink predicate hierarchy/inverses into our answer
         qg_predicate_names = {predicate for qg_predicate in qg_predicate_names_raw
                               for predicate in self.expanded_predicates_map.get(qg_predicate, {qg_predicate})}
@@ -134,11 +139,13 @@ class PloverDB:
 
     def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
         # When no qedges are involved, we only fulfill qnodes that have a curie
-        qnode_keys_with_curies = {qnode_key for qnode_key, qnode in trapi_query["nodes"].items() if qnode.get("id")}
+        qnode_keys_with_curies = {qnode_key for qnode_key, qnode in trapi_query["nodes"].items() if qnode.get("id") or qnode.get("ids")}
         answer_kg = {"nodes": {qnode_key: [] for qnode_key in qnode_keys_with_curies},
                      "edges": dict()}
         for qnode_key in qnode_keys_with_curies:
-            input_curies = self._convert_to_set(trapi_query["nodes"][qnode_key]["id"])
+            qnode = trapi_query["nodes"][qnode_key]
+            ids_property = "ids" if "ids" in qnode else "id"
+            input_curies = self._convert_to_set(qnode[ids_property])
             for input_curie in input_curies:
                 if input_curie in self.node_lookup_map:
                     answer_kg["nodes"][qnode_key].append(input_curie)
@@ -160,8 +167,9 @@ class PloverDB:
         qnode_key_with_most_curies = ""
         most_curies = 0
         for qnode_key, qnode in qnodes.items():
-            if qnode.get("id") and len(qnode["id"]) > most_curies:
-                most_curies = len(qnode["id"])
+            ids_property = "ids" if "ids" in qnode else "id"
+            if qnode.get(ids_property) and len(qnode[ids_property]) > most_curies:
+                most_curies = len(qnode[ids_property])
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
 
