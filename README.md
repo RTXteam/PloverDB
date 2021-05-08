@@ -47,13 +47,16 @@ All other node/edge properties will be ignored.
 1. Update `PloverDB/app/kg_config.json` with your JSON KG file name and the names of the properties you want it to use as 'labels' for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 1. If you're deploying it somewhere (not just using locally), make sure port `9990` (or one of your choosing) is open
 1. `cd` into `PloverDB/`
+1. Run `pip install -r requirements.txt`
+1. Run `python app/app/build_indexes.py`
+    * This creates a persistent copy of all indexes and allows the app to have a quicker start-up time (in the next step) 
 1. Then build your Docker image and run a container based on it:
     * `docker build -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
 *Note: You may need to add `sudo` in front of all docker commands, depending on your user.*
 
-It should take a few minutes (appx. 10 minutes for [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized)) to load the data and build indexes. You can do `docker logs yourcontainer` to check on its progress.
+It should take a few minutes (appx. 5 minutes for [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized)) for the app to start up in the final step. You can do `docker logs yourcontainer` to check on its progress.
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourec2instance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 

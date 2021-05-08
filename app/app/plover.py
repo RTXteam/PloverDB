@@ -81,8 +81,6 @@ class PloverDB:
         # Use 'expanded' predicates so that we incorporate the biolink predicate hierarchy/inverses into our answer
         qg_predicate_names = {predicate for qg_predicate in qg_predicate_names_raw
                               for predicate in self.expanded_predicates_map.get(qg_predicate, {qg_predicate})}
-        print(f"Query to answer is: ({len(input_curies)} curies)--{list(qg_predicate_names)}--({len(output_curies)} "
-              f"curies, {output_category_names if output_category_names else 'no categories'})")
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
         output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
         qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names}
