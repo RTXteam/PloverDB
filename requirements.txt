@@ -1,4 +1,5 @@
 locust
 pytest
-treelib
 PyYAML
+requests
+treelib

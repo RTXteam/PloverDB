@@ -360,5 +360,30 @@ def test_12():
     assert num_edges_enforce_direction_subject + num_edges_enforce_direction_object == num_edges_ignore_direction_object
 
 
+def test_13():
+    # TRAPI 1.1 property names
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:physically_interacts_with"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "UniProtKB:P04070"]
+            },
+            "n01": {
+                "categories": ["biolink:Protein"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
+    _print_kg(kg)
+
+
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])
