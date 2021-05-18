@@ -7,7 +7,7 @@ import pickle
 import time
 import requests
 from collections import defaultdict
-from typing import List, Dict, Union, Set
+from typing import List, Dict, Union, Set, Optional
 
 from treelib import Tree
 import yaml
@@ -28,7 +28,6 @@ class PloverDB:
         self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_config['kg_file_name']}"
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
-        self.biolink_version = self.kg_config["biolink_version"]
         self.root_category_name = "biolink:NamedThing"
         self.root_predicate_name = "biolink:related_to"
         self.core_node_properties = {"name", "category"}
@@ -184,6 +183,7 @@ class PloverDB:
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        biolink_version = kg2c_dict.get("biolink_version")
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
@@ -232,7 +232,8 @@ class PloverDB:
                        "edge_headers": edge_properties,
                        "main_index": self.main_index,
                        "predicate_map": self.predicate_map,
-                       "category_map": self.category_map}
+                       "category_map": self.category_map,
+                       "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -257,9 +258,10 @@ class PloverDB:
             self.main_index = all_indexes["main_index"]
             self.predicate_map = all_indexes["predicate_map"]
             self.category_map = all_indexes["category_map"]
+            biolink_version = all_indexes["biolink_version"]
 
         # Build a map of expanded predicates (descendants and inverses) for easy lookup
-        self._build_expanded_predicates_map()
+        self._build_expanded_predicates_map(biolink_version)
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[int], predicate: int,
@@ -287,13 +289,15 @@ class PloverDB:
             self.category_map[category_name] = num_categories
         return self.category_map[category_name]
 
-    def _build_expanded_predicates_map(self):
+    def _build_expanded_predicates_map(self, biolink_version: Optional[str]):
         logging.info("  Building expanded predicates map (descendants and inverses)..")
+        logging.info(f"  Using Biolink model version: {biolink_version}")
 
         # Load all predicates from the Biolink model into a tree
         biolink_tree = Tree()
         inverses_dict = dict()
-        response = requests.get(f"https://raw.githubusercontent.com/biolink/biolink-model/{self.biolink_version}/biolink-model.yaml",
+        response = requests.get(f"https://raw.githubusercontent.com/biolink/biolink-model/"
+                                f"{biolink_version if biolink_version else 'master'}/biolink-model.yaml",
                                 timeout=10)
         if response.status_code == 200:
             # Build little helper maps of slot names to their direct children/inverses
@@ -340,7 +344,7 @@ class PloverDB:
         self.expanded_predicates_map = expanded_predicates_map
 
     def _build_subclass_lookup(self):
-        # TODO: Address problem of cycles of subclass_of relationships before we can utilize this
+        # TODO: Address problem of subclass_of cycles before we can utilize this. add depth limit? skip/record cycles?
         logging.info(f"  Building subclass_of index (node descendants)..")
         start = time.time()
 
@@ -354,7 +358,7 @@ class PloverDB:
 
         # Build a map of nodes to their direct 'subclass_of' children
         parent_to_child_dict = defaultdict(set)
-        for edge_id, edge in self.edge_lookup_map.items():
+        for edge_id, edge in self.edge_lookup_map.items():  # TODO: Filter out SEMMEDDB: edges here
             if edge[self.predicate_property] == "biolink:subclass_of":
                 parent_node_id = edge["object"]
                 child_node_id = edge["subject"]
