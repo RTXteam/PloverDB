@@ -57,6 +57,16 @@ Building the image should take 20-30 minutes. Upon starting the container, it wi
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourec2instance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
+### How to test
+To verify that your new service is working, you can run the pytest suite against it:
+1. `cd PloverDB`
+1. `pip install -r requirements.txt`
+1. `pytest -v test/test.py --endpoint [your_endpoint_url]`
+    * Example endpoint URL: `http://kg2cplover.rtx.ai:9990`
+    * If no endpoint is specified, the tests will use: `http://localhost:9990`
+
+(Note that these tests are written for KG2c, so may not pass if you've hosted a knowledge graph other than KG2c.)
+
 ### Credits
 
 * Author: Amy Glen

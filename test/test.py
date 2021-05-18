@@ -1,3 +1,4 @@
+import pytest
 import requests
 from typing import Dict, Union, List
 
@@ -12,7 +13,7 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 
 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
-    response = requests.post("http://localhost:9990/query/", json=trapi_qg, headers={'accept': 'application/json'})
+    response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
         return response.json()
     else:
