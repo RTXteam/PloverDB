@@ -39,7 +39,7 @@ All other node/edge properties will be ignored.
 
 ### How to run
 
-#### To host the latest [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized):
+#### To host the latest 'production' [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized):
 
 1. Install Docker (if needed)
     * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX/blob/master/code/kg2/install-docker-ubuntu18.sh)
