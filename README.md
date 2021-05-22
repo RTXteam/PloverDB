@@ -39,7 +39,7 @@ All other node/edge properties will be ignored.
 
 ### How to run
 
-#### To host the latest 'production' [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized):
+#### To serve the latest 'production' [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized):
 
 1. Install Docker (if needed)
     * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX/blob/master/code/kg2/install-docker-ubuntu18.sh)
@@ -58,9 +58,9 @@ Building the image should take 20-30 minutes. Upon starting the container, it wi
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
-#### To host your own KG:
+#### To serve your own KG:
 
-If you want to host your own KG instead of the latest 'production' KG2c, follow the same steps as above except also do the following between steps 3 and 4:
+If you want to serve your own KG instead of the latest 'production' KG2c, follow the same steps as above except also do the following between steps 3 and 4:
 
 1. Put your JSON KG file into `PloverDB/app/`
 1. Update `PloverDB/app/kg_config.json`:
