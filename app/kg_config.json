@@ -1,5 +1,6 @@
 {
-  "kg_file_name": "kg2c_lite.json",
+  "download_latest_kg2c": true,
+  "local_kg_file_name": null,
   "is_test": false,
   "labels": {
     "edges": "predicate",
