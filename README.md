@@ -46,13 +46,13 @@ All other node/edge properties will be ignored.
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
 1. Clone this repo
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
+1. Put a copy of the `.aws` directory containing your AWS keypair that has been granted access to the proper S3 bucket (by the KG2c team) into `PloverDB/`
 1. `cd` into `PloverDB/`
-1. Build your Docker image, passing in your AWS keypair that has been granted access to the proper S3 bucket (by the KG2c team):
-    * `docker build -t yourimage --build-arg aws_access_key=XXXX --build-arg aws_secret_key=YYYY .`
-1. Run a container off your new image:
+1. Build your Docker image and run a container off of it:
+    * `docker build -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
-*Note: You may need to add `sudo` in front of all docker commands, depending on your user.*
+_**NOTE**: Your AWS keypair will persist in the image, so be sure not share the image or make it publicly available._
 
 Building the image should take 20-30 minutes. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress.
 
@@ -60,15 +60,13 @@ Once it's finished loading, you should be able to send it POST requests at the p
 
 #### To serve your own KG:
 
-If you want to serve your own KG instead of the latest 'production' KG2c, follow the same steps as above except also do the following between steps 3 and 4:
+If you want to serve your own KG instead of the latest 'production' KG2c, follow the same steps as above except instead of step 4, do the following:
 
 1. Put your JSON KG file into `PloverDB/app/`
 1. Update `PloverDB/app/kg_config.json`:
     1. Set `download_latest_kg2c` to `false`
     1. Specify your JSON kg file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
     1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
-
-And for step 5, the build command is instead simply `docker build -t yourimage .`.
 
 ### How to test
 To verify that your new service is working, you can run the pytest suite against it:
