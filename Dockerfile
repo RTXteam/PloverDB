@@ -1,8 +1,5 @@
 FROM tiangolo/uwsgi-nginx-flask:python3.8
 
-ARG aws_access_key
-ARG aws_secret_key
-
 # Increase timeout (thanks https://github.com/tiangolo/uwsgi-nginx-flask-docker/issues/120#issuecomment-459857072)
 RUN echo "uwsgi_read_timeout 120;" > /etc/nginx/conf.d/custom_timeout.conf
 
