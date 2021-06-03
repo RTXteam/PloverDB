@@ -41,12 +41,15 @@ All other node/edge properties will be ignored.
 
 #### To serve the latest 'production' [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized):
 
+Hardware requirements: A host machine with 128 GiB of memory is recommended (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
+
 1. Install Docker (if needed)
     * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX/blob/master/code/kg2/install-docker-ubuntu18.sh)
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
 1. Clone this repo
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Put a copy of the `.aws` directory containing your AWS keypair that has been granted access to the proper S3 bucket (by the KG2c team) into `PloverDB/`
+    * If you do not already have an `.aws` directory for the proper keypair, you will need to [configure AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html) on your host machine to create it
 1. `cd` into `PloverDB/`
 1. Build your Docker image and run a container off of it:
     * `docker build -t yourimage .`
