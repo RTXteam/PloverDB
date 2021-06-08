@@ -19,3 +19,8 @@ def run_query():
     query = request.json
     answer = plover.answer_query(query)
     return jsonify(answer)
+
+
+@app.route('/healthcheck/', methods=['GET'])
+def run_health_check():
+    return ''
