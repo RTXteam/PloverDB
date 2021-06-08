@@ -12,5 +12,6 @@ RUN apt-get install -y awscli
 RUN aws configure set default.region us-west-2
 
 COPY ./app /app
+COPY test/kg2c-test.json /app/kg2c-test.json
 
 RUN python /app/app/build_indexes.py

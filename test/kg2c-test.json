@@ -1,0 +1,159 @@
+{
+    "nodes": [
+        {
+            "id": "biolink_download_source:biolink-model.owl.ttl",
+            "name": "Biolink meta-model",
+            "category": "biolink:InformationContentEntity",
+            "all_names": [
+                "Biolink meta-model"
+            ],
+            "all_categories": [
+                "biolink:InformationContentEntity"
+            ],
+            "expanded_categories": [
+                "biolink:InformationContentEntity",
+                "biolink:NamedThing"
+            ],
+            "equivalent_curies": [
+                "biolink_download_source:biolink-model.owl.ttl"
+            ],
+            "publications": []
+        },
+        {
+            "id": "biolink:decreases_localization_of",
+            "name": "decreases localization of",
+            "category": "biolink:OntologyClass",
+            "all_names": [
+                "decreases localization of"
+            ],
+            "all_categories": [
+                "biolink:OntologyClass"
+            ],
+            "expanded_categories": [
+                "biolink:OntologyClass"
+            ],
+            "equivalent_curies": [
+                "biolink:decreases_localization_of"
+            ],
+            "publications": []
+        },
+        {
+            "id": "RTX:KG2",
+            "name": "KG2.5.2c",
+            "category": "biolink:InformationContentEntity",
+            "all_names": [
+                "RTX KG2.5.2c"
+            ],
+            "all_categories": [
+                "biolink:InformationContentEntity"
+            ],
+            "expanded_categories": [
+                "biolink:InformationContentEntity",
+                "biolink:NamedThing"
+            ],
+            "equivalent_curies": [
+            ], 
+            "publications": []       
+        },
+        {
+            "id": "biolink:part_of",
+            "name": "part of",
+            "category": "biolink:Association",
+            "all_names": [
+                "part of"
+            ],
+            "all_categories": [
+                "biolink:Association"
+            ],
+            "expanded_categories": [
+                "biolink:Association"
+            ],
+            "equivalent_curies": [
+                "biolink:part_of"
+            ],
+            "publications": []       
+        },
+        {
+            "id": "biolink:has_part",
+            "name": "has part",
+            "category": "biolink:Association",
+            "all_names": [
+                "has part"
+            ],
+            "all_categories": [
+                "biolink:Association"
+            ],
+            "expanded_categories": [
+                "biolink:Association"
+            ],
+            "equivalent_curies": [
+                "biolink:has_part"
+            ],
+            "publications": []       
+        }        
+    ],
+    "edges": [
+        {
+            "subject": "biolink_download_source:biolink-model.owl.ttl",
+            "object": "biolink:decreases_localization_of",
+            "predicate": "biolink:related_to",
+            "provided_by": [
+                "OBO:foodon.owl",
+                "OBO:mondo.owl",
+                "OBO:cl.owl",
+                "biolink_download_source:biolink-model.owl.ttl",
+                "OBO:go/extensions/go-plus.owl",
+                "OBO:nbo.owl",
+                "OBO:ro.owl",
+                "OBO:hp.owl",
+                "OBO:pato.owl",
+                "OBO:ino.owl",
+                "OBO:uberon/ext.owl"
+            ],
+            "id": 37944750,
+            "publications": []       
+        },
+        {
+            "subject": "biolink:decreases_localization_of",
+            "object": "biolink_download_source:biolink-model.owl.ttl",
+            "predicate": "biolink:coexists_with",
+            "provided_by": [
+                "OBO:foodon.owl",
+                "OBO:mondo.owl",
+                "OBO:cl.owl",
+                "biolink_download_source:biolink-model.owl.ttl",
+                "OBO:go/extensions/go-plus.owl",
+                "OBO:nbo.owl",
+                "OBO:ro.owl",
+                "OBO:hp.owl",
+                "OBO:pato.owl",
+                "OBO:ino.owl",
+                "OBO:uberon/ext.owl"
+            ],
+            "id": 9708691,
+            "publications": []       
+        },
+        {
+            "subject": "biolink:part_of",
+            "object": "biolink:has_part",
+            "predicate": "biolink:inverse_of",
+            "provided_by": [
+                "biolink_download_source:biolink-model.owl.ttl"
+            ],
+            "id": 9708692,
+            "publications": []       
+        },
+        {
+            "subject": "biolink:has_part",
+            "object": "biolink:part_of",
+            "predicate": "biolink:inverse_of",
+            "provided_by": [
+                "biolink_download_source:biolink-model.owl.ttl"
+            ],
+            "id": 9708693,
+            "publications": []       
+        }        
+    ]
+}
+
+      
