@@ -83,6 +83,16 @@ To verify that your new service is working, you can run the pytest suite against
 
 (Note that these tests are written for KG2c, so may not pass if you've hosted a knowledge graph other than KG2c.)
 
+### Debugging
+To see the logs (includes all components - uwsgi, etc.), run:
+ ```
+ docker logs mycontainer
+```
+If you want to save the contents of the log to a file locally, run:
+```
+docker logs mycontainer >& logs/mylog.log
+```
+
 ### Credits
 
 * Author: Amy Glen
