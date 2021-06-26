@@ -28,16 +28,16 @@ def test_1():
           "e00": {
              "subject": "n00",
              "object": "n01",
-             "predicate": "biolink:related_to"
+             "predicates": ["biolink:related_to"]
           }
        },
        "nodes": {
           "n00": {
-             "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "biolink:ChemicalSubstance"
+             "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
+             "categories": ["biolink:ChemicalSubstance"]
           },
           "n01": {
-             "category": "biolink:ChemicalSubstance"
+             "categories": ["biolink:ChemicalSubstance"]
           }
        }
     }
@@ -53,13 +53,13 @@ def test_2():
           "e00": {
              "subject": "n00",
              "object": "n01",
-             "predicate": "biolink:related_to"
+             "predicates": ["biolink:related_to"]
           }
        },
        "nodes": {
           "n00": {
-             "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "biolink:ChemicalSubstance"
+             "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
+             "categories": ["biolink:ChemicalSubstance"]
           },
           "n01": {
           }
@@ -81,11 +81,11 @@ def test_3():
        },
        "nodes": {
           "n00": {
-             "id": "CHEMBL.COMPOUND:CHEMBL411",
-             "category": "biolink:ChemicalSubstance"
+             "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
+             "categories": ["biolink:ChemicalSubstance"]
           },
           "n01": {
-              "category": "biolink:ChemicalSubstance"
+              "categories": ["biolink:ChemicalSubstance"]
           }
        }
     }
@@ -105,10 +105,10 @@ def test_4():
        },
        "nodes": {
           "n00": {
-             "id": "CHEMBL.COMPOUND:CHEMBL411"
+             "ids": ["CHEMBL.COMPOUND:CHEMBL411"]
           },
           "n01": {
-              "category": ["biolink:Protein", "biolink:Procedure"]
+              "categories": ["biolink:Protein", "biolink:Procedure"]
           }
        }
     }
@@ -124,15 +124,15 @@ def test_5():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicate": ["biolink:physically_interacts_with", "biolink:related_to"]
+                "predicates": ["biolink:physically_interacts_with", "biolink:related_to"]
             }
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL25"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
             },
             "n01": {
-                "category": ["biolink:Protein", "biolink:Gene"]
+                "categories": ["biolink:Protein", "biolink:Gene"]
             }
         }
     }
@@ -152,10 +152,10 @@ def test_6():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL25"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
             },
             "n01": {
-                "id": "CHEMBL.COMPOUND:CHEMBL833"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL833"]
             }
         }
     }
@@ -175,11 +175,12 @@ def test_7():
         },
         "nodes": {
             "n00": {
-                "id": ["CHEMBL.COMPOUND:CHEMBL25", "UniProtKB:P04070"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "UniProtKB:P04070"]
             },
             "n01": {
             }
-        }
+        },
+        "include_metadata": True
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
@@ -193,7 +194,7 @@ def test_8():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL25"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
             }
         }
     }
@@ -209,7 +210,7 @@ def test_9():
         },
         "nodes": {
             "n00": {
-                "id": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL411"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL411"]
             }
         }
     }
@@ -225,10 +226,10 @@ def test_10():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL25"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
             },
             "n01": {
-                "id": "CHEMBL.COMPOUND:CHEMBL411"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL411"]
             }
         }
     }
@@ -247,10 +248,10 @@ def test_11():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL25"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
             },
             "n01": {
-                "id": "CHEMBL.COMPOUND:CHEMBL411"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL411"]
             }
         }
     }
@@ -269,7 +270,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL650"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
             },
             "n01": {
             }
@@ -293,7 +294,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL650"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
             },
             "n01": {
             }
@@ -317,7 +318,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL650"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
             },
             "n01": {
             }
@@ -342,7 +343,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "id": "CHEMBL.COMPOUND:CHEMBL650"
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
             },
             "n01": {
             }

@@ -274,7 +274,7 @@ class PloverDB:
         qedge = trapi_query["edges"][qedge_key]
         subject_qnode = trapi_query["nodes"][qedge["subject"]]
         object_qnode = trapi_query["nodes"][qedge["object"]]
-        if not {"id", "ids"}.intersection(set(subject_qnode)) and not {"id", "ids"}.intersection(set(object_qnode)):
+        if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
 
         # Load the query and grab the relevant pieces of it
@@ -287,16 +287,10 @@ class PloverDB:
             directions = {1} if input_qnode_key == qedge["subject"] else {0}
         else:
             directions = {0, 1}
-        qnode_properties = set(trapi_query["nodes"][input_qnode_key])
-        qedge_properties = set(trapi_query["edges"][qedge_key])
-        qg_ids_property = "ids" if "ids" in qnode_properties else "id"
-        qg_categories_property = "categories" if "categories" in qnode_properties else "category"
-        qg_predicates_property = "predicates" if "predicates" in qedge_properties else "predicate"
-        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key][qg_ids_property])
-        output_category_names = self._convert_to_set(
-            trapi_query["nodes"][output_qnode_key].get(qg_categories_property))
-        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get(qg_ids_property))
-        qg_predicate_names_raw = self._convert_to_set(qedge.get(qg_predicates_property))
+        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
+        output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
+        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
+        qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
         # Use 'expanded' predicates so that we incorporate the biolink predicate hierarchy/inverses into our answer
         qg_predicate_names = {predicate for qg_predicate in qg_predicate_names_raw
                               for predicate in self.expanded_predicates_map.get(qg_predicate, {qg_predicate})}
@@ -359,20 +353,17 @@ class PloverDB:
 
     def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
         # When no qedges are involved, we only fulfill qnodes that have a curie
-        qnode_keys_with_curies = {qnode_key for qnode_key, qnode in trapi_query["nodes"].items() if
-                                  qnode.get("id") or qnode.get("ids")}
-        answer_kg = {"nodes": {qnode_key: [] for qnode_key in qnode_keys_with_curies},
-                     "edges": dict()}
-        for qnode_key in qnode_keys_with_curies:
-            qnode = trapi_query["nodes"][qnode_key]
-            ids_property = "ids" if "ids" in qnode else "id"
-            input_curies = self._convert_to_set(qnode[ids_property])
-            for input_curie in input_curies:
-                if input_curie in self.node_lookup_map:
-                    answer_kg["nodes"][qnode_key].append(input_curie)
-        # Make sure we return only distinct nodes
-        for qnode_key in qnode_keys_with_curies:
-            answer_kg["nodes"][qnode_key] = list(set(answer_kg["nodes"][qnode_key]))
+        if not all(qnode.get("ids") for qnode in trapi_query["nodes"].values()):
+            raise ValueError("For qnode-only queries, every qnode must have curie(s) specified.")
+        answer_kg = {"nodes": dict(), "edges": dict()}
+        for qnode_key, qnode in trapi_query["nodes"].items():
+            input_curies = self._convert_to_set(qnode["ids"])
+            found_curies = input_curies.intersection(set(self.node_lookup_map))
+            if found_curies:
+                if trapi_query.get("include_metadata"):
+                    answer_kg["nodes"][qnode_key] = {node_id: self.node_lookup_map[node_id] for node_id in found_curies}
+                else:
+                    answer_kg["nodes"][qnode_key] = list(found_curies)
         return answer_kg
 
     def _add_descendant_curies(self, node_ids: Set[str]) -> Set[str]:
