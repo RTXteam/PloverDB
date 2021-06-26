@@ -47,12 +47,14 @@ class PloverDB:
     def build_indexes(self):
         logging.info("Starting to build indexes..")
         start = time.time()
+        logging.info(f"  Loading KG JSON file ({self.kg_json_name})..")
         with open(self.kg_json_path, "r") as kg2c_file:
-            logging.info("  Loading KG JSON file..")
             kg2c_dict = json.load(kg2c_file)
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
         biolink_version = kg2c_dict.get("biolink_version")
+        if biolink_version:
+            logging.info(f"Biolink version for this KG is {biolink_version}")
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
