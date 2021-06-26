@@ -39,37 +39,25 @@ All other node/edge properties will be ignored.
 
 ### How to run
 
-#### To serve the latest 'production' [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized):
-
-Hardware requirements: A host machine with 128 GiB of memory is recommended (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
+_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized) (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
 
 1. Install Docker (if needed)
     * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX/blob/master/code/kg2/install-docker-ubuntu18.sh)
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
-1. Clone this repo
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
-1. Put a copy of the `.aws` directory containing your AWS keypair that has been granted access to the proper S3 bucket (by the KG2c team) into `PloverDB/`
-    * If you do not already have an `.aws` directory for the proper keypair, you will need to [configure AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html) on your host machine to create it
+1. Clone this repo
+1. Put your JSON KG file into your clone of the repo at `PloverDB/app/`
+1. Update `PloverDB/app/kg_config.json`:
+    1. Specify your JSON kg file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
+    1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 1. `cd` into `PloverDB/`
 1. Build your Docker image and run a container off of it:
     * `docker build -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
-_**NOTE**: Your AWS keypair will persist in the image, so be sure not share the image or make it publicly available._
-
 Building the image should take 20-30 minutes. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress.
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
-
-#### To serve your own KG:
-
-If you want to serve your own KG instead of the latest 'production' KG2c, follow the same steps as above except instead of step 4, do the following:
-
-1. Put your JSON KG file into `PloverDB/app/`
-1. Update `PloverDB/app/kg_config.json`:
-    1. Set `download_latest_kg2c` to `false`
-    1. Specify your JSON kg file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
-    1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 
 ### How to test
 To verify that your new service is working, you can run the pytest suite against it:

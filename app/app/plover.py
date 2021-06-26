@@ -26,7 +26,6 @@ class PloverDB:
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
         self.is_test = self.kg_config["is_test"]
-        self.download_latest_kg2c = self.kg_config["download_latest_kg2c"]
         self.kg_json_name = self._get_kg_json_file_name()
         self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pickle"
@@ -48,11 +47,6 @@ class PloverDB:
     def build_indexes(self):
         logging.info("Starting to build indexes..")
         start = time.time()
-        # Load our KG file and build simple node and edge lookup maps for storing the node/edge objects by ID
-        if self.download_latest_kg2c:
-            logging.info("  Downloading production KG2c JSON file..")
-            subprocess.check_call(["aws", "s3", "cp", "--region", "us-west-2", f"s3://rtx-kg2c-prod/{self.kg_json_name}.gz", f"{self.kg_json_path}.gz"])
-            subprocess.check_call(["gunzip", f"{self.kg_json_path}.gz"])
         with open(self.kg_json_path, "r") as kg2c_file:
             logging.info("  Loading KG JSON file..")
             kg2c_dict = json.load(kg2c_file)
@@ -111,11 +105,6 @@ class PloverDB:
                        "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
-
-        # Get rid of any auto-downloaded KG json file (since now no longer need it)
-        if self.download_latest_kg2c:
-            logging.info("  Removing production KG2c JSON file (no longer needed)..")
-            subprocess.call(["rm", "-f", self.kg_json_path])
 
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
@@ -393,14 +382,10 @@ class PloverDB:
             self._create_tree_recursive(child_id, parent_to_child_map, tree)
 
     def _get_kg_json_file_name(self) -> Optional[str]:
-        if self.download_latest_kg2c:
-            return "kg2c_lite_PROD.json" if not self.is_test else "kg2c_lite_PROD_test.json"
-        else:
-            local_kg_file_name = self.kg_config["local_kg_file_name"]
-            if not local_kg_file_name:
-                logging.error("If you're not downloading the latest KG2c, you must specify the name of your own KG "
-                              "file in kg_config.json (under 'local_kg_file_name')")
-            return local_kg_file_name
+        local_kg_file_name = self.kg_config.get("local_kg_file_name")
+        if not local_kg_file_name:
+            logging.error("You must specify the name of your KG file in kg_config.json (under 'local_kg_file_name')")
+        return local_kg_file_name
 
     @staticmethod
     def _convert_to_set(input_item: Union[Set[str], str, None]) -> Set[str]:

@@ -6,11 +6,6 @@ RUN echo "uwsgi_read_timeout 120;" > /etc/nginx/conf.d/custom_timeout.conf
 COPY requirements.txt /app/
 RUN pip install -r /app/requirements.txt
 
-COPY .aws /root/.aws
-RUN apt-get update
-RUN apt-get install -y awscli
-RUN aws configure set default.region us-west-2
-
 COPY ./app /app
 COPY test/kg2c-test.json /app/kg2c-test.json
 
