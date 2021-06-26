@@ -155,7 +155,7 @@ def test_6():
                 "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
             },
             "n01": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL833"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL833", "CHEMBL.COMPOUND:CHEMBL4128999"]
             }
         }
     }
@@ -270,7 +270,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"]
             },
             "n01": {
             }
@@ -282,7 +282,7 @@ def test_12():
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     num_edges_enforce_direction_subject = len(kg['edges']['e00'])
     print(f"Got back {num_edges_enforce_direction_subject} edges")
-    assert all(edge for edge in kg["edges"]["e00"].items() if edge[0] == "CHEMBL.COMPOUND:CHEMBL650")
+    assert all(edge for edge in kg["edges"]["e00"].items() if edge[0] in ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"])
 
     # Test object as input node with enforced direction
     query = {
@@ -294,7 +294,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"]
             },
             "n01": {
             }
@@ -306,7 +306,7 @@ def test_12():
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     num_edges_enforce_direction_object = len(kg['edges']['e00'])
     print(f"Got back {num_edges_enforce_direction_object} edges")
-    assert all(edge for edge in kg["edges"]["e00"].items() if edge[1] == "CHEMBL.COMPOUND:CHEMBL650")
+    assert all(edge for edge in kg["edges"]["e00"].items() if edge[1] in ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"])
 
     # Test subject as input node with ignored direction
     query = {
@@ -318,7 +318,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"]
             },
             "n01": {
             }
@@ -330,8 +330,8 @@ def test_12():
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     num_edges_ignore_direction_subject = len(kg['edges']['e00'])
     print(f"Got back {num_edges_ignore_direction_subject} edges")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] == "CHEMBL.COMPOUND:CHEMBL650")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] == "CHEMBL.COMPOUND:CHEMBL650")
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] in ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"])
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] in ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"])
 
     # Test object as input node with ignored direction
     query = {
@@ -343,7 +343,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL650"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"]
             },
             "n01": {
             }
@@ -354,8 +354,8 @@ def test_12():
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
     num_edges_ignore_direction_object = len(kg['edges']['e00'])
     print(f"Got back {num_edges_ignore_direction_object} edges")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] == "CHEMBL.COMPOUND:CHEMBL650")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] == "CHEMBL.COMPOUND:CHEMBL650")
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] in ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"])
+    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] in ["CHEMBL.COMPOUND:CHEMBL650", "CHEMBL.COMPOUND:CHEMBL2106453"])
 
     # Final checks on edge counts to make sure all makes sense
     assert num_edges_ignore_direction_subject == num_edges_ignore_direction_object
