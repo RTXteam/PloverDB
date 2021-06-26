@@ -39,23 +39,24 @@ All other node/edge properties will be ignored.
 
 ### How to run
 
-_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2/canonicalized) (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
+_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
 
 1. Install Docker (if needed)
-    * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX/blob/master/code/kg2/install-docker-ubuntu18.sh)
+    * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX-KG2/blob/master/install-docker-ubuntu18.sh)
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Clone this repo
-1. Put your JSON KG file into your clone of the repo at `PloverDB/app/`
-1. Update `PloverDB/app/kg_config.json`:
-    1. Specify your JSON kg file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
-    1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
+1. Within your clone of the repo:
+    1. Put your JSON KG file (which should be in Biolink format) into `PloverDB/app/`
+    1. Update `PloverDB/app/kg_config.json`:
+        1. Specify your JSON KG file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
+        1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 1. `cd` into `PloverDB/`
 1. Build your Docker image and run a container off of it:
     * `docker build -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
-Building the image should take 20-30 minutes. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress.
+Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress.
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
