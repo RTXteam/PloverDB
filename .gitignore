@@ -135,3 +135,4 @@ kg2c*.json
 *.sqlite
 *.pickle
 *.aws
+*report.json

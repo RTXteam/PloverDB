@@ -40,7 +40,7 @@ class PloverDB:
         self.edge_lookup_map = dict()
         self.main_index = dict()
         self.expanded_predicates_map = dict()
-        self.subclass_lookup = dict()
+        self.subclass_index = dict()
 
     # METHODS FOR BUILDING INDEXES
 
@@ -80,6 +80,8 @@ class PloverDB:
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
 
+        self._build_subclass_index()
+
         logging.info("  Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         node_properties = ("name", "category")
@@ -102,6 +104,7 @@ class PloverDB:
                        "node_headers": node_properties,
                        "edge_headers": edge_properties,
                        "main_index": self.main_index,
+                       "subclass_index": self.subclass_index,
                        "predicate_map": self.predicate_map,
                        "category_map": self.category_map,
                        "biolink_version": biolink_version}
@@ -127,6 +130,7 @@ class PloverDB:
             self.node_lookup_map = all_indexes["node_lookup_map"]
             self.edge_lookup_map = all_indexes["edge_lookup_map"]
             self.main_index = all_indexes["main_index"]
+            self.subclass_index = all_indexes["subclass_index"]
             self.predicate_map = all_indexes["predicate_map"]
             self.category_map = all_indexes["category_map"]
             biolink_version = all_indexes["biolink_version"]
@@ -214,39 +218,72 @@ class PloverDB:
 
         self.expanded_predicates_map = expanded_predicates_map
 
-    def _build_subclass_lookup(self):
-        # TODO: Address problem of subclass_of cycles before we can utilize this. add depth limit? skip/record cycles?
-        logging.info(f"  Building subclass_of index (node descendants)..")
+    def _build_subclass_index(self):
+        logging.info(f"  Building subclass_of index..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
-                             parent_to_descendants_map: Dict[str, Set[str]]):
+                             parent_to_descendants_map: Dict[str, Set[str]], recursion_depth: int,
+                             problem_nodes: Set[str]):
             if node_id not in parent_to_descendants_map:
-                for child_id in parent_to_child_map.get(node_id, []):
-                    child_descendants = _get_descendants(child_id, parent_to_child_map, parent_to_descendants_map)
-                    parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
+                if recursion_depth > 20:
+                    logging.info(f"Hit recursion depth of 20 for node {node_id}; discarding this "
+                                 f"lineage (will write to problem file)")
+                    problem_nodes.add(node_id)
+                else:
+                    for child_id in parent_to_child_map.get(node_id, []):
+                        child_descendants = _get_descendants(child_id, parent_to_child_map, parent_to_descendants_map,
+                                                             recursion_depth + 1, problem_nodes)
+                        parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
             return parent_to_descendants_map.get(node_id, set())
+
+        # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
+        approved_sources = {"OBO:mondo.owl", "OBO:pr.owl", "identifiers_org_registry:drugbank"}
+        subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
+        subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
+                             if edge[self.predicate_property] in subclass_predicates and
+                             set(edge.get("provided_by", set())).intersection(approved_sources)}
+        logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from approved sources)")
 
         # Build a map of nodes to their direct 'subclass_of' children
         parent_to_child_dict = defaultdict(set)
-        for edge_id, edge in self.edge_lookup_map.items():  # TODO: Filter out SEMMEDDB: edges here
-            if edge[self.predicate_property] == "biolink:subclass_of":
-                parent_node_id = edge["object"]
-                child_node_id = edge["subject"]
-                parent_to_child_dict[parent_node_id].add(child_node_id)
-            elif edge[self.predicate_property] == "biolink:superclass_of":
-                parent_node_id = edge["subject"]
-                child_node_id = edge["object"]
-                parent_to_child_dict[parent_node_id].add(child_node_id)
+        for edge_id in subclass_edge_ids:
+            edge = self.edge_lookup_map[edge_id]
+            parent_node_id = edge["object"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["subject"]
+            child_node_id = edge["subject"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["object"]
+            parent_to_child_dict[parent_node_id].add(child_node_id)
+        logging.info(f"    A total of {len(parent_to_child_dict)} nodes have child subclasses")
 
         # Then recursively derive all 'subclass_of' descendants for each node
-        root = "root"  # Need something to act as a parent to all other parents, as a starting point
-        parent_to_child_dict[root] = set(parent_to_child_dict)
-        parent_to_descendants_dict = defaultdict(set)
-        _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict)
-        del parent_to_descendants_dict[root]  # No longer need this entry in our flat map
+        if parent_to_child_dict:
+            root = "root"  # Need something to act as a parent to all other parents, as a starting point
+            parent_to_child_dict[root] = set(parent_to_child_dict)
+            parent_to_descendants_dict = defaultdict(set)
+            problem_nodes = set()
+            _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict, 0, problem_nodes)
+            del parent_to_descendants_dict[root]  # No longer need this (rather large) entry in our flat map
+            self.subclass_index = parent_to_descendants_dict
 
-        self.subclass_lookup = parent_to_descendants_dict
+            # Print out/save some useful stats
+            average_num_descendants = round(sum([len(descendants) for descendants in parent_to_descendants_dict.values()]) / len(parent_to_descendants_dict))
+            logging.info(f"    Average number of descendants for the {len(parent_to_descendants_dict)} kept nodes with "
+                         f"descendants is {average_num_descendants}")
+            prefix_counts = defaultdict(int)
+            for node_id in parent_to_descendants_dict:
+                prefix = node_id.split(":")[0]
+                prefix_counts[prefix] += 1
+            sorted_prefix_counts = dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
+            logging.info(f"    Breakdown of number of nodes with descendants by prefixes is: {sorted_prefix_counts}")
+            with open("subclass_report.json", "w+") as report_file:
+                report = {"total_edges_in_kg": len(self.edge_lookup_map),
+                          "num_subclass_of_edges_from_approved_sources": len(subclass_edge_ids),
+                          "num_nodes_with_children": len(parent_to_child_dict),
+                          "num_problem_nodes": len(problem_nodes),
+                          "num_nodes_with_descendants_kept": len(parent_to_descendants_dict),
+                          "average_num_descendants_per_node": average_num_descendants,
+                          "num_nodes_with_descendants_kept_by_prefix": sorted_prefix_counts,
+                          "problem_nodes": list(problem_nodes)}
+                json.dump(report, report_file, indent=2)
 
         logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
