@@ -39,6 +39,8 @@ All other node/edge properties will be ignored.
 
 ### How to run
 
+##### To host the latest RTX-KG2c
+
 _Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
 
 1. Install Docker (if needed)
@@ -46,11 +48,6 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Clone this repo
-1. Within your clone of the repo:
-    1. Put your JSON KG file (which should be in Biolink format) into `PloverDB/app/`
-    1. Update `PloverDB/app/kg_config.json`:
-        1. Specify your JSON KG file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
-        1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 1. `cd` into `PloverDB/`
 1. Build your Docker image and run a container off of it:
     * `docker build -t yourimage .`
@@ -59,6 +56,16 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
 Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress.
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
+
+##### To host your own KG file
+
+Follow the same steps as above, but between steps 3 and 4, do the following within your clone of the repo:
+
+1. Put your JSON KG file (which should be in Biolink format) into `PloverDB/app/`
+1. Update `PloverDB/app/kg_config.json`:
+    1. Specify your JSON KG file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
+    1. Set `remote_kg_file_name` to `null`
+    1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
 
 ### How to test
 To verify that your new service is working, you can run the pytest suite against it:
