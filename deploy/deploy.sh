@@ -17,8 +17,6 @@ sed -i.bak \
 rm ingress.yaml.bak
 
 kubectl apply -f namespace.yaml
-#kubectl delete configmap ploverdb-config -n gsrs
-#kubectl create configmap ploverdb-config -n gsrs --from-file=kg_config.json --dry-run -o yaml | kubectl apply -f -
 kubectl apply -f deployment.yaml
 kubectl apply -f services.yaml
 kubectl apply -f ingress.yaml
