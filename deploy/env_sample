@@ -1,0 +1,4 @@
+ENVIRONMENT_TAG=CI
+PDB_HOSTNAME=kg2cplover.ci.translator.io
+ARS_ALB_TAG=transltr-eks-ci-blue-ars
+ARS_ALB_SG=translator-ci-alb-http-sg

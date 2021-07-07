@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ploverdb
+  namespace: rtx
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 9990
+  selector:
+    app: ploverdb
+  type: NodePort

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ploverdb
+  namespace: rtx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ploverdb
+  template:
+    metadata:
+      labels:
+        app: ploverdb
+      annotations:
+        configHash: CONFIG_HASH_VALUE
+    spec:
+      containers:
+        - name: ploverdbserver
+          image: 853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb:DOCKER_VERSION_VALUE
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9990
+      #nodeSelector:
+      #    nodename: translator-eks-ci-blue-kg2cploverdb-node-group
+      tolerations:
+        - key: "rtx"
+          value: "ploverdb"
+          operator: "Equal"
+          effect: "NoSchedule"
+      #    volumeMounts:
+      #      - name: config-vol
+      #        mountPath: /app/kg_config.json
+      #        subPath: kg_config.json
+    #  volumes:
+      #  - name: config-vol
+      #    configMap:
+      #      name: ploverdb-config
+      #      items:
+      #        - key: kg_config.json
+      #          path: kg_config.json
+      restartPolicy: Always
