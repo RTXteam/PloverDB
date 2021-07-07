@@ -20,7 +20,7 @@ spec:
           image: 853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb:DOCKER_VERSION_VALUE
           imagePullPolicy: Always
           ports:
-            - containerPort: 9990
+            - containerPort: 80
       #nodeSelector:
       #    nodename: translator-eks-ci-blue-kg2cploverdb-node-group
       tolerations:

@@ -43,16 +43,10 @@ pipeline {
         stage('Build Docker') {
            when { expression { return env.BUILD == 'true' }}
             steps {
-                configFileProvider([
-                    configFile(fileId: 'kg_config.json', targetLocation: 'app/kg_config.json')
-                   ]){
                 script {
-                  //  sh 'cp -f /home/ubuntu/kg2c_lite_PROD_2.5.2.json ${WORKSPACE}'
-                    sh 'chmod 755 kg_config.json'
                     docker.build(env.DOCKER_REPO_NAME, "--build-arg SOURCE_FOLDER=./${BUILD_VERSION} --no-cache ./")
                     docker.withRegistry('https://853771734544.dkr.ecr.us-east-1.amazonaws.com', 'ecr:us-east-1:aws-ifx-deploy') {
                         docker.image(env.DOCKER_REPO_NAME).push("${BUILD_VERSION}")
-                        }
                     }
                 }
             }
