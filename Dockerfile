@@ -6,6 +6,8 @@ RUN echo "uwsgi_read_timeout 120;" > /etc/nginx/conf.d/custom_timeout.conf
 COPY requirements.txt /app/
 RUN pip install -r /app/requirements.txt
 
+RUN apt-get update && apt-get install -y ca-certificates
+
 COPY ./app /app
 COPY test/kg2c-test.json /app/kg2c-test.json
 

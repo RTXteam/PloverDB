@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ploverdb
+  namespace: rtx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ploverdb
+  template:
+    metadata:
+      labels:
+        app: ploverdb
+      annotations:
+        configHash: CONFIG_HASH_VALUE
+    spec:
+      containers:
+        - name: ploverdbserver
+          image: 853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb:DOCKER_VERSION_VALUE
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+      tolerations:
+        - key: "rtx"
+          value: "ploverdb"
+          operator: "Equal"
+          effect: "NoSchedule"
+      restartPolicy: Always

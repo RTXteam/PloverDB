@@ -1,5 +1,6 @@
 {
   "local_kg_file_name": null,
+  "remote_kg_file_name": "kg2c_lite_2.6.7.json.gz",
   "is_test": false,
   "labels": {
     "edges": "predicate",

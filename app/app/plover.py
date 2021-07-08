@@ -26,6 +26,8 @@ class PloverDB:
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
         self.is_test = self.kg_config["is_test"]
+        self.remote_kg_file_name = self.kg_config["remote_kg_file_name"]
+        self.local_kg_file_name = self.kg_config["local_kg_file_name"]
         self.kg_json_name = self._get_kg_json_file_name()
         self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pickle"
@@ -47,6 +49,23 @@ class PloverDB:
     def build_indexes(self):
         logging.info("Starting to build indexes..")
         start = time.time()
+
+        # Download/unzip KG file as needed
+        if self.remote_kg_file_name:
+            logging.info(f"  Downloading remote KG file {self.remote_kg_file_name} from Translator Git LFS")
+            temp_location = f"{SCRIPT_DIR}/{self.remote_kg_file_name}"
+            subprocess.check_call(["curl", "-L", f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{self.remote_kg_file_name}?raw=true", "-o", temp_location])
+            if self.remote_kg_file_name.endswith(".gz"):
+                logging.info(f"  Unzipping KG file")
+                subprocess.check_call(["gunzip", "-f", temp_location])
+                temp_location = temp_location.strip(".gz")
+            subprocess.check_call(["mv", temp_location, self.kg_json_path])
+        else:
+            logging.info(f"  Will use local KG file {self.local_kg_file_name}")
+            if self.local_kg_file_name.endswith(".gz"):
+                logging.info(f"  Unzipping local KG file")
+                subprocess.check_call(["gunzip", "-f", f"{self.kg_json_path}.gz"])
+
         logging.info(f"  Loading KG JSON file ({self.kg_json_name})..")
         with open(self.kg_json_path, "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
@@ -54,7 +73,7 @@ class PloverDB:
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
         biolink_version = kg2c_dict.get("biolink_version")
         if biolink_version:
-            logging.info(f"Biolink version for this KG is {biolink_version}")
+            logging.info(f"  Biolink version for this KG is {biolink_version}")
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
@@ -421,10 +440,16 @@ class PloverDB:
             self._create_tree_recursive(child_id, parent_to_child_map, tree)
 
     def _get_kg_json_file_name(self) -> Optional[str]:
+        remote_kg_file_name = self.kg_config.get("remote_kg_file_name")
         local_kg_file_name = self.kg_config.get("local_kg_file_name")
-        if not local_kg_file_name:
-            logging.error("You must specify the name of your KG file in kg_config.json (under 'local_kg_file_name')")
-        return local_kg_file_name
+        if remote_kg_file_name:
+            return remote_kg_file_name.strip(".gz")
+        elif local_kg_file_name:
+            return local_kg_file_name.strip(".gz")
+        else:
+            logging.error("In kg_config.json, you must specify either the name of a remote KG file to download from "
+                          "the Translator Git LFS or a local KG file to use")
+            return None
 
     @staticmethod
     def _convert_to_set(input_item: Union[Set[str], str, None]) -> Set[str]:
