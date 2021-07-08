@@ -281,7 +281,14 @@ class PloverDB:
             parent_to_descendants_dict = defaultdict(set)
             problem_nodes = set()
             _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict, 0, problem_nodes)
-            del parent_to_descendants_dict[root]  # No longer need this (rather large) entry in our flat map
+
+            # Filter out any nodes that just have too many descendants (system can't handle, and not very useful anyway)
+            node_ids = set(parent_to_descendants_dict)
+            for node_id in node_ids:
+                if len(parent_to_descendants_dict[node_id]) > 3000:
+                    del parent_to_descendants_dict[node_id]
+            deleted_node_ids = node_ids.difference(set(parent_to_descendants_dict))
+
             self.subclass_index = parent_to_descendants_dict
 
             # Print out/save some useful stats
@@ -311,6 +318,10 @@ class PloverDB:
                           "top_50_biggest_parents": {
                               "counts": {item[0]: item[1] for item in top_50_biggest_parents},
                               "curies": [item[0] for item in top_50_biggest_parents]
+                          },
+                          "deleted_nodes": {
+                              "count": len(deleted_node_ids),
+                              "curies": list(deleted_node_ids)
                           }
                           }
                 logging.info(f"Report is: {report}")
