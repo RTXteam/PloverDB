@@ -4,6 +4,7 @@ import logging
 import os
 import pathlib
 import pickle
+import statistics
 import subprocess
 import time
 import requests
@@ -257,7 +258,7 @@ class PloverDB:
             return parent_to_descendants_map.get(node_id, set())
 
         # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
-        approved_sources = {"OBO:mondo.owl", "OBO:pr.owl", "identifiers_org_registry:drugbank"}
+        approved_sources = {"OBO:mondo.owl", "OBO:pr.owl", "OBO:chebi.owl"}
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
                              if edge[self.predicate_property] in subclass_predicates and
@@ -284,24 +285,35 @@ class PloverDB:
             self.subclass_index = parent_to_descendants_dict
 
             # Print out/save some useful stats
-            average_num_descendants = round(sum([len(descendants) for descendants in parent_to_descendants_dict.values()]) / len(parent_to_descendants_dict))
-            logging.info(f"    Average number of descendants for the {len(parent_to_descendants_dict)} kept nodes with "
-                         f"descendants is {average_num_descendants}")
+            parent_to_num_descendants = {node_id: len(descendants) for node_id, descendants in parent_to_descendants_dict.items()}
+            descendant_counts = list(parent_to_num_descendants.values())
             prefix_counts = defaultdict(int)
+            top_50_biggest_parents = sorted(parent_to_num_descendants.items(), key=lambda x: x[1], reverse=True)[:50]
             for node_id in parent_to_descendants_dict:
                 prefix = node_id.split(":")[0]
                 prefix_counts[prefix] += 1
             sorted_prefix_counts = dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
-            logging.info(f"    Breakdown of number of nodes with descendants by prefixes is: {sorted_prefix_counts}")
             with open("subclass_report.json", "w+") as report_file:
                 report = {"total_edges_in_kg": len(self.edge_lookup_map),
                           "num_subclass_of_edges_from_approved_sources": len(subclass_edge_ids),
-                          "num_nodes_with_children": len(parent_to_child_dict),
                           "num_problem_nodes": len(problem_nodes),
-                          "num_nodes_with_descendants_kept": len(parent_to_descendants_dict),
-                          "average_num_descendants_per_node": average_num_descendants,
-                          "num_nodes_with_descendants_kept_by_prefix": sorted_prefix_counts,
-                          "problem_nodes": list(problem_nodes)}
+                          "num_nodes_with_descendants": {
+                              "total": len(parent_to_descendants_dict),
+                              "by_prefix": sorted_prefix_counts
+                          },
+                          "num_descendants_per_node": {
+                              "mean": round(statistics.mean(descendant_counts), 3),
+                              "max": max(descendant_counts),
+                              "median": statistics.median(descendant_counts),
+                              "mode": statistics.mode(descendant_counts)
+                          },
+                          "problem_nodes": list(problem_nodes),
+                          "top_50_biggest_parents": {
+                              "counts": {item[0]: item[1] for item in top_50_biggest_parents},
+                              "curies": [item[0] for item in top_50_biggest_parents]
+                          }
+                          }
+                logging.info(f"Report is: {report}")
                 json.dump(report, report_file, indent=2)
 
         logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
