@@ -326,8 +326,8 @@ class PloverDB:
                               "curies": list(deleted_node_ids)
                           },
                           "example_mappings": {
-                              "Diabetes mellitus (MONDO:0005015)": self.subclass_index.get("MONDO:0005015"),
-                              "Adams-Oliver syndrome (MONDO:0007034)": self.subclass_index.get("MONDO:0007034")
+                              "Diabetes mellitus (MONDO:0005015)": list(self.subclass_index.get("MONDO:0005015", [])),
+                              "Adams-Oliver syndrome (MONDO:0007034)": list(self.subclass_index.get("MONDO:0007034", []))
                           }
                           }
                 logging.info(f"Report is: {report}")
