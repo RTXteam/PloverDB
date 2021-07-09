@@ -285,7 +285,7 @@ class PloverDB:
             # Filter out any nodes that just have too many descendants (system can't handle, and not very useful anyway)
             node_ids = set(parent_to_descendants_dict)
             for node_id in node_ids:
-                if len(parent_to_descendants_dict[node_id]) > 3000:
+                if len(parent_to_descendants_dict[node_id]) > 5000:
                     del parent_to_descendants_dict[node_id]
             deleted_node_ids = node_ids.difference(set(parent_to_descendants_dict))
 
@@ -303,7 +303,6 @@ class PloverDB:
             with open("subclass_report.json", "w+") as report_file:
                 report = {"total_edges_in_kg": len(self.edge_lookup_map),
                           "num_subclass_of_edges_from_approved_sources": len(subclass_edge_ids),
-                          "num_problem_nodes": len(problem_nodes),
                           "num_nodes_with_descendants": {
                               "total": len(parent_to_descendants_dict),
                               "by_prefix": sorted_prefix_counts
@@ -314,7 +313,10 @@ class PloverDB:
                               "median": statistics.median(descendant_counts),
                               "mode": statistics.mode(descendant_counts)
                           },
-                          "problem_nodes": list(problem_nodes),
+                          "problem_nodes": {
+                              "count": len(problem_nodes),
+                              "curies": list(problem_nodes)
+                          },
                           "top_50_biggest_parents": {
                               "counts": {item[0]: item[1] for item in top_50_biggest_parents},
                               "curies": [item[0] for item in top_50_biggest_parents]
@@ -322,6 +324,10 @@ class PloverDB:
                           "deleted_nodes": {
                               "count": len(deleted_node_ids),
                               "curies": list(deleted_node_ids)
+                          },
+                          "example_mappings": {
+                              "Diabetes mellitus (MONDO:0005015)": self.subclass_index.get("MONDO:0005015"),
+                              "Adams-Oliver syndrome (MONDO:0007034)": self.subclass_index.get("MONDO:0007034")
                           }
                           }
                 logging.info(f"Report is: {report}")
@@ -346,6 +352,10 @@ class PloverDB:
         object_qnode = trapi_query["nodes"][qedge["object"]]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
+        if subject_qnode.get("ids") and not subject_qnode.get("skip_subclasses"):
+            subject_qnode["ids"] = self._get_descendants(subject_qnode["ids"])
+        if object_qnode.get("ids") and not object_qnode.get("skip_subclasses"):
+            object_qnode["ids"] = self._get_descendants(object_qnode["ids"])
 
         # Load the query and grab the relevant pieces of it
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
@@ -427,7 +437,7 @@ class PloverDB:
             raise ValueError("For qnode-only queries, every qnode must have curie(s) specified.")
         answer_kg = {"nodes": dict(), "edges": dict()}
         for qnode_key, qnode in trapi_query["nodes"].items():
-            input_curies = self._convert_to_set(qnode["ids"])
+            input_curies = self._convert_to_set(qnode["ids"]) if qnode.get("skip_subclasses") else set(self._get_descendants(qnode["ids"]))
             found_curies = input_curies.intersection(set(self.node_lookup_map))
             if found_curies:
                 if trapi_query.get("include_metadata"):
@@ -436,12 +446,11 @@ class PloverDB:
                     answer_kg["nodes"][qnode_key] = list(found_curies)
         return answer_kg
 
-    def _add_descendant_curies(self, node_ids: Set[str]) -> Set[str]:
-        all_node_ids = list(node_ids)
-        for node_id in node_ids:
-            descendants = self.subclass_lookup.get(node_id, [])
-            all_node_ids += descendants
-        return set(all_node_ids)
+    def _get_descendants(self, node_ids: List[str]) -> List[str]:
+        proper_descendants = {descendant_id for node_id in node_ids
+                              for descendant_id in self.subclass_index.get(node_id, set())}
+        descendants = proper_descendants.union(node_ids)
+        return list(descendants)
 
     @staticmethod
     def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, Union[str, List[str], None]]]) -> str:
@@ -475,7 +484,7 @@ class PloverDB:
             return None
 
     @staticmethod
-    def _convert_to_set(input_item: Union[Set[str], str, None]) -> Set[str]:
+    def _convert_to_set(input_item: any) -> Set[str]:
         if isinstance(input_item, str):
             return {input_item}
         elif isinstance(input_item, list):
