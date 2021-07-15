@@ -282,10 +282,11 @@ class PloverDB:
             problem_nodes = set()
             _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict, 0, problem_nodes)
 
-            # Filter out any nodes that just have too many descendants (system can't handle, and not very useful anyway)
+            # Filter out some unhelpful nodes (too many descendants and/or not useful)
             node_ids = set(parent_to_descendants_dict)
             for node_id in node_ids:
-                if len(parent_to_descendants_dict[node_id]) > 5000:
+                node = self.node_lookup_map[node_id]
+                if len(parent_to_descendants_dict[node_id]) > 5000 or node["category"] == "biolink:OntologyClass" or node_id.startswith("biolink:"):
                     del parent_to_descendants_dict[node_id]
             deleted_node_ids = node_ids.difference(set(parent_to_descendants_dict))
 
