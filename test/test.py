@@ -394,7 +394,8 @@ def test_14():
         },
         "nodes": {
             "n00": {
-                "ids": ["MONDO:0005015"]  # Diabetes mellitus
+                "ids": ["MONDO:0005015"],  # Diabetes mellitus
+                "allow_subclasses": True
             }
         }
     }
@@ -406,8 +407,7 @@ def test_14():
         },
         "nodes": {
             "n00": {
-                "ids": ["MONDO:0005015"],  # Diabetes mellitus
-                "skip_subclasses": True
+                "ids": ["MONDO:0005015"]  # Diabetes mellitus
             }
         }
     }

@@ -356,9 +356,9 @@ class PloverDB:
         object_qnode = trapi_query["nodes"][qedge["object"]]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
-        if subject_qnode.get("ids") and not subject_qnode.get("skip_subclasses"):
+        if subject_qnode.get("ids") and subject_qnode.get("allow_subclasses"):
             subject_qnode["ids"] = self._get_descendants(subject_qnode["ids"])
-        if object_qnode.get("ids") and not object_qnode.get("skip_subclasses"):
+        if object_qnode.get("ids") and object_qnode.get("allow_subclasses"):
             object_qnode["ids"] = self._get_descendants(object_qnode["ids"])
 
         # Load the query and grab the relevant pieces of it
@@ -441,7 +441,7 @@ class PloverDB:
             raise ValueError("For qnode-only queries, every qnode must have curie(s) specified.")
         answer_kg = {"nodes": dict(), "edges": dict()}
         for qnode_key, qnode in trapi_query["nodes"].items():
-            input_curies = self._convert_to_set(qnode["ids"]) if qnode.get("skip_subclasses") else set(self._get_descendants(qnode["ids"]))
+            input_curies = set(self._get_descendants(qnode["ids"])) if qnode.get("allow_subclasses") else self._convert_to_set(qnode["ids"])
             found_curies = input_curies.intersection(set(self.node_lookup_map))
             if found_curies:
                 if trapi_query.get("include_metadata"):
