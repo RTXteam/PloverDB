@@ -334,7 +334,6 @@ class PloverDB:
                               "Adams-Oliver syndrome (MONDO:0007034)": list(self.subclass_index.get("MONDO:0007034", []))
                           }
                           }
-                logging.info(f"Report is: {report}")
                 json.dump(report, report_file, indent=2)
 
         logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
