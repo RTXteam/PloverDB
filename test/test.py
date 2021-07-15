@@ -387,5 +387,34 @@ def test_13():
     _print_kg(kg)
 
 
+def test_14():
+    # Test subclass_of reasoning
+    query_subclass = {
+        "edges": {
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["MONDO:0005015"],  # Diabetes mellitus
+                "allow_subclasses": True
+            }
+        }
+    }
+    kg = _run_query(query_subclass)
+    assert len(kg["nodes"]["n00"]) > 1
+    _print_kg(kg)
+    query_no_subclass = {
+        "edges": {
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["MONDO:0005015"]  # Diabetes mellitus
+            }
+        }
+    }
+    kg = _run_query(query_no_subclass)
+    assert len(kg["nodes"]["n00"]) == 1
+    _print_kg(kg)
+
+
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])

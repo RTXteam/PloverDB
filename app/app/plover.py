@@ -4,6 +4,7 @@ import logging
 import os
 import pathlib
 import pickle
+import statistics
 import subprocess
 import time
 import requests
@@ -42,7 +43,7 @@ class PloverDB:
         self.edge_lookup_map = dict()
         self.main_index = dict()
         self.expanded_predicates_map = dict()
-        self.subclass_lookup = dict()
+        self.subclass_index = dict()
 
     # METHODS FOR BUILDING INDEXES
 
@@ -99,6 +100,11 @@ class PloverDB:
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
 
+        if self.kg_config.get("subclass_sources"):
+            self._build_subclass_index(set(self.kg_config["subclass_sources"]))
+        else:
+            logging.info(f"  Not building subclass_of index since no subclass sources were specified in kg_config.json")
+
         logging.info("  Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         node_properties = ("name", "category")
@@ -121,6 +127,7 @@ class PloverDB:
                        "node_headers": node_properties,
                        "edge_headers": edge_properties,
                        "main_index": self.main_index,
+                       "subclass_index": self.subclass_index,
                        "predicate_map": self.predicate_map,
                        "category_map": self.category_map,
                        "biolink_version": biolink_version}
@@ -146,6 +153,7 @@ class PloverDB:
             self.node_lookup_map = all_indexes["node_lookup_map"]
             self.edge_lookup_map = all_indexes["edge_lookup_map"]
             self.main_index = all_indexes["main_index"]
+            self.subclass_index = all_indexes["subclass_index"]
             self.predicate_map = all_indexes["predicate_map"]
             self.category_map = all_indexes["category_map"]
             biolink_version = all_indexes["biolink_version"]
@@ -233,39 +241,100 @@ class PloverDB:
 
         self.expanded_predicates_map = expanded_predicates_map
 
-    def _build_subclass_lookup(self):
-        # TODO: Address problem of subclass_of cycles before we can utilize this. add depth limit? skip/record cycles?
-        logging.info(f"  Building subclass_of index (node descendants)..")
+    def _build_subclass_index(self, subclass_sources: Set[str]):
+        logging.info(f"  Building subclass_of index using {subclass_sources} edges..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
-                             parent_to_descendants_map: Dict[str, Set[str]]):
+                             parent_to_descendants_map: Dict[str, Set[str]], recursion_depth: int,
+                             problem_nodes: Set[str]):
             if node_id not in parent_to_descendants_map:
-                for child_id in parent_to_child_map.get(node_id, []):
-                    child_descendants = _get_descendants(child_id, parent_to_child_map, parent_to_descendants_map)
-                    parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
+                if recursion_depth > 20:
+                    logging.info(f"Hit recursion depth of 20 for node {node_id}; discarding this "
+                                 f"lineage (will write to problem file)")
+                    problem_nodes.add(node_id)
+                else:
+                    for child_id in parent_to_child_map.get(node_id, []):
+                        child_descendants = _get_descendants(child_id, parent_to_child_map, parent_to_descendants_map,
+                                                             recursion_depth + 1, problem_nodes)
+                        parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
             return parent_to_descendants_map.get(node_id, set())
+
+        # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
+        subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
+        subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
+                             if edge[self.predicate_property] in subclass_predicates and
+                             set(edge.get("provided_by", set())).intersection(subclass_sources)}
+        logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from specified sources)")
 
         # Build a map of nodes to their direct 'subclass_of' children
         parent_to_child_dict = defaultdict(set)
-        for edge_id, edge in self.edge_lookup_map.items():  # TODO: Filter out SEMMEDDB: edges here
-            if edge[self.predicate_property] == "biolink:subclass_of":
-                parent_node_id = edge["object"]
-                child_node_id = edge["subject"]
-                parent_to_child_dict[parent_node_id].add(child_node_id)
-            elif edge[self.predicate_property] == "biolink:superclass_of":
-                parent_node_id = edge["subject"]
-                child_node_id = edge["object"]
-                parent_to_child_dict[parent_node_id].add(child_node_id)
+        for edge_id in subclass_edge_ids:
+            edge = self.edge_lookup_map[edge_id]
+            parent_node_id = edge["object"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["subject"]
+            child_node_id = edge["subject"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["object"]
+            parent_to_child_dict[parent_node_id].add(child_node_id)
+        logging.info(f"    A total of {len(parent_to_child_dict)} nodes have child subclasses")
 
         # Then recursively derive all 'subclass_of' descendants for each node
-        root = "root"  # Need something to act as a parent to all other parents, as a starting point
-        parent_to_child_dict[root] = set(parent_to_child_dict)
-        parent_to_descendants_dict = defaultdict(set)
-        _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict)
-        del parent_to_descendants_dict[root]  # No longer need this entry in our flat map
+        if parent_to_child_dict:
+            root = "root"  # Need something to act as a parent to all other parents, as a starting point
+            parent_to_child_dict[root] = set(parent_to_child_dict)
+            parent_to_descendants_dict = defaultdict(set)
+            problem_nodes = set()
+            _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict, 0, problem_nodes)
 
-        self.subclass_lookup = parent_to_descendants_dict
+            # Filter out some unhelpful nodes (too many descendants and/or not useful)
+            del parent_to_descendants_dict["root"]
+            node_ids = set(parent_to_descendants_dict)
+            for node_id in node_ids:
+                node = self.node_lookup_map[node_id]
+                if len(parent_to_descendants_dict[node_id]) > 5000 or node["category"] == "biolink:OntologyClass" or node_id.startswith("biolink:"):
+                    del parent_to_descendants_dict[node_id]
+            deleted_node_ids = node_ids.difference(set(parent_to_descendants_dict))
+
+            self.subclass_index = parent_to_descendants_dict
+
+            # Print out/save some useful stats
+            parent_to_num_descendants = {node_id: len(descendants) for node_id, descendants in parent_to_descendants_dict.items()}
+            descendant_counts = list(parent_to_num_descendants.values())
+            prefix_counts = defaultdict(int)
+            top_50_biggest_parents = sorted(parent_to_num_descendants.items(), key=lambda x: x[1], reverse=True)[:50]
+            for node_id in parent_to_descendants_dict:
+                prefix = node_id.split(":")[0]
+                prefix_counts[prefix] += 1
+            sorted_prefix_counts = dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
+            with open("subclass_report.json", "w+") as report_file:
+                report = {"total_edges_in_kg": len(self.edge_lookup_map),
+                          "num_subclass_of_edges_from_approved_sources": len(subclass_edge_ids),
+                          "num_nodes_with_descendants": {
+                              "total": len(parent_to_descendants_dict),
+                              "by_prefix": sorted_prefix_counts
+                          },
+                          "num_descendants_per_node": {
+                              "mean": round(statistics.mean(descendant_counts), 3),
+                              "max": max(descendant_counts),
+                              "median": statistics.median(descendant_counts),
+                              "mode": statistics.mode(descendant_counts)
+                          },
+                          "problem_nodes": {
+                              "count": len(problem_nodes),
+                              "curies": list(problem_nodes)
+                          },
+                          "top_50_biggest_parents": {
+                              "counts": {item[0]: item[1] for item in top_50_biggest_parents},
+                              "curies": [item[0] for item in top_50_biggest_parents]
+                          },
+                          "deleted_nodes": {
+                              "count": len(deleted_node_ids),
+                              "curies": list(deleted_node_ids)
+                          },
+                          "example_mappings": {
+                              "Diabetes mellitus (MONDO:0005015)": list(self.subclass_index.get("MONDO:0005015", [])),
+                              "Adams-Oliver syndrome (MONDO:0007034)": list(self.subclass_index.get("MONDO:0007034", []))
+                          }
+                          }
+                json.dump(report, report_file, indent=2)
 
         logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
@@ -286,6 +355,10 @@ class PloverDB:
         object_qnode = trapi_query["nodes"][qedge["object"]]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
+        if subject_qnode.get("ids") and subject_qnode.get("allow_subclasses"):
+            subject_qnode["ids"] = self._get_descendants(subject_qnode["ids"])
+        if object_qnode.get("ids") and object_qnode.get("allow_subclasses"):
+            object_qnode["ids"] = self._get_descendants(object_qnode["ids"])
 
         # Load the query and grab the relevant pieces of it
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
@@ -367,7 +440,7 @@ class PloverDB:
             raise ValueError("For qnode-only queries, every qnode must have curie(s) specified.")
         answer_kg = {"nodes": dict(), "edges": dict()}
         for qnode_key, qnode in trapi_query["nodes"].items():
-            input_curies = self._convert_to_set(qnode["ids"])
+            input_curies = set(self._get_descendants(qnode["ids"])) if qnode.get("allow_subclasses") else self._convert_to_set(qnode["ids"])
             found_curies = input_curies.intersection(set(self.node_lookup_map))
             if found_curies:
                 if trapi_query.get("include_metadata"):
@@ -376,12 +449,11 @@ class PloverDB:
                     answer_kg["nodes"][qnode_key] = list(found_curies)
         return answer_kg
 
-    def _add_descendant_curies(self, node_ids: Set[str]) -> Set[str]:
-        all_node_ids = list(node_ids)
-        for node_id in node_ids:
-            descendants = self.subclass_lookup.get(node_id, [])
-            all_node_ids += descendants
-        return set(all_node_ids)
+    def _get_descendants(self, node_ids: List[str]) -> List[str]:
+        proper_descendants = {descendant_id for node_id in node_ids
+                              for descendant_id in self.subclass_index.get(node_id, set())}
+        descendants = proper_descendants.union(node_ids)
+        return list(descendants)
 
     @staticmethod
     def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, Union[str, List[str], None]]]) -> str:
@@ -415,7 +487,7 @@ class PloverDB:
             return None
 
     @staticmethod
-    def _convert_to_set(input_item: Union[Set[str], str, None]) -> Set[str]:
+    def _convert_to_set(input_item: any) -> Set[str]:
         if isinstance(input_item, str):
             return {input_item}
         elif isinstance(input_item, list):
