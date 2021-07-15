@@ -100,7 +100,10 @@ class PloverDB:
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
 
-        self._build_subclass_index()
+        if self.kg_config.get("subclass_sources"):
+            self._build_subclass_index(set(self.kg_config["subclass_sources"]))
+        else:
+            logging.info(f"  Not building subclass_of index since no subclass sources were specified in kg_config.json")
 
         logging.info("  Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
@@ -238,8 +241,8 @@ class PloverDB:
 
         self.expanded_predicates_map = expanded_predicates_map
 
-    def _build_subclass_index(self):
-        logging.info(f"  Building subclass_of index..")
+    def _build_subclass_index(self, subclass_sources: Set[str]):
+        logging.info(f"  Building subclass_of index using {subclass_sources} edges..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
@@ -258,12 +261,11 @@ class PloverDB:
             return parent_to_descendants_map.get(node_id, set())
 
         # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
-        approved_sources = {"OBO:mondo.owl", "OBO:pr.owl", "OBO:chebi.owl"}
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
                              if edge[self.predicate_property] in subclass_predicates and
-                             set(edge.get("provided_by", set())).intersection(approved_sources)}
-        logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from approved sources)")
+                             set(edge.get("provided_by", set())).intersection(subclass_sources)}
+        logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from specified sources)")
 
         # Build a map of nodes to their direct 'subclass_of' children
         parent_to_child_dict = defaultdict(set)
@@ -283,6 +285,7 @@ class PloverDB:
             _ = _get_descendants(root, parent_to_child_dict, parent_to_descendants_dict, 0, problem_nodes)
 
             # Filter out some unhelpful nodes (too many descendants and/or not useful)
+            del parent_to_descendants_dict["root"]
             node_ids = set(parent_to_descendants_dict)
             for node_id in node_ids:
                 node = self.node_lookup_map[node_id]
