@@ -21,9 +21,27 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 80
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - kg2cploverdb
+            topologyKey: "kubernetes.io/hostname"
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: application
+                operator: In
+                values:
+                - kg2cploverdb-trapi
       tolerations:
         - key: "rtx"
           value: "ploverdb"
           operator: "Equal"
-          effect: "NoSchedule"
+        effect: "NoSchedule"
       restartPolicy: Always
