@@ -15,12 +15,6 @@ spec:
       annotations:
         configHash: CONFIG_HASH_VALUE
     spec:
-      containers:
-        - name: ploverdbserver
-          image: 853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb:DOCKER_VERSION_VALUE
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 80
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -29,7 +23,7 @@ spec:
               - key: app
                 operator: In
                 values:
-                - kg2cploverdb
+                - ploverdb
             topologyKey: "kubernetes.io/hostname"
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -38,10 +32,16 @@ spec:
               - key: application
                 operator: In
                 values:
-                - kg2cploverdb-trapi
+                - kg2cploverdb
+      containers:
+        - name: ploverdbserver
+          image: 853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb:DOCKER_VERSION_VALUE
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
       tolerations:
         - key: "rtx"
           value: "ploverdb"
           operator: "Equal"
-        effect: "NoSchedule"
+          effect: "NoSchedule"
       restartPolicy: Always
