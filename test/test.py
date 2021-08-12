@@ -33,7 +33,7 @@ def test_1():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
+             "ids": ["CHEMBL.COMPOUND:CHEMBL25"],
              "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
@@ -58,7 +58,7 @@ def test_2():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
+             "ids": ["CHEMBL.COMPOUND:CHEMBL25"],
              "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
@@ -81,7 +81,7 @@ def test_3():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
+             "ids": ["CHEMBL.COMPOUND:CHEMBL25"],
              "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
@@ -105,7 +105,7 @@ def test_4():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL411"]
+             "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
           },
           "n01": {
               "categories": ["biolink:Protein", "biolink:Procedure"]
@@ -210,7 +210,7 @@ def test_9():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL411"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL112"]
             }
         }
     }
@@ -229,7 +229,7 @@ def test_10():
                 "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
             },
             "n01": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL411"]
+                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
             }
         }
     }
