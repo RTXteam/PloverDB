@@ -34,10 +34,10 @@ def test_1():
        "nodes": {
           "n00": {
              "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
-             "categories": ["biolink:ChemicalSubstance"]
+             "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
-             "categories": ["biolink:ChemicalSubstance"]
+             "categories": ["biolink:ChemicalEntity"]
           }
        }
     }
@@ -59,7 +59,7 @@ def test_2():
        "nodes": {
           "n00": {
              "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
-             "categories": ["biolink:ChemicalSubstance"]
+             "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
           }
@@ -82,10 +82,10 @@ def test_3():
        "nodes": {
           "n00": {
              "ids": ["CHEMBL.COMPOUND:CHEMBL411"],
-             "categories": ["biolink:ChemicalSubstance"]
+             "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
-              "categories": ["biolink:ChemicalSubstance"]
+              "categories": ["biolink:ChemicalEntity"]
           }
        }
     }
