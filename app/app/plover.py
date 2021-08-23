@@ -7,12 +7,8 @@ import pickle
 import statistics
 import subprocess
 import time
-import requests
 from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional
-
-from treelib import Tree
-import yaml
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
@@ -43,10 +39,9 @@ class PloverDB:
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
         self.main_index = dict()
-        self.expanded_predicates_map = dict()
         self.subclass_index = dict()
 
-    # METHODS FOR BUILDING INDEXES
+    # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
     def build_indexes(self):
         logging.info("Starting to build indexes..")
@@ -68,15 +63,13 @@ class PloverDB:
                 logging.info(f"  Unzipping local KG file")
                 subprocess.check_call(["gunzip", "-f", f"{self.kg_json_path}.gz"])
 
-        # Load the KG
+        # Load the JSON KG
         logging.info(f"  Loading KG JSON file ({self.kg_json_name})..")
         with open(self.kg_json_path, "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
-        self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
-        self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
-        biolink_version = kg2c_dict.get("biolink_version")
-        if biolink_version:
-            logging.info(f"  Biolink version for this KG is {biolink_version}")
+            biolink_version = kg2c_dict.get("biolink_version")
+            if biolink_version:
+                logging.info(f"  Biolink version for this KG is {biolink_version}")
 
         # Set up BiolinkHelper (download from RTX repo)
         bh_file_name = "biolink_helper.py"
@@ -85,6 +78,19 @@ class PloverDB:
         subprocess.check_call(["curl", "-L", f"https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true", "-o", local_path])
         from biolink_helper import BiolinkHelper
         self.bh = BiolinkHelper(biolink_version=biolink_version)
+
+        # Create basic node/edge lookup maps
+        self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
+        self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        # Convert all edges to their canonical predicate form
+        for edge_id, edge in self.edge_lookup_map.items():
+            canonical_predicate = self.bh.get_canonical_predicates(edge["predicate"])[0]
+            if canonical_predicate != edge["predicate"]:
+                # Flip the edge (because the original predicate must be the canonical predicate's inverse)
+                edge["predicate"] = canonical_predicate
+                original_subject = edge["subject"]
+                edge["subject"] = edge["object"]
+                edge["object"] = original_subject
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
@@ -170,8 +176,10 @@ class PloverDB:
             self.category_map = all_indexes["category_map"]
             biolink_version = all_indexes["biolink_version"]
 
-        # Build a map of expanded predicates (descendants and inverses) for easy lookup
-        self._build_expanded_predicates_map(biolink_version)
+        # Set up BiolinkHelper
+        from biolink_helper import BiolinkHelper
+        self.bh = BiolinkHelper(biolink_version=biolink_version)
+
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[int], predicate: int,
@@ -198,60 +206,6 @@ class PloverDB:
             num_categories = len(self.category_map)
             self.category_map[category_name] = num_categories
         return self.category_map[category_name]
-
-    def _build_expanded_predicates_map(self, biolink_version: Optional[str]):
-        logging.info("  Building expanded predicates map (descendants and inverses)..")
-        logging.info(f"  Using Biolink model version: {biolink_version}")
-
-        # Load all predicates from the Biolink model into a tree
-        biolink_tree = Tree()
-        inverses_dict = dict()
-        response = requests.get(f"https://raw.githubusercontent.com/biolink/biolink-model/"
-                                f"{biolink_version if biolink_version else 'master'}/biolink-model.yaml",
-                                timeout=10)
-        if response.status_code == 200:
-            # Build little helper maps of slot names to their direct children/inverses
-            biolink_model = yaml.safe_load(response.text)
-            parent_to_child_dict = defaultdict(set)
-            for slot_name_english, info in biolink_model["slots"].items():
-                slot_name = self._convert_to_trapi_predicate_format(slot_name_english)
-                parent_name_english = info.get("is_a")
-                if parent_name_english:
-                    parent_name = self._convert_to_trapi_predicate_format(parent_name_english)
-                    parent_to_child_dict[parent_name].add(slot_name)
-                inverse_name = info.get("inverse")
-                if inverse_name:
-                    inverse_name_formatted = self._convert_to_trapi_predicate_format(inverse_name)
-                    inverses_dict[slot_name] = inverse_name_formatted
-            # Recursively build the predicates tree starting with the root
-            biolink_tree.create_node(self.root_predicate_name, self.root_predicate_name)
-            self._create_tree_recursive(self.root_predicate_name, parent_to_child_dict, biolink_tree)
-        else:
-            logging.warning(f"Unable to load Biolink yaml file. Will not be able to consider Biolink predicate "
-                            f"inverses or descendants when answering queries.")
-
-        expanded_predicates_map = defaultdict(set)
-        for predicate_node in biolink_tree.all_nodes():
-            predicate = predicate_node.identifier
-            inverse = inverses_dict.get(predicate)
-            descendants = self._get_descendants_from_tree(predicate, biolink_tree)
-            inverse_descendants = self._get_descendants_from_tree(inverse, biolink_tree) if inverse else set()
-            expanded_predicates = descendants.union(inverse_descendants)
-            # Continue (recursively) searching for inverses/descendants until we have them all
-            found_more = True
-            while found_more:
-                start_size = len(expanded_predicates)
-                updated_inverses = {inverses_dict.get(predicate_a) for predicate_a in expanded_predicates
-                                    if inverses_dict.get(predicate_a)}
-                expanded_predicates = expanded_predicates.union(updated_inverses)
-                updated_descendants = {descendant_predicate for predicate_b in expanded_predicates
-                                       for descendant_predicate in self._get_descendants_from_tree(predicate_b, biolink_tree)}
-                expanded_predicates = expanded_predicates.union(updated_descendants)
-                if len(expanded_predicates) == start_size:
-                    found_more = False
-            expanded_predicates_map[predicate] = expanded_predicates
-
-        self.expanded_predicates_map = expanded_predicates_map
 
     def _build_subclass_index(self, subclass_sources: Set[str]):
         logging.info(f"  Building subclass_of index using {subclass_sources} edges..")
@@ -350,7 +304,7 @@ class PloverDB:
 
         logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
-    # METHODS FOR ANSWERING QUERIES
+    # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
         # Make sure this is a query we can answer
@@ -372,9 +326,22 @@ class PloverDB:
         if object_qnode.get("ids") and object_qnode.get("allow_subclasses"):
             object_qnode["ids"] = self._get_descendants(object_qnode["ids"])
 
-        # Load the query and grab the relevant pieces of it
+        # Load the query and do any necessary transformations to predicates/categories
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
+        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
+        output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
+        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
+        qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
+        # TODO: Ensure the query is for the canonical predicate?? Maybe not.. (Translator uses only canonical..)
+
+        # Use 'expanded' predicates so that we incorporate the biolink predicate hierarchy/inverses into our answer
+        qg_predicate_names = {descendant_predicate for qg_predicate in qg_predicate_names_raw
+                              for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
+        # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
+        output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
+        qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names}
+
         # Figure out which directions we need to inspect based on the QG
         enforce_directionality = trapi_query.get("enforce_directionality")
         if enforce_directionality:
@@ -382,16 +349,6 @@ class PloverDB:
             directions = {1} if input_qnode_key == qedge["subject"] else {0}
         else:
             directions = {0, 1}
-        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
-        output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
-        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
-        qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
-        # Use 'expanded' predicates so that we incorporate the biolink predicate hierarchy/inverses into our answer
-        qg_predicate_names = {predicate for qg_predicate in qg_predicate_names_raw
-                              for predicate in self.expanded_predicates_map.get(qg_predicate, {qg_predicate})}
-        # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
-        output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
-        qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names}
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -418,10 +375,8 @@ class PloverDB:
                                     for output_curie in matching_output_curies:
                                         answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
-                                # Grab both forwards and backwards edges (we only do undirected queries currently)
                                 for direction in directions:
-                                    answer_edge_ids += list(
-                                        main_index[input_curie][output_category][predicate][direction].values())
+                                    answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction].values())
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
@@ -479,12 +434,7 @@ class PloverDB:
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
 
-    # GENERAL HELPER METHODS
-
-    def _create_tree_recursive(self, root_id: str, parent_to_child_map: Dict[str, Set[str]], tree: Tree):
-        for child_id in parent_to_child_map.get(root_id, []):
-            tree.create_node(child_id, child_id, parent=root_id)
-            self._create_tree_recursive(child_id, parent_to_child_map, tree)
+    # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
     def _get_kg_json_file_name(self) -> Optional[str]:
         remote_kg_file_name = self.kg_config.get("remote_kg_file_name")
@@ -506,17 +456,6 @@ class PloverDB:
             return set(input_item)
         else:
             return set()
-
-    @staticmethod
-    def _convert_to_trapi_predicate_format(english_predicate: str) -> str:
-        # Converts a string like "treated by" to "biolink:treated_by"
-        return f"biolink:{english_predicate.replace(' ', '_')}"
-
-    @staticmethod
-    def _get_descendants_from_tree(node_identifier: str, tree: Tree) -> Set[str]:
-        sub_tree = tree.subtree(node_identifier)
-        descendants = {node.identifier for node in sub_tree.all_nodes()}
-        return descendants
 
 
 def main():
