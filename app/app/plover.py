@@ -326,21 +326,34 @@ class PloverDB:
         if object_qnode.get("ids") and object_qnode.get("allow_subclasses"):
             object_qnode["ids"] = self._get_descendants(object_qnode["ids"])
 
-        # Load the query and do any necessary transformations to predicates/categories
+        # Convert to canonical predicates in the QG as needed
+        user_predicates = self._convert_to_set(qedge.get("predicates"))
+        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates))
+        user_non_canonical_predicates = user_predicates.difference(canonical_predicates)
+        user_canonical_predicates = user_predicates.intersection(canonical_predicates)
+        if user_non_canonical_predicates and not user_canonical_predicates:
+            # It's safe to flip this qedge so that it uses only the canonical form
+            original_subject = qedge["subject"]
+            qedge["subject"] = qedge["object"]
+            qedge["object"] = original_subject
+            qedge["predicates"] = list(canonical_predicates)
+        elif user_non_canonical_predicates and user_canonical_predicates:
+            raise ValueError(f"QueryGraph uses both canonical and non-canonical predicates. Canonical: "
+                             f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
+                             f"You must use either all canonical or all non-canonical predicates.")
+
+        # Load the query and do any necessary transformations to categories/predicates
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
         output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
         qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
-        # TODO: Ensure the query is for the canonical predicate?? Maybe not.. (Translator uses only canonical..)
-
-        # Use 'expanded' predicates so that we incorporate the biolink predicate hierarchy/inverses into our answer
-        qg_predicate_names = {descendant_predicate for qg_predicate in qg_predicate_names_raw
-                              for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
+        qg_predicate_names_expanded = {descendant_predicate for qg_predicate in qg_predicate_names_raw
+                                       for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
         output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
-        qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names}
+        qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names_expanded}
 
         # Figure out which directions we need to inspect based on the QG
         enforce_directionality = trapi_query.get("enforce_directionality")
