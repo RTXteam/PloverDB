@@ -36,6 +36,7 @@ class PloverDB:
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.root_category_name = "biolink:NamedThing"
         self.root_predicate_name = "biolink:related_to"
+        self.bh = None  # BiolinkHelper is downloaded later on
         self.core_node_properties = {"name", "category"}
         self.category_map = dict()
         self.predicate_map = dict()
@@ -67,6 +68,7 @@ class PloverDB:
                 logging.info(f"  Unzipping local KG file")
                 subprocess.check_call(["gunzip", "-f", f"{self.kg_json_path}.gz"])
 
+        # Load the KG
         logging.info(f"  Loading KG JSON file ({self.kg_json_name})..")
         with open(self.kg_json_path, "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
@@ -75,6 +77,14 @@ class PloverDB:
         biolink_version = kg2c_dict.get("biolink_version")
         if biolink_version:
             logging.info(f"  Biolink version for this KG is {biolink_version}")
+
+        # Set up BiolinkHelper (download from RTX repo)
+        bh_file_name = "biolink_helper.py"
+        logging.info(f"  Downloading {bh_file_name} from RTX repo")
+        local_path = f"{SCRIPT_DIR}/{bh_file_name}"
+        subprocess.check_call(["curl", "-L", f"https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true", "-o", local_path])
+        from biolink_helper import BiolinkHelper
+        self.bh = BiolinkHelper(biolink_version=biolink_version)
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
@@ -93,9 +103,11 @@ class PloverDB:
             object_id = edge["object"]
             predicate = self._get_predicate_id(edge[self.predicate_property])
             subject_category_names = self.node_lookup_map[subject_id][self.categories_property]
-            subject_categories = {self._get_category_id(category) for category in subject_category_names}
+            subject_categories = {self._get_category_id(ancestor) for category in subject_category_names
+                                  for ancestor in self.bh.get_ancestors(category, include_mixins=False)}
             object_category_names = self.node_lookup_map[object_id][self.categories_property]
-            object_categories = {self._get_category_id(category) for category in object_category_names}
+            object_categories = {self._get_category_id(ancestor) for category in object_category_names
+                                 for ancestor in self.bh.get_ancestors(category, include_mixins=False)}
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
@@ -120,7 +132,7 @@ class PloverDB:
             edge_tuple = tuple([edge[property_name] for property_name in edge_properties])
             self.edge_lookup_map[edge_id] = edge_tuple
 
-        # Save all indexes to a big json file here
+        # Save all indexes to a big json file
         logging.info("  Saving indexes in pickle..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
