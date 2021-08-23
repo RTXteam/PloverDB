@@ -27,11 +27,9 @@ class PloverDB:
         self.local_kg_file_name = self.kg_config["local_kg_file_name"]
         self.kg_json_name = self._get_kg_json_file_name()
         self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
-        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pickle"
+        self.pickle_index_path = f"{SCRIPT_DIR}/../{self.kg_json_name.strip('.json')}_indexes.pickle"
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
-        self.root_category_name = "biolink:NamedThing"
-        self.root_predicate_name = "biolink:related_to"
         self.bh = None  # BiolinkHelper is downloaded later on
         self.core_node_properties = {"name", "category"}
         self.category_map = dict()
@@ -51,7 +49,8 @@ class PloverDB:
         if self.remote_kg_file_name:
             logging.info(f"  Downloading remote KG file {self.remote_kg_file_name} from Translator Git LFS")
             temp_location = f"{SCRIPT_DIR}/{self.remote_kg_file_name}"
-            subprocess.check_call(["curl", "-L", f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{self.remote_kg_file_name}?raw=true", "-o", temp_location])
+            remote_path = f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{self.remote_kg_file_name}?raw=true"
+            subprocess.check_call(["curl", "-L", remote_path, "-o", temp_location])
             if self.remote_kg_file_name.endswith(".gz"):
                 logging.info(f"  Unzipping KG file")
                 subprocess.check_call(["gunzip", "-f", temp_location])
@@ -75,7 +74,8 @@ class PloverDB:
         bh_file_name = "biolink_helper.py"
         logging.info(f"  Downloading {bh_file_name} from RTX repo")
         local_path = f"{SCRIPT_DIR}/{bh_file_name}"
-        subprocess.check_call(["curl", "-L", f"https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true", "-o", local_path])
+        remote_path = f"https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
+        subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
         from biolink_helper import BiolinkHelper
         self.bh = BiolinkHelper(biolink_version=biolink_version)
 
@@ -139,7 +139,7 @@ class PloverDB:
             self.edge_lookup_map[edge_id] = edge_tuple
 
         # Save all indexes to a big json file
-        logging.info("  Saving indexes in pickle..")
+        logging.info(f"  Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
                        "node_headers": node_properties,
@@ -152,6 +152,8 @@ class PloverDB:
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
+        # TODO: delete the original KG file, now that the pickle index is built?
+
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def load_indexes(self):
@@ -163,7 +165,7 @@ class PloverDB:
             self.build_indexes()
 
         # Load our pickled indexes into memory
-        logging.info("  Loading pickle of indexes..")
+        logging.info(f"  Loading pickle of indexes from {self.pickle_index_path}..")
         # Load big json index file here
         with open(self.pickle_index_path, "rb") as index_file:
             all_indexes = pickle.load(index_file)
