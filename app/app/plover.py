@@ -32,8 +32,10 @@ class PloverDB:
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.bh = None  # BiolinkHelper is downloaded later on
         self.core_node_properties = {"name", "category"}
-        self.category_map = dict()
-        self.predicate_map = dict()
+        self.non_biolink_item_id = 9999
+        self.category_map = dict()  # Maps category english name --> int ID
+        self.predicate_map = dict()  # Maps predicate english name --> int ID
+        self.predicate_map_reversed = dict()  # Maps predicate int ID --> english name
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
         self.main_index = dict()
@@ -80,9 +82,11 @@ class PloverDB:
         self.bh = BiolinkHelper(biolink_version=biolink_version)
 
         # Create basic node/edge lookup maps
+        logging.info(f"Building basic node/edge lookup maps")
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
         # Convert all edges to their canonical predicate form
+        logging.info(f"Converting edges to their canonical form")
         for edge_id, edge in self.edge_lookup_map.items():
             canonical_predicate = self.bh.get_canonical_predicates(edge["predicate"])[0]
             if canonical_predicate != edge["predicate"]:
@@ -115,7 +119,7 @@ class PloverDB:
             object_category_names = self.node_lookup_map[object_id][self.categories_property]
             object_categories = {self._get_category_id(ancestor) for category in object_category_names
                                  for ancestor in self.bh.get_ancestors(category, include_mixins=False)}
-            # Record this edge in both the forwards and backwards direction (we only support undirected queries)
+            # Record this edge in both the forwards and backwards direction
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
             count += 1
@@ -170,15 +174,14 @@ class PloverDB:
 
         # Load our pickled indexes into memory
         logging.info(f"  Loading pickle of indexes from {self.pickle_index_path}..")
-        # Load big json index file here
         with open(self.pickle_index_path, "rb") as index_file:
             all_indexes = pickle.load(index_file)
-            # Then convert all int IDs back to actual ints
             self.node_lookup_map = all_indexes["node_lookup_map"]
             self.edge_lookup_map = all_indexes["edge_lookup_map"]
             self.main_index = all_indexes["main_index"]
             self.subclass_index = all_indexes["subclass_index"]
             self.predicate_map = all_indexes["predicate_map"]
+            self.predicate_map_reversed = {value: key for key, value in self.predicate_map.items()}
             self.category_map = all_indexes["category_map"]
             biolink_version = all_indexes["biolink_version"]
 
@@ -364,8 +367,8 @@ class PloverDB:
         qg_predicate_names_expanded = {descendant_predicate for qg_predicate in qg_predicate_names
                                        for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
-        output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
-        qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names_expanded}
+        output_categories = {self.category_map.get(category, self.non_biolink_item_id) for category in output_category_names}
+        qg_predicates = {self.predicate_map.get(predicate, self.non_biolink_item_id) for predicate in qg_predicate_names_expanded}
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -385,7 +388,8 @@ class PloverDB:
                         predicates_to_inspect = qg_predicates.intersection(predicates_present) if qg_predicates else predicates_present
                         for predicate in predicates_to_inspect:
                             # Figure out which directions we need to inspect based on the QG and Biolink
-                            if enforce_directionality or (respect_symmetry and not self.bh.is_symmetric(predicate)):
+                            if enforce_directionality or (respect_symmetry and predicate != self.non_biolink_item_id and
+                                                          not self.bh.is_symmetric(self.predicate_map_reversed[predicate])):
                                 # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
                                 directions = {1} if input_qnode_key == qedge["subject"] else {0}
                             else:
