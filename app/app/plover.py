@@ -8,7 +8,7 @@ import statistics
 import subprocess
 import time
 from collections import defaultdict
-from typing import List, Dict, Union, Set, Optional
+from typing import List, Dict, Union, Set, Optional, Tuple
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
@@ -23,11 +23,12 @@ class PloverDB:
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
         self.is_test = self.kg_config["is_test"]
+        self.remote_index_file_name = self.kg_config["remote_index_file_name"]
         self.remote_kg_file_name = self.kg_config["remote_kg_file_name"]
         self.local_kg_file_name = self.kg_config["local_kg_file_name"]
-        self.kg_json_name = self._get_kg_json_file_name()
+        self.pickle_index_name, self.kg_json_name = self._get_local_file_names()
         self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
-        self.pickle_index_path = f"{SCRIPT_DIR}/../{self.kg_json_name.strip('.json')}_indexes.pickle"
+        self.pickle_index_path = f"{SCRIPT_DIR}/../{self.pickle_index_name}"
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.bh = None  # BiolinkHelper is downloaded later on
@@ -47,25 +48,20 @@ class PloverDB:
         logging.info("Starting to build indexes..")
         start = time.time()
 
-        # Download/unzip KG file as needed
-        if self.remote_kg_file_name:
-            logging.info(f"  Downloading remote KG file {self.remote_kg_file_name} from Translator Git LFS")
-            temp_location = f"{SCRIPT_DIR}/{self.remote_kg_file_name}"
-            remote_path = f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{self.remote_kg_file_name}?raw=true"
-            subprocess.check_call(["curl", "-L", remote_path, "-o", temp_location])
-            if self.remote_kg_file_name.endswith(".gz"):
-                logging.info(f"  Unzipping KG file")
-                subprocess.check_call(["gunzip", "-f", temp_location])
-                temp_location = temp_location.strip(".gz")
-            subprocess.check_call(["mv", temp_location, self.kg_json_path])
+        # Download the proper remote data file or get set up to use a local KG file
+        if self.remote_index_file_name:
+            self._download_and_unzip_remote_file(self.remote_index_file_name, self.pickle_index_path)
+            return  # No need to re-build indexes since we were able to download them
+        elif self.remote_kg_file_name:
+            self._download_and_unzip_remote_file(self.remote_kg_file_name, self.kg_json_path)
         else:
-            logging.info(f"  Will use local KG file {self.local_kg_file_name}")
+            logging.info(f"Will use local KG file {self.local_kg_file_name}")
             if self.local_kg_file_name.endswith(".gz"):
-                logging.info(f"  Unzipping local KG file")
+                logging.info(f"Unzipping local KG file")
                 subprocess.check_call(["gunzip", "-f", f"{self.kg_json_path}.gz"])
 
         # Load the JSON KG
-        logging.info(f"  Loading KG JSON file ({self.kg_json_name})..")
+        logging.info(f"Loading KG JSON file ({self.kg_json_name})..")
         with open(self.kg_json_path, "r") as kg2c_file:
             kg2c_dict = json.load(kg2c_file)
             biolink_version = kg2c_dict.get("biolink_version")
@@ -74,7 +70,7 @@ class PloverDB:
 
         # Set up BiolinkHelper (download from RTX repo)
         bh_file_name = "biolink_helper.py"
-        logging.info(f"  Downloading {bh_file_name} from RTX repo")
+        logging.info(f"Downloading {bh_file_name} from RTX repo")
         local_path = f"{SCRIPT_DIR}/{bh_file_name}"
         remote_path = f"https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
         subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
@@ -174,15 +170,21 @@ class PloverDB:
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def load_indexes(self):
-        logging.info("Starting to load indexes..")
-        start = time.time()
-        # Build our indexes if they haven't already been built
+        logging.info(f"Checking whether pickle of indexes is already available..")
         pickle_index_file = pathlib.Path(self.pickle_index_path)
         if not pickle_index_file.exists():
-            self.build_indexes()
+            if self.remote_index_file_name:
+                # Download the pre-computed pickle of indexes
+                self._download_and_unzip_remote_file(self.remote_index_file_name, self.pickle_index_path)
+            else:
+                # Otherwise we'll have to build indexes from a KG file
+                logging.info(f"No index pickle exists and none was specified for download in kg_config.json - will "
+                             f"build indexes")
+                self.build_indexes()
 
         # Load our pickled indexes into memory
-        logging.info(f"  Loading pickle of indexes from {self.pickle_index_path}..")
+        logging.info(f"Loading pickle of indexes from {self.pickle_index_path}..")
+        start = time.time()
         with open(self.pickle_index_path, "rb") as index_file:
             all_indexes = pickle.load(index_file)
             self.node_lookup_map = all_indexes["node_lookup_map"]
@@ -321,6 +323,18 @@ class PloverDB:
                 json.dump(report, report_file, indent=2)
 
         logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
+
+    @staticmethod
+    def _download_and_unzip_remote_file(remote_file_name: str, local_destination_path: str):
+        logging.info(f"Downloading remote file {remote_file_name} from translator-lfs-artifacts repo")
+        temp_location = f"{SCRIPT_DIR}/{remote_file_name}"
+        remote_path = f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{remote_file_name}?raw=true"
+        subprocess.check_call(["curl", "-L", remote_path, "-o", temp_location])
+        if remote_file_name.endswith(".gz"):
+            logging.info(f"Unzipping downloaded file")
+            subprocess.check_call(["gunzip", "-f", temp_location])
+            temp_location = temp_location.strip(".gz")
+        subprocess.check_call(["mv", temp_location, local_destination_path])
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
@@ -472,17 +486,22 @@ class PloverDB:
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
-    def _get_kg_json_file_name(self) -> Optional[str]:
+    def _get_local_file_names(self) -> Tuple[Optional[str], Optional[str]]:
+        remote_index_file_name = self.kg_config.get("remote_index_file_name")
         remote_kg_file_name = self.kg_config.get("remote_kg_file_name")
         local_kg_file_name = self.kg_config.get("local_kg_file_name")
-        if remote_kg_file_name:
-            return remote_kg_file_name.strip(".gz")
-        elif local_kg_file_name:
-            return local_kg_file_name.strip(".gz")
+        if not remote_index_file_name and not remote_kg_file_name and not local_kg_file_name:
+            logging.error("In kg_config.json, you must specify either a remote file to download (either a JSON KG "
+                          "file or a pickle file of indexes) from the translator-lfs-artifacts repo or a local KG "
+                          "file to use.")
+            return None, None
         else:
-            logging.error("In kg_config.json, you must specify either the name of a remote KG file to download from "
-                          "the Translator Git LFS or a local KG file to use")
-            return None
+            if remote_index_file_name:
+                return remote_index_file_name.strip(".gz"), None
+            else:
+                kg_file_name = remote_kg_file_name.strip(".gz") if remote_kg_file_name else local_kg_file_name.strip(".gz")
+                index_file_name = f"{kg_file_name.strip('.json')}_indexes.pickle"
+                return index_file_name, kg_file_name
 
     @staticmethod
     def _convert_to_set(input_item: any) -> Set[str]:
