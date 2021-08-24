@@ -85,6 +85,7 @@ class PloverDB:
         logging.info(f"Building basic node/edge lookup maps")
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+
         # Convert all edges to their canonical predicate form
         logging.info(f"Converting edges to their canonical form")
         for edge_id, edge in self.edge_lookup_map.items():
@@ -132,15 +133,16 @@ class PloverDB:
             if count % 1000000 == 0:
                 logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
 
+        # Build the subclass_of index as needed
         if self.kg_config.get("subclass_sources"):
             self._build_subclass_index(set(self.kg_config["subclass_sources"]))
         else:
             logging.info(f"Not building subclass_of index since no subclass sources were specified in kg_config.json")
 
-        logging.info("Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
+        logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
-        edge_properties = ("subject", "object", "predicate", "provided_by", "publications")
+        edge_properties = ("subject", "object", "predicate", "provided_by", "publications", "kg2_ids")
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
@@ -152,7 +154,7 @@ class PloverDB:
             edge_tuple = tuple([edge[property_name] for property_name in edge_properties])
             self.edge_lookup_map[edge_id] = edge_tuple
 
-        # Save all indexes to a big json file
+        # Save all indexes in a big pickle
         logging.info(f"Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
