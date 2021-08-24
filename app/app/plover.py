@@ -106,32 +106,38 @@ class PloverDB:
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
 
+        # Build a helper map of nodes --> category labels (including ancestors)
+        logging.info("Determining nodes' category labels (including Biolink ancestors)..")
+        node_to_category_labels_map = dict()
+        for node_id, node in self.node_lookup_map.items():
+            category_names = node[self.categories_property]
+            category_names_with_ancestors = self.bh.get_ancestors(category_names, include_mixins=False)
+            node_to_category_labels_map[node_id] = {self._get_category_id(category_name)
+                                                    for category_name in category_names_with_ancestors}
+
         # Build our main index (modified/nested adjacency list kind of structure)
-        logging.info("  Building main index..")
+        logging.info("Building main index..")
         count = 0
+        total = len(self.edge_lookup_map)
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
             predicate = self._get_predicate_id(edge[self.predicate_property])
-            subject_category_names = self.node_lookup_map[subject_id][self.categories_property]
-            subject_categories = {self._get_category_id(ancestor) for category in subject_category_names
-                                  for ancestor in self.bh.get_ancestors(category, include_mixins=False)}
-            object_category_names = self.node_lookup_map[object_id][self.categories_property]
-            object_categories = {self._get_category_id(ancestor) for category in object_category_names
-                                 for ancestor in self.bh.get_ancestors(category, include_mixins=False)}
+            subject_categories = node_to_category_labels_map[subject_id]
+            object_categories = node_to_category_labels_map[object_id]
             # Record this edge in both the forwards and backwards direction
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
             count += 1
             if count % 1000000 == 0:
-                logging.info(f"  Have processed {count} edges..")
+                logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
 
         if self.kg_config.get("subclass_sources"):
             self._build_subclass_index(set(self.kg_config["subclass_sources"]))
         else:
-            logging.info(f"  Not building subclass_of index since no subclass sources were specified in kg_config.json")
+            logging.info(f"Not building subclass_of index since no subclass sources were specified in kg_config.json")
 
-        logging.info("  Converting node/edge objects to tuple form..")
+        logging.info("Converting node/edge objects to tuple form..")
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         node_properties = ("name", "category")
         edge_properties = ("subject", "object", "predicate", "provided_by", "publications")
@@ -147,7 +153,7 @@ class PloverDB:
             self.edge_lookup_map[edge_id] = edge_tuple
 
         # Save all indexes to a big json file
-        logging.info(f"  Saving indexes to {self.pickle_index_path}..")
+        logging.info(f"Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
                        "node_headers": node_properties,
@@ -160,7 +166,8 @@ class PloverDB:
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        # TODO: delete the original KG file, now that the pickle index is built?
+        logging.info(f"Removing {self.kg_json_name} from the image now that index building is done")
+        subprocess.call(["rm", "-f", self.kg_json_path])
 
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
