@@ -348,10 +348,12 @@ class PloverDB:
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
-        output_category_names = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
+        output_category_names_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
+        output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
         qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
-        qg_predicate_names_expanded = {descendant_predicate for qg_predicate in qg_predicate_names_raw
+        qg_predicate_names = self.bh.replace_mixins_with_direct_mappings(qg_predicate_names_raw)
+        qg_predicate_names_expanded = {descendant_predicate for qg_predicate in qg_predicate_names
                                        for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
         output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
