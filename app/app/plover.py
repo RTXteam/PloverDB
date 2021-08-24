@@ -104,6 +104,7 @@ class PloverDB:
 
         # Build our main index (modified/nested adjacency list kind of structure)
         logging.info("  Building main index..")
+        count = 0
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
@@ -117,6 +118,9 @@ class PloverDB:
             # Record this edge in both the forwards and backwards direction (we only support undirected queries)
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
+            count += 1
+            if count % 1000000 == 0:
+                logging.info(f"  Have processed {count} edges..")
 
         if self.kg_config.get("subclass_sources"):
             self._build_subclass_index(set(self.kg_config["subclass_sources"]))
