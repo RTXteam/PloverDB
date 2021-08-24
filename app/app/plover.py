@@ -345,27 +345,23 @@ class PloverDB:
                              f"You must use either all canonical or all non-canonical predicates.")
 
         # Load the query and do any necessary transformations to categories/predicates
+        enforce_directionality = trapi_query.get("enforce_directionality")
+        respect_symmetry = trapi_query.get("respect_predicate_symmetry")
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
         output_category_names_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
+        output_category_names_raw = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
         output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
         qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
+        qg_predicate_names_raw = {self.bh.get_root_predicate()} if not qg_predicate_names_raw else qg_predicate_names_raw
         qg_predicate_names = self.bh.replace_mixins_with_direct_mappings(qg_predicate_names_raw)
         qg_predicate_names_expanded = {descendant_predicate for qg_predicate in qg_predicate_names
                                        for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
         output_categories = {self.category_map.get(category, 9999) for category in output_category_names}
         qg_predicates = {self.predicate_map.get(predicate, 9999) for predicate in qg_predicate_names_expanded}
-
-        # Figure out which directions we need to inspect based on the QG
-        enforce_directionality = trapi_query.get("enforce_directionality")
-        if enforce_directionality:
-            # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
-            directions = {1} if input_qnode_key == qedge["subject"] else {0}
-        else:
-            directions = {0, 1}
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -384,6 +380,12 @@ class PloverDB:
                         predicates_present = set(main_index[input_curie][output_category])
                         predicates_to_inspect = qg_predicates.intersection(predicates_present) if qg_predicates else predicates_present
                         for predicate in predicates_to_inspect:
+                            # Figure out which directions we need to inspect based on the QG and Biolink
+                            if enforce_directionality or (respect_symmetry and not self.bh.is_symmetric(predicate)):
+                                # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
+                                directions = {1} if input_qnode_key == qedge["subject"] else {0}
+                            else:
+                                directions = {0, 1}
                             if output_curies:
                                 # We need to look for the matching output node(s)
                                 for direction in directions:
