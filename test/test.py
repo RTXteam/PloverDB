@@ -600,30 +600,5 @@ def test_19():
     assert any(edge_tuple[2] != "biolink:related_to" for edge_tuple in kg["edges"]["e00"].values())
 
 
-def test_20():
-    # Test KG2 IDs property
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:related_to"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
-            },
-            "n01": {
-                "categories": ["biolink:Protein"]
-            }
-        },
-        "include_metadata": True
-    }
-    kg = _run_query(query)
-    assert len(kg["edges"]["e00"])
-    assert all(len(edge_tuple) == 6 for edge_tuple in kg["edges"]["e00"].values())
-
-
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])

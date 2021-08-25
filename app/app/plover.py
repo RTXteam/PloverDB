@@ -138,7 +138,7 @@ class PloverDB:
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
-        edge_properties = ("subject", "object", "predicate", "provided_by", "publications", "kg2_ids")
+        edge_properties = ("subject", "object", "predicate", "provided_by", "publications")
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
