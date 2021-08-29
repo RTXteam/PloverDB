@@ -7,5 +7,5 @@
     "edges": "predicate",
     "nodes": "all_categories"
   },
-  "subclass_sources": ["OBO:mondo.owl", "OBO:chebi.owl"]
+  "subclass_sources": ["infores:mondo", "infores:chebi"]
 }

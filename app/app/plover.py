@@ -138,7 +138,7 @@ class PloverDB:
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
-        edge_properties = ("subject", "object", "predicate", "provided_by")
+        edge_properties = ("subject", "object", "predicate", "knowledge_source")
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
@@ -250,7 +250,7 @@ class PloverDB:
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
                              if edge[self.predicate_property] in subclass_predicates and
-                             set(edge.get("provided_by", set())).intersection(subclass_sources)}
+                             set(edge.get("knowledge_source", set())).intersection(subclass_sources)}
         logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from specified sources)")
 
         # Build a map of nodes to their direct 'subclass_of' children
