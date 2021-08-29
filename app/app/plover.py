@@ -108,7 +108,7 @@ class PloverDB:
         node_to_category_labels_map = dict()
         for node_id, node in self.node_lookup_map.items():
             category_names = node[self.categories_property]
-            category_names_with_ancestors = self.bh.get_ancestors(category_names, include_mixins=True)
+            category_names_with_ancestors = self.bh.get_ancestors(category_names, include_mixins=False)
             node_to_category_labels_map[node_id] = {self._get_category_id(category_name)
                                                     for category_name in category_names_with_ancestors}
 
@@ -381,10 +381,12 @@ class PloverDB:
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
         output_category_names_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
-        output_category_names = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
+        output_category_names_raw = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
+        output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
         qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
-        qg_predicate_names = {self.bh.get_root_predicate()} if not qg_predicate_names_raw else qg_predicate_names_raw
+        qg_predicate_names_raw = {self.bh.get_root_predicate()} if not qg_predicate_names_raw else qg_predicate_names_raw
+        qg_predicate_names = self.bh.replace_mixins_with_direct_mappings(qg_predicate_names_raw)
         qg_predicate_names_expanded = {descendant_predicate for qg_predicate in qg_predicate_names
                                        for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
