@@ -338,7 +338,7 @@ class PloverDB:
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
-    def answer_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
+    def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
@@ -391,7 +391,8 @@ class PloverDB:
                                        for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
         output_categories = {self.category_map.get(category, self.non_biolink_item_id) for category in output_category_names}
-        qg_predicates = {self.predicate_map.get(predicate, self.non_biolink_item_id) for predicate in qg_predicate_names_expanded}
+        qg_predicates = {self.predicate_map.get(predicate, self.non_biolink_item_id): self._consider_bidirectional(predicate, qg_predicate_names, respect_symmetry, enforce_directionality)
+                         for predicate in qg_predicate_names_expanded}
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -406,17 +407,16 @@ class PloverDB:
                 categories_to_inspect = output_categories.intersection(categories_present) if output_categories and not output_curies else categories_present
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
-                        # Consider ALL predicates if none were specified in the QG
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = qg_predicates.intersection(predicates_present) if qg_predicates else predicates_present
+                        predicates_to_inspect = set(qg_predicates).intersection(predicates_present)
+                        # Loop through each QG predicate (and their descendants), looking up answers as we go
                         for predicate in predicates_to_inspect:
-                            # Figure out which directions we need to inspect based on the QG and Biolink
-                            if enforce_directionality or (respect_symmetry and predicate != self.non_biolink_item_id and
-                                                          not self.bh.is_symmetric(self.predicate_map_reversed[predicate])):
+                            consider_bidirectional = qg_predicates.get(predicate)
+                            if consider_bidirectional:
+                                directions = {0, 1}
+                            else:
                                 # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
                                 directions = {1} if input_qnode_key == qedge["subject"] else {0}
-                            else:
-                                directions = {0, 1}
                             if output_curies:
                                 # We need to look for the matching output node(s)
                                 for direction in directions:
@@ -483,6 +483,20 @@ class PloverDB:
                 most_curies = len(qnode[ids_property])
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
+
+    def _consider_bidirectional(self, predicate_name: str, input_qg_predicate_names: Set[str], respect_symmetry: bool,
+                                enforce_directionality: bool) -> bool:
+        """
+        This function determines whether or not QEdge direction should be ignored for a particular predicate
+        based on the Biolink model and QG parameters.
+        """
+        ancestor_predicates = set(self.bh.get_ancestors(predicate_name, include_mixins=False))
+        ancestor_predicates_in_qg = ancestor_predicates.intersection(input_qg_predicate_names)
+        has_symmetric_ancestor_in_qg = any(self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
+        if respect_symmetry:
+            return True if self.bh.is_symmetric(predicate_name) or has_symmetric_ancestor_in_qg else False
+        else:
+            return True if not enforce_directionality else False
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
