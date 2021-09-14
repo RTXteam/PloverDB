@@ -493,8 +493,12 @@ class PloverDB:
         ancestor_predicates = set(self.bh.get_ancestors(predicate_name, include_mixins=False))
         ancestor_predicates_in_qg = ancestor_predicates.intersection(input_qg_predicate_names)
         has_symmetric_ancestor_in_qg = any(self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
+        has_asymmetric_ancestor_in_qg = any(not self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
         if respect_symmetry:
-            return True if self.bh.is_symmetric(predicate_name) or has_symmetric_ancestor_in_qg else False
+            if self.bh.is_symmetric(predicate_name) or (has_symmetric_ancestor_in_qg and not has_asymmetric_ancestor_in_qg):
+                return True
+            else:
+                return False
         else:
             return True if not enforce_directionality else False
 
