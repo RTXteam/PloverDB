@@ -375,10 +375,10 @@ def test_13():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "UniProtKB:P04070"]
+                "ids": ["UniProtKB:Q9BYZ6"]
             },
             "n01": {
-                "categories": ["biolink:Protein"]
+                "categories": ["biolink:SmallMolecule"]
             }
         },
         "include_metadata": True
@@ -598,6 +598,21 @@ def test_19():
     kg = _run_query(query)
     assert len(kg["edges"]["e00"])
     assert any(edge_tuple[2] != "biolink:related_to" for edge_tuple in kg["edges"]["e00"].values())
+
+
+def test_version():
+    # Print out the version of the KG2c being tested
+    query = {
+        "edges": {},
+        "nodes": {
+            "n00": {
+                "ids": ["RTX:KG2c"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    print(kg)
 
 
 if __name__ == "__main__":
