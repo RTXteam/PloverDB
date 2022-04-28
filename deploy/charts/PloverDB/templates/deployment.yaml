@@ -10,7 +10,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "PloverDB.selectorLabels" . | nindent 6 }}
+      app: {{- include "PloverDB.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}

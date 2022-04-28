@@ -47,7 +47,6 @@ Selector labels
 */}}
 {{- define "PloverDB.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "PloverDB.name" . }}
-app.kubernetes.io/app: {{ include "PloverDB.app" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
