@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "PloverDB.fullname" . }}
+  name: {{ include "ploverdb.fullname" . }}
   namespace: rtx
 spec:
   type: {{ .Values.service.type }}

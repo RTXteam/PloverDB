@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "PloverDB.fullname" . }}
+  name: {{ include "ploverdb.fullname" . }}
   namespace: rtx
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "PloverDB.fullname" . }}
+      app: {{ include "ploverdb.fullname" . }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -15,7 +15,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app: {{ include "PloverDB.fullname" . }}
+        app: {{ include "ploverdb.fullname" . }}
     spec:
       containers:
         - name: {{ .Chart.Name }}server
