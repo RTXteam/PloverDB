@@ -25,4 +25,4 @@ spec:
             service:
               name: ploverdb
               port:
-                number: {{ $svcPort }}
+                number: 80
