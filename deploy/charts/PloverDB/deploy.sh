@@ -22,5 +22,7 @@ do
   rm values.yaml.bak
 done
 
+kubectl apply -f namespace.yaml
+
 # deploy helm chart
 helm -n ${namespace} upgrade --install ${projectName} -f values.yaml ./
