@@ -7,7 +7,6 @@ metadata:
     {{- include "PloverDB.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
-  {{- end }}
   selector:
     matchLabels:
       app: {{- include "PloverDB.selectorLabels" . | nindent 6 }}
