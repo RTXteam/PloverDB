@@ -11,7 +11,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{- include "ploverdb.fullname" . | nindent 8 }}
+        app: {{ include "ploverdb.fullname" .}}
     spec:
       containers:
         - name: {{ .Chart.Name }}server
