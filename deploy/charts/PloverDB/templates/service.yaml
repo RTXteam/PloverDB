@@ -6,9 +6,9 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.service.port }}
+    - port: 80
       targetPort: http
       protocol: TCP
       name: http
   selector:
-    app: {{- include "PloverDB.selectorLabels" . | nindent 4 }}
+    app: ploverdb
