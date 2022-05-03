@@ -25,4 +25,4 @@ done
 kubectl apply -f namespace.yaml
 
 # deploy helm chart
-helm -n ${namespace} upgrade --install ${projectName} -f values.yaml ./
+helm -n ${namespace} upgrade --install ${projectName} -f values.yaml -f values-ci.yaml ./

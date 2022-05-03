@@ -54,7 +54,7 @@ pipeline {
         stage('Deploy to AWS EKS Blue') {
             steps {
                 configFileProvider([
-                    configFile(fileId: 'ploverdb-ci-values.yaml', targetLocation: 'deploy/ploverdb/values.yaml')
+                    configFile(fileId: 'ploverdb-ci-values.yaml', targetLocation: 'deploy/ploverdb/values-ci.yaml')
                 ]){
                     withAWS(credentials:'aws-ifx-deploy') {
                         sh '''
