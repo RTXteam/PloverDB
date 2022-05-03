@@ -3,8 +3,6 @@ kind: Service
 metadata:
   name: {{ include "ploverdb.fullname" . }}
   namespace: rtx
-  labels:
-    {{- include "ploverdb.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -13,4 +11,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: {{- include "ploverdb.fullname" .  | nindent 4 }}
+    app: {{ include "ploverdb.fullname" . }}
