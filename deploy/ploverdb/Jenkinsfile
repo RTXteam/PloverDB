@@ -58,7 +58,7 @@ pipeline {
                 ]){
                     withAWS(credentials:'aws-ifx-deploy') {
                         sh '''
-                        helm delete ploverdb -n rtx
+                        kubectl delete deployment ploverdb -n rtx
                         aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
                         cd deploy/ploverdb/ && /bin/bash deploy.sh
                         '''
