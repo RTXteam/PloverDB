@@ -22,7 +22,7 @@ do
   rm values.yaml.bak
 done
 
-kubectl apply -f namespace.yaml
-
+helm -n ${namespace} uninstall ${projectName}
+sleep 30
 # deploy helm chart
 helm -n ${namespace} upgrade --install ${projectName} -f values.yaml -f values-ci.yaml ./
