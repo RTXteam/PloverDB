@@ -18,7 +18,7 @@ ingress:
   annotations:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-FS-1-2-Res-2020-10
     alb.ingress.kubernetes.io/tags: Name=PDB_ALB_TAG_VALUE,Environment=ENVIRONMENT_TAG_VALUE
     alb.ingress.kubernetes.io/security-groups: PDB_ALB_SG_VALUE
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
@@ -26,7 +26,7 @@ ingress:
     alb.ingress.kubernetes.io/success-codes: '405'
     alb.ingress.kubernetes.io/healthcheck-path: '/query/'
   host: PDB_HOSTNAME_VALUE
-  
+
 affinity:
   podAntiAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
