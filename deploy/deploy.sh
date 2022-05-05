@@ -22,7 +22,5 @@ do
   rm values.yaml.bak
 done
 
-helm -n ${namespace} uninstall ${projectName}
-sleep 30
 # deploy helm chart
 helm -n ${namespace} upgrade --install ${projectName} -f values-ci.yaml ./
