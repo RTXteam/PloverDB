@@ -54,13 +54,12 @@ pipeline {
         stage('Deploy to AWS EKS Blue') {
             steps {
                 configFileProvider([
-                    configFile(fileId: 'ploverdb-ci-env', targetLocation: 'deploy/.env')
+                    configFile(fileId: 'ploverdb-ci-values.yaml', targetLocation: 'deploy/values-ci.yaml')
                 ]){
                     withAWS(credentials:'aws-ifx-deploy') {
                         sh '''
-                        kubectl delete deployment ploverdb -n rtx
                         aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
-                        cd deploy && /bin/bash deploy.sh
+                        cd deploy/ && /bin/bash deploy.sh
                         '''
                     }
                 }
