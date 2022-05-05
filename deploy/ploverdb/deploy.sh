@@ -25,4 +25,4 @@ done
 helm -n ${namespace} uninstall ${projectName}
 sleep 30
 # deploy helm chart
-helm -n ${namespace} upgrade --install ${projectName} -f values.yaml -f values-ci.yaml ./
+helm -n ${namespace} upgrade --install ${projectName} -f values-ci.yaml ./
