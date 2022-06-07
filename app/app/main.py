@@ -21,6 +21,13 @@ def run_query():
     return jsonify(answer)
 
 
+@app.route('/metaquery/', methods=['POST'])
+def run_meta_query():
+    query = request.json
+    answer = plover.answer_meta_query(query)
+    return jsonify(answer)
+
+
 @app.route('/healthcheck/', methods=['GET'])
 def run_health_check():
     return ''

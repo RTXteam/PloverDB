@@ -40,6 +40,7 @@ class PloverDB:
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
         self.main_index = dict()
+        self.meta_index = dict()
         self.subclass_index = dict()
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
@@ -125,6 +126,7 @@ class PloverDB:
             # Record this edge in both the forwards and backwards direction
             self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
+            self._add_to_meta_index(subject_categories, object_categories, predicate, edge["knowledge_source"])
             count += 1
             if count % 1000000 == 0:
                 logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
@@ -157,6 +159,7 @@ class PloverDB:
                        "node_headers": node_properties,
                        "edge_headers": edge_properties,
                        "main_index": self.main_index,
+                       "meta_index": self.meta_index,
                        "subclass_index": self.subclass_index,
                        "predicate_map": self.predicate_map,
                        "category_map": self.category_map,
@@ -190,6 +193,7 @@ class PloverDB:
             self.node_lookup_map = all_indexes["node_lookup_map"]
             self.edge_lookup_map = all_indexes["edge_lookup_map"]
             self.main_index = all_indexes["main_index"]
+            self.meta_index = all_indexes["meta_index"]
             self.subclass_index = all_indexes["subclass_index"]
             self.predicate_map = all_indexes["predicate_map"]
             self.predicate_map_reversed = {value: key for key, value in self.predicate_map.items()}
@@ -214,6 +218,17 @@ class PloverDB:
             if predicate not in main_index[node_a_id][category]:
                 main_index[node_a_id][category][predicate] = (dict(), dict())
             main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
+
+    def _add_to_meta_index(self, subject_categories: Set[int], object_categories: Set[int], predicate: int,
+                           knowledge_sources: Set[str]):
+        meta_index = self.meta_index
+        for subject_category in subject_categories:
+            for object_category in object_categories:
+                meta_triple = f"{subject_category}--{predicate}--{object_category}"
+                if meta_triple not in meta_index:
+                    meta_index[meta_triple] = defaultdict(int)
+                for knowledge_source in knowledge_sources:
+                    meta_index[meta_triple][knowledge_source] += 1
 
     def _get_predicate_id(self, predicate_name: str) -> int:
         if predicate_name not in self.predicate_map:
@@ -465,6 +480,40 @@ class PloverDB:
                 else:
                     answer_kg["nodes"][qnode_key] = list(found_curies)
         return answer_kg
+
+    def answer_meta_query(self, meta_query: dict) -> dict:
+        answer = dict()
+        for meta_qedge_key, meta_qedge in meta_query.items():
+            # Make this meta qedge use a canonical predicate
+            canonical_predicate = self.bh.get_canonical_predicates(meta_qedge["predicate"])[0]
+            if meta_qedge["predicate"] != canonical_predicate:
+                meta_qedge["predicate"] = canonical_predicate
+                old_subject = meta_qedge["subject"]
+                meta_qedge["subject"] = meta_qedge["object"]
+                meta_qedge["object"] = old_subject
+
+            # Convert the string/english versions of categories/predicates into integer IDs (for index lookup)
+            descendant_predicates = {self.predicate_map.get(desc_predicate, self.non_biolink_item_id)
+                                     for desc_predicate in self.bh.get_descendants(meta_qedge["predicate"], include_mixins=False)}
+            subject_category = self.category_map.get(meta_qedge['subject'], self.non_biolink_item_id)
+            object_category = self.category_map.get(meta_qedge['object'], self.non_biolink_item_id)
+
+            # Get meta counts, factoring in predicate descendants and symmetry as applicable
+            knowledge_source_counts = defaultdict(int)
+            for descendant_predicate in descendant_predicates:
+                desc_meta_triple = f"{subject_category}--{descendant_predicate}--{object_category}"
+                for knowledge_source, count in self.meta_index.get(desc_meta_triple, dict()).items():
+                    knowledge_source_counts[knowledge_source] += count
+                is_bidirectional = self._consider_bidirectional(descendant_predicate, {descendant_predicate},
+                                                                respect_symmetry=True, enforce_directionality=False)
+                if is_bidirectional:
+                    desc_meta_triple = f"{object_category}--{descendant_predicate}--{subject_category}"
+                    for knowledge_source, count in self.meta_index.get(desc_meta_triple, dict()).items():
+                        knowledge_source_counts[knowledge_source] += count
+
+            # Record all combined knowledge source counts under the same queried meta qedge
+            answer[f"{meta_qedge['subject']}--{meta_qedge['predicate']}--{meta_qedge['object']}"] = knowledge_source_counts
+        return answer
 
     def _get_descendants(self, node_ids: List[str]) -> List[str]:
         proper_descendants = {descendant_id for node_id in node_ids
