@@ -349,14 +349,35 @@ class PloverDB:
         # Make sure at least one qnode has a curie
         qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
         qedge = trapi_query["edges"][qedge_key]
-        subject_qnode = trapi_query["nodes"][qedge["subject"]]
-        object_qnode = trapi_query["nodes"][qedge["object"]]
+        subject_qnode_key = qedge["subject"]
+        object_qnode_key = qedge["object"]
+        subject_qnode = trapi_query["nodes"][subject_qnode_key]
+        object_qnode = trapi_query["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
+        descendant_to_query_curie_map = {subject_qnode_key: dict(), object_qnode_key: dict()}
         if subject_qnode.get("ids") and subject_qnode.get("allow_subclasses"):
-            subject_qnode["ids"] = self._get_descendants(subject_qnode["ids"])
+            subject_qnode_curies_with_descendants = list()
+            subject_qnode_curies = set(subject_qnode["ids"])
+            for query_curie in subject_qnode_curies:
+                descendants = self._get_descendants(query_curie)
+                for descendant in descendants:
+                    # We only want to record the mapping in the case of a true descendant
+                    if descendant not in subject_qnode_curies:
+                        descendant_to_query_curie_map[subject_qnode_key][descendant] = query_curie
+                subject_qnode_curies_with_descendants += descendants
+            subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
         if object_qnode.get("ids") and object_qnode.get("allow_subclasses"):
-            object_qnode["ids"] = self._get_descendants(object_qnode["ids"])
+            object_qnode_curies_with_descendants = list()
+            object_qnode_curies = set(object_qnode["ids"])
+            for query_curie in object_qnode_curies:
+                descendants = self._get_descendants(query_curie)
+                for descendant in descendants:
+                    # We only want to record the mapping in the case of a true descendant
+                    if descendant not in object_qnode_curies:
+                        descendant_to_query_curie_map[object_qnode_key][descendant] = query_curie
+                object_qnode_curies_with_descendants += descendants
+            object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
 
         # Convert to canonical predicates in the QG as needed
         user_predicates = self._convert_to_set(qedge.get("predicates"))
@@ -441,8 +462,10 @@ class PloverDB:
 
         # Form final response according to parameter passed in query
         if trapi_query.get("include_metadata"):
-            nodes = {input_qnode_key: {node_id: self.node_lookup_map[node_id] for node_id in final_input_qnode_answers},
-                     output_qnode_key: {node_id: self.node_lookup_map[node_id] for node_id in final_output_qnode_answers}}
+            nodes = {input_qnode_key: {node_id: self.node_lookup_map[node_id] + [descendant_to_query_curie_map[input_qnode_key].get(node_id)]
+                                       for node_id in final_input_qnode_answers},
+                     output_qnode_key: {node_id: self.node_lookup_map[node_id] + [descendant_to_query_curie_map[output_qnode_key].get(node_id)]
+                                        for node_id in final_output_qnode_answers}}
             edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
         else:
             nodes = {input_qnode_key: list(final_input_qnode_answers),
