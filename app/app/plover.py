@@ -489,7 +489,8 @@ class PloverDB:
                     answer_kg["nodes"][qnode_key] = list(found_curies)
         return answer_kg
 
-    def _get_descendants(self, node_ids: List[str]) -> List[str]:
+    def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
+        node_ids = self._convert_to_set(node_ids)
         proper_descendants = {descendant_id for node_id in node_ids
                               for descendant_id in self.subclass_index.get(node_id, set())}
         descendants = proper_descendants.union(node_ids)
