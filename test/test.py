@@ -391,6 +391,7 @@ def test_13():
 def test_14():
     # Test subclass_of reasoning
     query_subclass = {
+        "include_metadata": True,
         "edges": {
         },
         "nodes": {
@@ -404,6 +405,7 @@ def test_14():
     assert len(kg["nodes"]["n00"]) > 1
     _print_kg(kg)
     query_no_subclass = {
+        "include_metadata": True,
         "edges": {
         },
         "nodes": {
@@ -598,6 +600,42 @@ def test_19():
     kg = _run_query(query)
     assert len(kg["edges"]["e00"])
     assert any(edge_tuple[2] != "biolink:related_to" for edge_tuple in kg["edges"]["e00"].values())
+
+
+def test_20():
+    # Test that the proper 'query_id' mapping (for TRAPI) is returned
+    diabetes_curie = "MONDO:0005015"
+    type_1_diabetes_curie = "MONDO:0005147"
+    type_2_diabetes_curie = "MONDO:0005148"
+    query = {
+        "include_metadata": True,
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01"
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [diabetes_curie, type_2_diabetes_curie],
+                "allow_subclasses": True
+            },
+            "n01": {
+                "categories": ["biolink:ChemicalEntity"]
+            }
+        }
+    }
+    kg = _run_query(query)
+    assert len(kg["nodes"]["n00"]) > 1
+    assert {diabetes_curie, type_1_diabetes_curie, type_2_diabetes_curie}.issubset(set(kg["nodes"]["n00"]))
+    diabetes_node_tuple = kg["nodes"]["n00"][diabetes_curie]
+    type_1_diabetes_node_tuple = kg["nodes"]["n00"][type_1_diabetes_curie]
+    type_2_diabetes_node_tuple = kg["nodes"]["n00"][type_2_diabetes_curie]
+    # Curies that appear in the QG should have no query_id listed
+    assert not diabetes_node_tuple[-1]
+    assert not type_2_diabetes_node_tuple[-1]
+    # Descendant curies should indicate which QG curie they correspond to
+    assert type_1_diabetes_node_tuple[-1] == [diabetes_curie]
 
 
 def test_version():
