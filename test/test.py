@@ -639,7 +639,7 @@ def test_20():
 
 
 def test_version():
-    # Print out the version of the KG2c being tested
+    # Print out the version of the KG2c being tested 
     query = {
         "edges": {},
         "nodes": {
