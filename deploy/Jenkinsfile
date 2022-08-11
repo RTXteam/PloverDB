@@ -16,8 +16,8 @@ pipeline {
     }
     environment {
         DOCKER_REPO_NAME = "translator-rtx-ploverdb"
-        KUBERNETES_BLUE_CLUSTER_NAME = "translator-eks-ci-blue-cluster"
-        KUBERNETES_GREEN_CLUSTER_NAME = "translator-eks-ci-green-cluster"
+        KUBERNETES_BLUE_CLUSTER_NAME = "translator-eks-prod-blue-cluster"
+        KUBERNETES_GREEN_CLUSTER_NAME = "translator-eks-prod-green-cluster"
     }
     stages {
         stage('Build Version'){
@@ -46,7 +46,7 @@ pipeline {
                 script {
                     docker.build(env.DOCKER_REPO_NAME, "--build-arg SOURCE_FOLDER=./${BUILD_VERSION} --no-cache ./")
                     docker.withRegistry('https://853771734544.dkr.ecr.us-east-1.amazonaws.com', 'ecr:us-east-1:aws-ifx-deploy') {
-                        docker.image(env.DOCKER_REPO_NAME).push("${BUILD_VERSION}")
+                        docker.image(env.DOCKER_REPO_NAME).push("${BUILD_VERSION}-PROD")
                     }
                 }
             }
@@ -56,12 +56,12 @@ pipeline {
                 sshagent (credentials: ['labshare-svc']) {
                     sh 'git clone git@github.com:Sphinx-Automation/translator-ops.git'
                         configFileProvider([
-                            configFile(fileId: 'ploverdb-ci-values.yaml', targetLocation: 'translator-ops/ops/team-expander/ploverdb/values-ncats.yaml')
+                            configFile(fileId: 'ploverdb-values.yaml', targetLocation: 'translator-ops/ops/team-expander/ploverdb/values-ncats.yaml')
                         ]){
-                            withAWS(credentials:'aws-ifx-deploy') {
+                            withAWS(credentials:'eks-prod-access') {
                                 sh '''
-                                    kubectl delete deployment ploverdb -n rtx
                                     aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
+                                    kubectl delete deployment ploverdb -n rtx
                                     cd translator-ops/ops/team-expander/ploverdb/ && /bin/bash deploy.sh
                                    '''
                         }
