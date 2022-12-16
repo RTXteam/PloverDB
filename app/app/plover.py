@@ -31,6 +31,10 @@ class PloverDB:
         self.pickle_index_path = f"{SCRIPT_DIR}/../{self.pickle_index_name}"
         self.predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
+        self.qual_pred_property = "qualified_predicate"
+        self.qual_obj_direction_property = "qualified_object_direction"
+        self.qual_obj_aspect_property = "qualified_object_aspect"
+        self.bh_branch = self.kg_config["biolink_helper_branch"]  # The RTX branch to download BiolinkHelper from
         self.bh = None  # BiolinkHelper is downloaded later on
         self.core_node_properties = {"name", "category"}
         self.non_biolink_item_id = 9999
@@ -72,7 +76,7 @@ class PloverDB:
         bh_file_name = "biolink_helper.py"
         logging.info(f"Downloading {bh_file_name} from RTX repo")
         local_path = f"{SCRIPT_DIR}/{bh_file_name}"
-        remote_path = f"https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
+        remote_path = f"https://github.com/RTXteam/RTX/blob/{self.bh_branch}/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
         subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
         from biolink_helper import BiolinkHelper
         self.bh = BiolinkHelper(biolink_version=biolink_version)
@@ -81,20 +85,35 @@ class PloverDB:
         logging.info(f"Building basic node/edge lookup maps")
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        logging.info(f"node_lookup_map contains {len(self.node_lookup_map)} nodes, "
+                     f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
 
         # Convert all edges to their canonical predicate form
         logging.info(f"Converting edges to their canonical form")
         for edge_id, edge in self.edge_lookup_map.items():
-            canonical_predicate = self.bh.get_canonical_predicates(edge["predicate"])[0]
-            if canonical_predicate != edge["predicate"]:
+            predicate = edge[self.predicate_property]
+            qualified_predicate = edge.get(self.qual_pred_property)
+            canonical_predicate = self.bh.get_canonical_predicates(predicate)[0]
+            canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate)[0] if qualified_predicate else None
+            predicate_is_canonical = canonical_predicate == predicate
+            qualified_predicate_is_canonical = canonical_qualified_predicate == qualified_predicate
+            if qualified_predicate and \
+                    ((predicate_is_canonical and not qualified_predicate_is_canonical) or
+                     (not predicate_is_canonical and qualified_predicate_is_canonical)):
+                logging.error(f"Edge {edge_id} has one of [predicate, qualified_predicate] that is in canonical form "
+                              f"and one that is not; cannot reconcile")
+                return
+            elif canonical_predicate != predicate:  # Both predicate and qualified_pred must be non-canonical
                 # Flip the edge (because the original predicate must be the canonical predicate's inverse)
-                edge["predicate"] = canonical_predicate
+                edge[self.predicate_property] = canonical_predicate
+                edge[self.qual_pred_property] = canonical_qualified_predicate
                 original_subject = edge["subject"]
                 edge["subject"] = edge["object"]
                 edge["object"] = original_subject
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
+            logging.info(f"Narrowing down test JSON file to make sure node IDs used by edges appear in nodes dict")
             node_ids_used_by_edges = {edge["subject"] for edge in self.edge_lookup_map.values()}.union(edge["object"] for edge in self.edge_lookup_map.values())
             node_lookup_map_trimmed = {node_id: self.node_lookup_map[node_id] for node_id in node_ids_used_by_edges
                                        if node_id in self.node_lookup_map}
@@ -102,6 +121,8 @@ class PloverDB:
             edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
+            logging.info(f"After narrowing down test file, node_lookup_map contains {len(self.node_lookup_map)} nodes, "
+                         f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
 
         # Build a helper map of nodes --> category labels (including ancestors)
         logging.info("Determining nodes' category labels (including Biolink ancestors)..")
@@ -119,12 +140,17 @@ class PloverDB:
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate = self._get_predicate_id(edge[self.predicate_property])
-            subject_categories = node_to_category_labels_map[subject_id]
-            object_categories = node_to_category_labels_map[object_id]
-            # Record this edge in both the forwards and backwards direction
-            self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
-            self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
+            predicate_id = self._get_predicate_id(edge[self.predicate_property])
+            subject_category_ids = node_to_category_labels_map[subject_id]
+            object_category_ids = node_to_category_labels_map[object_id]
+            # Record this edge in both the forwards and backwards direction, under its regular predicate
+            self._add_to_main_index(subject_id, object_id, object_category_ids, predicate_id, edge_id, 1)
+            self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
+            # Record this edge under its qualified predicate/other properties, if such info is provided
+            if edge.get(self.qual_pred_property) or edge.get(self.qual_obj_direction_property) or edge.get(self.qual_obj_aspect_property):
+                conglomerate_predicate_id = self._get_conglomerate_qualified_predicate_id(edge)
+                self._add_to_main_index(subject_id, object_id, object_category_ids, conglomerate_predicate_id, edge_id, 1)
+                self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
             count += 1
             if count % 1000000 == 0:
                 logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
@@ -138,7 +164,8 @@ class PloverDB:
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
-        edge_properties = ("subject", "object", "predicate", "knowledge_source")
+        edge_properties = ("subject", "object", self.predicate_property, "knowledge_source",
+                           self.qual_pred_property, self.qual_obj_direction_property, self.qual_obj_aspect_property)
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
@@ -164,8 +191,9 @@ class PloverDB:
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        logging.info(f"Removing {self.kg_json_name} from the image now that index building is done")
-        subprocess.call(["rm", "-f", self.kg_json_path])
+        if not self.is_test:
+            logging.info(f"Removing {self.kg_json_name} from the image now that index building is done")
+            subprocess.call(["rm", "-f", self.kg_json_path])
 
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
@@ -202,24 +230,35 @@ class PloverDB:
 
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
 
-    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[int], predicate: int,
+    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_category_ids: Set[int], predicate_id: int,
                            edge_id: int, direction: int):
         # Note: A direction of 1 means forwards, 0 means backwards
         main_index = self.main_index
         if node_a_id not in main_index:
             main_index[node_a_id] = dict()
-        for category in node_b_categories:
-            if category not in main_index[node_a_id]:
-                main_index[node_a_id][category] = dict()
-            if predicate not in main_index[node_a_id][category]:
-                main_index[node_a_id][category][predicate] = (dict(), dict())
-            main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
+        for category_id in node_b_category_ids:
+            if category_id not in main_index[node_a_id]:
+                main_index[node_a_id][category_id] = dict()
+            if predicate_id not in main_index[node_a_id][category_id]:
+                main_index[node_a_id][category_id][predicate_id] = (dict(), dict())
+            main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = edge_id
+
+    def _get_conglomerate_qualified_predicate(self, edge:dict) -> str:
+        pred = edge[self.predicate_property]
+        qual_pred = edge.get(self.qual_pred_property)
+        qual_obj_direction = edge.get(self.qual_obj_direction_property)
+        qual_obj_aspect = edge.get(self.qual_obj_aspect_property)
+        return f"{pred}--{qual_pred}--{qual_obj_direction}--{qual_obj_aspect}"
 
     def _get_predicate_id(self, predicate_name: str) -> int:
         if predicate_name not in self.predicate_map:
             num_predicates = len(self.predicate_map)
             self.predicate_map[predicate_name] = num_predicates
         return self.predicate_map[predicate_name]
+
+    def _get_conglomerate_qualified_predicate_id(self, edge: dict) -> int:
+        conglomerate_predicate = self._get_conglomerate_qualified_predicate(edge)
+        return self._get_predicate_id(conglomerate_predicate)
 
     def _get_category_id(self, category_name: str) -> int:
         if category_name not in self.category_map:

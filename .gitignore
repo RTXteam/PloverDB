@@ -136,3 +136,6 @@ kg2c*.json
 *.pickle
 *.aws
 *report*.json
+
+biolink_helper.py
+biolink_lookup*
