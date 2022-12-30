@@ -201,6 +201,7 @@ class PloverDB:
                        "subclass_index": self.subclass_index,
                        "predicate_map": self.predicate_map,
                        "category_map": self.category_map,
+                       "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
                        "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
@@ -236,6 +237,7 @@ class PloverDB:
             self.predicate_map = all_indexes["predicate_map"]
             self.predicate_map_reversed = {value: key for key, value in self.predicate_map.items()}
             self.category_map = all_indexes["category_map"]
+            self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
             biolink_version = all_indexes["biolink_version"]
 
         # Set up BiolinkHelper
@@ -416,6 +418,9 @@ class PloverDB:
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
+        print(f"Edge lookup map is: {self.edge_lookup_map}\n\n")
+        print(f"Main index is: {self.main_index}\n\n")
+        print(f"Conglomerate predicate descendant index is: {self.conglomerate_predicate_descendant_index}\n\n")
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
@@ -651,15 +656,15 @@ class PloverDB:
             for qualifier_constraint in qedge.get("qualifier_constraints", []):
                 qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]  # TODO: Ask TRAPI group why qualifier_set isn't a dict?
                                   for qualifier in qualifier_constraint["qualifier_set"]}
-                # Use the qualified predicate for the conglomerate predicate, if available
-                if qualifier_dict.get(self.qual_pred_property):
-                    qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
-                # Otherwise backup to using the regular predicate (could be multiple)
-                else:
-                    for regular_predicate in qedge.get("predicates", []):
+                # Use the qualified predicate for the conglomerate predicate (represented as 'None' if not available)
+                qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
+                # Otherwise backup to using the regular predicate, if available (could be multiple)
+                if qedge.get("predicates") and not qualifier_dict.get(self.qual_pred_property):
+                    for regular_predicate in qedge["predicates"]:
                         qualifier_dict["predicate"] = regular_predicate  # This kind of tricks the function called below
                         qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
             # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
+            print(f"QG conglomerate predicates are: {qg_conglomerate_predicates}\n\n")
             qg_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qg_conglomerate_predicates
                                                    for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
             qg_predicates = qg_conglomerate_predicates
@@ -672,6 +677,8 @@ class PloverDB:
             qg_predicates_expanded = {descendant_predicate for qg_predicate in qg_predicates
                                       for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
 
+        print(f"QG predicates expanded are: {qg_predicates_expanded}")
+        # TODO: Remove all the print debug statements
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
         qg_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
                                      self._consider_bidirectional(predicate, qg_predicates, respect_symmetry, enforce_directionality)
