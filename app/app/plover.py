@@ -149,9 +149,11 @@ class PloverDB:
         count = 0
         total = len(self.edge_lookup_map)
         for edge_id, edge in self.edge_lookup_map.items():
+            print(f"Processing edge {edge_id}")
             subject_id = edge["subject"]
             object_id = edge["object"]
             predicate_id = self._get_predicate_id(edge[self.predicate_property])
+            print(f"Its predicate is {predicate_id}")
             subject_category_ids = node_to_category_labels_map[subject_id]
             object_category_ids = node_to_category_labels_map[object_id]
             # Record this edge in both the forwards and backwards direction, under its regular predicate
@@ -166,6 +168,7 @@ class PloverDB:
             if count % 1000000 == 0:
                 logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
 
+        print(f"Predicate map is {self.predicate_map}\n")
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
 
@@ -257,7 +260,12 @@ class PloverDB:
                 main_index[node_a_id][category_id] = dict()
             if predicate_id not in main_index[node_a_id][category_id]:
                 main_index[node_a_id][category_id][predicate_id] = (dict(), dict())
-            main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = edge_id
+            if node_b_id not in main_index[node_a_id][category_id][predicate_id][direction]:
+                main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = set()
+            main_index[node_a_id][category_id][predicate_id][direction][node_b_id].add(edge_id)
+        print(f"Added edge {edge_id} to main index: {node_a_id}--{node_b_id} ({node_b_category_ids}), "
+              f"predicate: {predicate_id}, direction: {direction}")
+        print(f"Main index is now {self.main_index}")
 
     def _get_conglomerate_qualified_predicate(self, edge_or_constraint_dict: dict) -> str:
         qual_pred = edge_or_constraint_dict.get(self.qual_pred_property)
@@ -418,9 +426,11 @@ class PloverDB:
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
-        print(f"Edge lookup map is: {self.edge_lookup_map}\n\n")
-        print(f"Main index is: {self.main_index}\n\n")
-        print(f"Conglomerate predicate descendant index is: {self.conglomerate_predicate_descendant_index}\n\n")
+        print(f"Edge lookup map is: {self.edge_lookup_map}\n")
+        print(f"Predicate map is: {self.predicate_map}\n")
+        print(f"Category map is: {self.category_map}")
+        print(f"Main index is: {self.main_index}\n")
+        print(f"Conglomerate predicate descendant index is: {self.conglomerate_predicate_descendant_index}\n")
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
@@ -483,31 +493,42 @@ class PloverDB:
             if input_curie in main_index:
                 # Consider ALL output categories if none were provided or if output curies were specified
                 categories_present = set(main_index[input_curie])
+                print(f"Categories present for input curie {input_curie} in main index are {categories_present}")
                 categories_to_inspect = output_categories.intersection(categories_present) if output_categories and not output_curies else categories_present
+                print(f"Categories to inspect are {categories_to_inspect}")
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
                         predicates_present = set(main_index[input_curie][output_category])
+                        print(f"Predicates present for input curie {input_curie} and output category {output_category} are {predicates_present}")
                         predicates_to_inspect = set(qg_predicates_derived).intersection(predicates_present)
+                        print(f"Predicates to inspect for input curie {input_curie} and output category {output_category} are "
+                              f"{[self.predicate_map_reversed[pred] for pred in predicates_to_inspect]}")
                         # Loop through each QG predicate (and their descendants), looking up answers as we go
                         for predicate in predicates_to_inspect:
+                            print(f"On predicate {self.predicate_map_reversed[predicate]}")
                             consider_bidirectional = qg_predicates_derived.get(predicate)
                             if consider_bidirectional:
                                 directions = {0, 1}
                             else:
                                 # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
                                 directions = {1} if input_qnode_key == qedge["subject"] else {0}
+                            print(f"Directions are {directions}")
                             if output_curies:
                                 # We need to look for the matching output node(s)
                                 for direction in directions:
                                     curies_present = set(main_index[input_curie][output_category][predicate][direction])
                                     matching_output_curies = output_curies.intersection(curies_present)
                                     for output_curie in matching_output_curies:
-                                        answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
+                                        answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
                                 for direction in directions:
-                                    answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction].values())
+                                    print(f"Now grabbing direction {direction}")
+                                    print(f"List of values is {list(main_index[input_curie][output_category][predicate][direction].values())}")
+                                    answer_edge_ids += list(set().union(*main_index[input_curie][output_category][predicate][direction].values()))
+                                    print(f"Edge_ids for this direction are {main_index[input_curie][output_category][predicate][direction]}")
 
             # Add everything we found for this input curie to our answers so far
+            print(f"Answer edge IDs are {answer_edge_ids}")
             for answer_edge_id in answer_edge_ids:
                 edge = self.edge_lookup_map[answer_edge_id]
                 subject_curie = edge[0]
@@ -650,6 +671,7 @@ class PloverDB:
         respect_symmetry = trapi_query.get("respect_predicate_symmetry")
         # TODO: add earlier check making sure qg only has constraints we support
         # Use 'conglomerate' predicates if the query has any qualifier constraints
+        print(f"Qedge is {qedge}\n")
         if qedge.get("qualifier_constraints"):
             qg_conglomerate_predicates = set()
             # First get the direct conglomerate predicates for this query edge
@@ -673,6 +695,7 @@ class PloverDB:
         else:
             qg_predicates_raw = self._convert_to_set(qedge.get("predicates"))
             qg_predicates_raw = {self.bh.get_root_predicate()} if not qg_predicates_raw else qg_predicates_raw
+            print(f"QG predicates raw after getting bh root pred is {qg_predicates_raw}")
             qg_predicates = self.bh.replace_mixins_with_direct_mappings(qg_predicates_raw)
             qg_predicates_expanded = {descendant_predicate for qg_predicate in qg_predicates
                                       for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
