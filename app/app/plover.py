@@ -47,6 +47,8 @@ class PloverDB:
         self.main_index = dict()
         self.subclass_index = dict()
         self.conglomerate_predicate_descendant_index = defaultdict(set)
+        self.supported_qualifiers = {"qualified_predicate", "object_direction", "object_aspect",
+                                     "qualified_object_direction", "qualified_object_aspect"}  # Unsure what official qualifier name is
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -436,6 +438,12 @@ class PloverDB:
         object_qnode = trapi_query["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
+        # Make sure there aren't any qualifiers we don't support
+        for qualifier_constraint in qedge.get("qualifier_constraints", []):
+            for qualifier in qualifier_constraint.get("qualifier_set"):
+                if qualifier["qualifier_type_id"] not in self.supported_qualifiers:
+                    raise ValueError(f"Unsupported qedge qualifier encountered: {qualifier['qualifier_type_id']}")
+
         # Record which curies specified in the QG any descendant curies correspond to
         descendant_to_query_curie_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
         if subject_qnode.get("ids") and subject_qnode.get("allow_subclasses"):
@@ -647,7 +655,6 @@ class PloverDB:
     def _get_derived_qg_predicates(self, qedge: dict, trapi_query: dict) -> dict:
         enforce_directionality = trapi_query.get("enforce_directionality")
         respect_symmetry = trapi_query.get("respect_predicate_symmetry")
-        # TODO: add earlier check making sure qg only has constraints we support
         # Use 'conglomerate' predicates if the query has any qualifier constraints
         logging.info(f"Qedge is {qedge}\n")
         if qedge.get("qualifier_constraints"):
@@ -656,17 +663,20 @@ class PloverDB:
             for qualifier_constraint in qedge.get("qualifier_constraints", []):
                 qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]  # TODO: Ask TRAPI group why qualifier_set isn't a dict?
                                   for qualifier in qualifier_constraint["qualifier_set"]}
-                # Use the qualified predicate for the conglomerate predicate (represented as 'None' if not available)
-                qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
-                # Otherwise backup to using the regular predicate, if available (could be multiple)
+                # Use the regular predicate (could be multiple) if no qualified predicate is specified
                 if qedge.get("predicates") and not qualifier_dict.get(self.qual_pred_property):
                     for regular_predicate in qedge["predicates"]:
                         qualifier_dict["predicate"] = regular_predicate  # This kind of tricks the function called below
                         qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
-            # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
+                else:
+                    # Use the qualified predicate for the conglomerate predicate (is 'None' if not available)
+                    qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
+
             logging.info(f"Qedge conglomerate predicates are: {qg_conglomerate_predicates}\n\n")
+            # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
             qg_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qg_conglomerate_predicates
                                                    for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
+            logging.info(f"Qedge conglomerate predicates expanded are: {qg_conglomerate_predicates_expanded}")
             qg_predicates = qg_conglomerate_predicates
             qg_predicates_expanded = qg_conglomerate_predicates_expanded
         # Otherwise we'll use the regular predicates if no qualified predicates were given
