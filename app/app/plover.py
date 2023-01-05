@@ -47,8 +47,7 @@ class PloverDB:
         self.main_index = dict()
         self.subclass_index = dict()
         self.conglomerate_predicate_descendant_index = defaultdict(set)
-        self.supported_qualifiers = {"qualified_predicate", "object_direction", "object_aspect",
-                                     "qualified_object_direction", "qualified_object_aspect"}  # Unsure what official qualifier name is
+        self.supported_qualifiers = {"qualified_predicate", "object_direction_qualifier", "object_aspect_qualifier"}
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -442,7 +441,8 @@ class PloverDB:
         for qualifier_constraint in qedge.get("qualifier_constraints", []):
             for qualifier in qualifier_constraint.get("qualifier_set"):
                 if qualifier["qualifier_type_id"] not in self.supported_qualifiers:
-                    raise ValueError(f"Unsupported qedge qualifier encountered: {qualifier['qualifier_type_id']}")
+                    raise ValueError(f"Unsupported qedge qualifier encountered: {qualifier['qualifier_type_id']}. "
+                                     f"Supported qualifiers are: {self.supported_qualifiers}")
 
         # Record which curies specified in the QG any descendant curies correspond to
         descendant_to_query_curie_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
