@@ -30,11 +30,14 @@ class PloverDB:
         self.pickle_index_name, self.kg_json_name = self._get_local_file_names()
         self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
         self.pickle_index_path = f"{SCRIPT_DIR}/../{self.pickle_index_name}"
-        self.predicate_property = self.kg_config["labels"]["edges"]
+        self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
-        self.qual_pred_property = "qualified_predicate"
-        self.qual_obj_direction_property = "qualified_object_direction"
-        self.qual_obj_aspect_property = "qualified_object_aspect"
+        self.kg2_qualified_predicate_property = "qualified_predicate"
+        self.kg2_object_direction_property = "qualified_object_direction"  # Later this might use same as qedge?
+        self.kg2_object_aspect_property = "qualified_object_aspect"  # Later this might use same as qedge?
+        self.qedge_qualified_predicate_property = "biolink:qualified_predicate"
+        self.qedge_object_direction_property = "biolink:object_direction_qualifier"
+        self.qedge_object_aspect_property = "biolink:object_aspect_qualifier"
         self.bh_branch = self.kg_config["biolink_helper_branch"]  # The RTX branch to download BiolinkHelper from
         self.bh = None  # BiolinkHelper is downloaded later on
         self.core_node_properties = {"name", "category"}
@@ -47,7 +50,8 @@ class PloverDB:
         self.main_index = dict()
         self.subclass_index = dict()
         self.conglomerate_predicate_descendant_index = defaultdict(set)
-        self.supported_qualifiers = {"qualified_predicate", "object_direction_qualifier", "object_aspect_qualifier"}
+        self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
+                                     self.qedge_object_aspect_property}
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -94,8 +98,8 @@ class PloverDB:
         # Convert all edges to their canonical predicate form; correct missing biolink prefixes
         logging.info(f"Converting edges to their canonical form")
         for edge_id, edge in self.edge_lookup_map.items():
-            predicate = edge[self.predicate_property]
-            qualified_predicate = edge.get(self.qual_pred_property)
+            predicate = edge[self.edge_predicate_property]
+            qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
             canonical_predicate = self.bh.get_canonical_predicates(predicate)[0]
             canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate)[0] if qualified_predicate else None
             predicate_is_canonical = canonical_predicate == predicate
@@ -108,8 +112,8 @@ class PloverDB:
                 return
             elif canonical_predicate != predicate:  # Both predicate and qualified_pred must be non-canonical
                 # Flip the edge (because the original predicate must be the canonical predicate's inverse)
-                edge[self.predicate_property] = canonical_predicate
-                edge[self.qual_pred_property] = canonical_qualified_predicate
+                edge[self.edge_predicate_property] = canonical_predicate
+                edge[self.kg2_qualified_predicate_property] = canonical_qualified_predicate
                 original_subject = edge["subject"]
                 edge["subject"] = edge["object"]
                 edge["object"] = original_subject
@@ -152,15 +156,15 @@ class PloverDB:
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate_id = self._get_predicate_id(edge[self.predicate_property])
+            predicate_id = self._get_predicate_id(edge[self.edge_predicate_property])
             subject_category_ids = node_to_category_labels_map[subject_id]
             object_category_ids = node_to_category_labels_map[object_id]
             # Record this edge in both the forwards and backwards direction, under its regular predicate
             self._add_to_main_index(subject_id, object_id, object_category_ids, predicate_id, edge_id, 1)
             self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
             # Record this edge under its qualified predicate/other properties, if such info is provided
-            if edge.get(self.qual_pred_property) or edge.get(self.qual_obj_direction_property) or edge.get(self.qual_obj_aspect_property):
-                conglomerate_predicate_id = self._get_conglomerate_qualified_predicate_id(edge)
+            if edge.get(self.kg2_qualified_predicate_property) or edge.get(self.kg2_object_direction_property) or edge.get(self.kg2_object_aspect_property):
+                conglomerate_predicate_id = self._get_conglomerate_predicate_id_from_edge(edge)
                 self._add_to_main_index(subject_id, object_id, object_category_ids, conglomerate_predicate_id, edge_id, 1)
                 self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
             count += 1
@@ -179,8 +183,8 @@ class PloverDB:
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
-        edge_properties = ("subject", "object", self.predicate_property, "knowledge_source",
-                           self.qual_pred_property, self.qual_obj_direction_property, self.qual_obj_aspect_property)
+        edge_properties = ("subject", "object", self.edge_predicate_property, "knowledge_source",
+                           self.kg2_qualified_predicate_property, self.kg2_object_direction_property, self.kg2_object_aspect_property)
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
@@ -262,14 +266,40 @@ class PloverDB:
                 main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = set()
             main_index[node_a_id][category_id][predicate_id][direction][node_b_id].add(edge_id)
 
-    def _get_conglomerate_qualified_predicate(self, edge_or_constraint_dict: dict) -> str:
-        qual_pred = edge_or_constraint_dict.get(self.qual_pred_property)
-        # If no qualified predicate is provided, use the regular unqualified predicate
-        pred_to_use = qual_pred if qual_pred else edge_or_constraint_dict.get(self.predicate_property)
-        # Note: KG2pre files call the field "qualified_object_direction", but queries may use "object_direction"
-        qual_obj_direction = edge_or_constraint_dict.get(self.qual_obj_direction_property, edge_or_constraint_dict.get("object_direction"))
-        qual_obj_aspect = edge_or_constraint_dict.get(self.qual_obj_aspect_property, edge_or_constraint_dict.get("object_aspect"))
-        return f"{pred_to_use}--{qual_obj_direction}--{qual_obj_aspect}"
+    def _get_conglomerate_predicate_from_edge(self, edge: dict) -> str:
+        qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
+        object_direction = edge.get(self.kg2_object_direction_property)
+        object_aspect = edge.get(self.kg2_object_aspect_property)
+        predicate = edge.get(self.edge_predicate_property)
+        return self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                predicate=predicate,
+                                                object_direction=object_direction,
+                                                object_aspect=object_aspect)
+
+    def _get_conglomerate_predicates_from_qedge(self, qedge: dict) -> Set[str]:
+        qedge_conglomerate_predicates = set()
+        # First get the direct conglomerate predicates for this query edge
+        for qualifier_constraint in qedge.get("qualifier_constraints", []):
+            qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]
+                              # TODO: Ask TRAPI group why qualifier_set isn't a dict?
+                              for qualifier in qualifier_constraint["qualifier_set"]}
+            # Use the regular predicate (could be multiple) if no qualified predicate is specified
+            qualified_predicate = qualifier_dict.get(self.qedge_qualified_predicate_property)
+            object_aspect_qualifier = qualifier_dict.get(self.qedge_object_aspect_property)
+            object_direction_qualifier = qualifier_dict.get(self.qedge_object_direction_property)
+            predicates = qedge.get("predicates")
+            if predicates and not qualified_predicate:
+                # We'll use any regular predicate(s) if no qualified predicate was given
+                new_conglomerate_predicates = {self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                                                predicate=predicate,
+                                                                                object_direction=object_direction_qualifier,
+                                                                                object_aspect=object_aspect_qualifier)
+                                               for predicate in predicates}
+                qedge_conglomerate_predicates = qedge_conglomerate_predicates.union(new_conglomerate_predicates)
+            else:
+                # Use the qualified predicate (is 'None' if not available)
+                qedge_conglomerate_predicates.add(self._get_conglomerate_predicate_from_edge(qualifier_dict))
+        return qedge_conglomerate_predicates
 
     def _get_predicate_id(self, predicate_name: str) -> int:
         if predicate_name not in self.predicate_map:
@@ -277,9 +307,15 @@ class PloverDB:
             self.predicate_map[predicate_name] = num_predicates
         return self.predicate_map[predicate_name]
 
-    def _get_conglomerate_qualified_predicate_id(self, edge_or_constraint_dict: dict) -> int:
-        conglomerate_predicate = self._get_conglomerate_qualified_predicate(edge_or_constraint_dict)
+    def _get_conglomerate_predicate_id_from_edge(self, edge: dict) -> int:
+        conglomerate_predicate = self._get_conglomerate_predicate_from_edge(edge)
         return self._get_predicate_id(conglomerate_predicate)
+
+    @staticmethod
+    def _get_conglomerate_predicate(qualified_predicate: str, predicate: str, object_direction: str, object_aspect: str) -> str:
+        # If no qualified predicate is provided, use the regular unqualified predicate
+        predicate_to_use = qualified_predicate if qualified_predicate else predicate
+        return f"{predicate_to_use}--{object_direction}--{object_aspect}"
 
     def _get_category_id(self, category_name: str) -> int:
         if category_name not in self.category_map:
@@ -289,15 +325,15 @@ class PloverDB:
 
     def _build_conglomerate_predicate_descendant_index(self):
         # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular predicate variations)
-        logging.info("Building conglomerate qualified predicate descendant index..")
+        logging.info("  Building conglomerate qualified predicate descendant index..")
         conglomerate_predicates_already_seen = set()
         for edge_id, edge in self.edge_lookup_map.items():
-            conglomerate_predicate = self._get_conglomerate_qualified_predicate(edge)
-            qualified_predicate = edge.get(self.qual_pred_property)
-            qualified_obj_direction = edge.get(self.qual_obj_direction_property)
-            qualified_obj_aspect = edge.get(self.qual_obj_aspect_property)
+            conglomerate_predicate = self._get_conglomerate_predicate_from_edge(edge)
+            qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
+            qualified_obj_direction = edge.get(self.kg2_object_direction_property)
+            qualified_obj_aspect = edge.get(self.kg2_object_aspect_property)
             if (qualified_predicate or qualified_obj_direction or qualified_obj_aspect) and conglomerate_predicate not in conglomerate_predicates_already_seen:
-                predicate_variations = [qualified_predicate, edge.get("predicate")]
+                predicate_variations = [qualified_predicate, edge.get(self.edge_predicate_property)]
                 for predicate in predicate_variations:
                     predicate_ancestors = set(self.bh.get_ancestors(predicate)).union({None})
                     direction_ancestors = set(self.bh.get_ancestors(qualified_obj_direction)).union({None})
@@ -331,7 +367,7 @@ class PloverDB:
         # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
-                             if edge[self.predicate_property] in subclass_predicates and
+                             if edge[self.edge_predicate_property] in subclass_predicates and
                              set(edge.get("knowledge_source", set())).intersection(subclass_sources)}
         logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from specified sources)")
 
@@ -339,8 +375,8 @@ class PloverDB:
         parent_to_child_dict = defaultdict(set)
         for edge_id in subclass_edge_ids:
             edge = self.edge_lookup_map[edge_id]
-            parent_node_id = edge["object"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["subject"]
-            child_node_id = edge["subject"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["object"]
+            parent_node_id = edge["object"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["subject"]
+            child_node_id = edge["subject"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["object"]
             parent_to_child_dict[parent_node_id].add(child_node_id)
         logging.info(f"    A total of {len(parent_to_child_dict)} nodes have child subclasses")
 
@@ -478,7 +514,7 @@ class PloverDB:
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
         output_categories = self._get_output_category_ids(output_qnode_key, trapi_query)
-        qg_predicates_derived = self._get_derived_qg_predicates(qedge, trapi_query)
+        qedge_predicates_derived = self._get_derived_qedge_predicates(qedge, trapi_query)
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -494,10 +530,10 @@ class PloverDB:
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = set(qg_predicates_derived).intersection(predicates_present)
+                        predicates_to_inspect = set(qedge_predicates_derived).intersection(predicates_present)
                         # Loop through each QG predicate (and their descendants), looking up answers as we go
                         for predicate in predicates_to_inspect:
-                            consider_bidirectional = qg_predicates_derived.get(predicate)
+                            consider_bidirectional = qedge_predicates_derived.get(predicate)
                             if consider_bidirectional:
                                 directions = {0, 1}
                             else:
@@ -616,7 +652,7 @@ class PloverDB:
             return True if not enforce_directionality else False
 
     def _force_qedge_to_canonical_predicates(self, qedge: dict):
-        user_qual_predicates = self._get_qualified_predicates(qedge)
+        user_qual_predicates = self._get_qualified_predicates_from_qedge(qedge)
         user_regular_predicates = self._convert_to_set(qedge.get("predicates"))
         user_predicates = user_qual_predicates if user_qual_predicates else user_regular_predicates
         canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates))
@@ -644,7 +680,7 @@ class PloverDB:
                              f"You must use either all canonical or all non-canonical predicates.")
 
     @staticmethod
-    def _get_qualified_predicates(qedge: dict) -> Set[str]:
+    def _get_qualified_predicates_from_qedge(qedge: dict) -> Set[str]:
         qualified_predicates = set()
         for qualifier_constraint in qedge.get("qualifier_constraints", []):
             for qualifier in qualifier_constraint.get("qualifier_set"):
@@ -652,48 +688,40 @@ class PloverDB:
                     qualified_predicates.add(qualifier["qualifier_value"])
         return qualified_predicates
 
-    def _get_derived_qg_predicates(self, qedge: dict, trapi_query: dict) -> dict:
+    def _get_derived_qedge_predicates(self, qedge: dict, trapi_query: dict) -> dict:
+        """
+        This function returns a qedge's "conglomerate" predicates for qualified qedges (where the qualified info is kind
+        of flattened or conglomerated into one derived predicate string), or its regular predicates when no qualified
+        info is available. It also returns descendants of the predicates/conglomerate predicates.
+        """
         enforce_directionality = trapi_query.get("enforce_directionality")
         respect_symmetry = trapi_query.get("respect_predicate_symmetry")
         # Use 'conglomerate' predicates if the query has any qualifier constraints
         logging.info(f"Qedge is {qedge}\n")
         if qedge.get("qualifier_constraints"):
-            qg_conglomerate_predicates = set()
-            # First get the direct conglomerate predicates for this query edge
-            for qualifier_constraint in qedge.get("qualifier_constraints", []):
-                qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]  # TODO: Ask TRAPI group why qualifier_set isn't a dict?
-                                  for qualifier in qualifier_constraint["qualifier_set"]}
-                # Use the regular predicate (could be multiple) if no qualified predicate is specified
-                if qedge.get("predicates") and not qualifier_dict.get(self.qual_pred_property):
-                    for regular_predicate in qedge["predicates"]:
-                        qualifier_dict["predicate"] = regular_predicate  # This kind of tricks the function called below
-                        qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
-                else:
-                    # Use the qualified predicate for the conglomerate predicate (is 'None' if not available)
-                    qg_conglomerate_predicates.add(self._get_conglomerate_qualified_predicate(qualifier_dict))
-
-            logging.info(f"Qedge conglomerate predicates are: {qg_conglomerate_predicates}\n\n")
+            qedge_conglomerate_predicates = self._get_conglomerate_predicates_from_qedge(qedge)
+            logging.info(f"Qedge conglomerate predicates are: {qedge_conglomerate_predicates}\n\n")
             # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
-            qg_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qg_conglomerate_predicates
-                                                   for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
-            logging.info(f"Qedge conglomerate predicates expanded are: {qg_conglomerate_predicates_expanded}")
-            qg_predicates = qg_conglomerate_predicates
-            qg_predicates_expanded = qg_conglomerate_predicates_expanded
+            qedge_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qedge_conglomerate_predicates
+                                                      for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
+            logging.info(f"Qedge conglomerate predicates expanded are: {qedge_conglomerate_predicates_expanded}")
+            qedge_predicates = qedge_conglomerate_predicates
+            qedge_predicates_expanded = qedge_conglomerate_predicates_expanded
         # Otherwise we'll use the regular predicates if no qualified predicates were given
         else:
             qg_predicates_raw = self._convert_to_set(qedge.get("predicates"))
             qg_predicates_raw = {self.bh.get_root_predicate()} if not qg_predicates_raw else qg_predicates_raw
-            qg_predicates = self.bh.replace_mixins_with_direct_mappings(qg_predicates_raw)
-            qg_predicates_expanded = {descendant_predicate for qg_predicate in qg_predicates
+            qedge_predicates = self.bh.replace_mixins_with_direct_mappings(qg_predicates_raw)
+            qedge_predicates_expanded = {descendant_predicate for qg_predicate in qedge_predicates
                                       for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
 
-        logging.info(f"Qedge predicates expanded are: {qg_predicates_expanded}")
+        logging.info(f"Qedge predicates expanded are: {qedge_predicates_expanded}")
         # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
-        qg_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
-                                     self._consider_bidirectional(predicate, qg_predicates, respect_symmetry, enforce_directionality)
-                                 for predicate in qg_predicates_expanded}
+        qedge_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
+                                        self._consider_bidirectional(predicate, qedge_predicates, respect_symmetry, enforce_directionality)
+                                    for predicate in qedge_predicates_expanded}
 
-        return qg_predicate_ids_dict
+        return qedge_predicate_ids_dict
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
