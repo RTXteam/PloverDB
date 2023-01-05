@@ -119,7 +119,6 @@ class PloverDB:
                 edge["object"] = original_subject
 
             # Correct missing biolink prefixes for object directions and aspects (patch for now)
-            logging.info(f"Adding biolink prefix to any object directions/aspects missing it..")
             qualified_obj_direction = edge.get(self.kg2_object_direction_property)
             qualified_obj_aspect = edge.get(self.kg2_object_aspect_property)
             if qualified_obj_direction and not qualified_obj_direction.startswith("biolink"):
