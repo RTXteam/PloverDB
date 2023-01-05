@@ -120,12 +120,12 @@ class PloverDB:
 
             # Correct missing biolink prefixes for object directions and aspects (patch for now)
             logging.info(f"Adding biolink prefix to any object directions/aspects missing it..")
-            qualified_obj_direction = edge.get("qualified_object_direction")
-            qualified_obj_aspect = edge.get("qualified_object_aspect")
+            qualified_obj_direction = edge.get(self.kg2_object_direction_property)
+            qualified_obj_aspect = edge.get(self.kg2_object_aspect_property)
             if qualified_obj_direction and not qualified_obj_direction.startswith("biolink"):
-                edge["qualified_object_direction"] = f"biolink:{qualified_obj_direction}"
+                edge[self.kg2_object_direction_property] = f"biolink:{qualified_obj_direction}"
             if qualified_obj_aspect and not qualified_obj_aspect.startswith("biolink"):
-                edge["qualified_object_aspect"] = f"biolink:{qualified_obj_aspect}"
+                edge[self.kg2_object_aspect_property] = f"biolink:{qualified_obj_aspect}"
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
@@ -298,7 +298,10 @@ class PloverDB:
                 qedge_conglomerate_predicates = qedge_conglomerate_predicates.union(new_conglomerate_predicates)
             else:
                 # Use the qualified predicate (is 'None' if not available)
-                qedge_conglomerate_predicates.add(self._get_conglomerate_predicate_from_edge(qualifier_dict))
+                qedge_conglomerate_predicates.add(self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                                                   predicate=None,
+                                                                                   object_direction=object_direction_qualifier,
+                                                                                   object_aspect=object_aspect_qualifier))
         return qedge_conglomerate_predicates
 
     def _get_predicate_id(self, predicate_name: str) -> int:
@@ -312,7 +315,8 @@ class PloverDB:
         return self._get_predicate_id(conglomerate_predicate)
 
     @staticmethod
-    def _get_conglomerate_predicate(qualified_predicate: str, predicate: str, object_direction: str, object_aspect: str) -> str:
+    def _get_conglomerate_predicate(qualified_predicate: Optional[str], predicate: Optional[str],
+                                    object_direction: Optional[str], object_aspect: Optional[str]) -> str:
         # If no qualified predicate is provided, use the regular unqualified predicate
         predicate_to_use = qualified_predicate if qualified_predicate else predicate
         return f"{predicate_to_use}--{object_direction}--{object_aspect}"
@@ -667,7 +671,7 @@ class PloverDB:
                 # Flip all of the qualified predicates
                 for qualifier_constraint in qedge.get("qualifier_constraints", []):
                     for qualifier in qualifier_constraint.get("qualifier_set"):
-                        if qualifier["qualifier_type_id"] == "qualified_predicate":
+                        if qualifier["qualifier_type_id"] == self.qedge_qualified_predicate_property:
                             canonical_qual_predicate = self.bh.get_canonical_predicates(qualifier["qualifier_value"])[0]
                             qualifier["qualifier_value"] = canonical_qual_predicate
             else:
@@ -679,12 +683,11 @@ class PloverDB:
                              f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
                              f"You must use either all canonical or all non-canonical predicates.")
 
-    @staticmethod
-    def _get_qualified_predicates_from_qedge(qedge: dict) -> Set[str]:
+    def _get_qualified_predicates_from_qedge(self, qedge: dict) -> Set[str]:
         qualified_predicates = set()
         for qualifier_constraint in qedge.get("qualifier_constraints", []):
             for qualifier in qualifier_constraint.get("qualifier_set"):
-                if qualifier["qualifier_type_id"] == "qualified_predicate":
+                if qualifier["qualifier_type_id"] == self.qedge_qualified_predicate_property:
                     qualified_predicates.add(qualifier["qualifier_value"])
         return qualified_predicates
 
