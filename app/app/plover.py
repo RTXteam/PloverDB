@@ -147,17 +147,25 @@ class PloverDB:
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate_id = self._get_predicate_id(edge[self.edge_predicate_property])
+            predicate = edge[self.edge_predicate_property]
+            predicate_id = self._get_predicate_id(predicate)
+            has_symmetric_predicate = self.bh.is_symmetric(predicate)
             subject_category_ids = node_to_category_labels_map[subject_id]
             object_category_ids = node_to_category_labels_map[object_id]
-            # Record this edge in both the forwards and backwards direction, under its regular predicate
+            # Record this edge in the forwards direction, under its regular predicate
             self._add_to_main_index(subject_id, object_id, object_category_ids, predicate_id, edge_id, 1)
-            self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
+            # Also record the edge in the reverse direction under its regular predicate, if it's symmetric
+            if has_symmetric_predicate:
+                self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
             # Record this edge under its qualified predicate/other properties, if such info is provided
             if edge.get(self.kg2_qualified_predicate_property) or edge.get(self.kg2_object_direction_property) or edge.get(self.kg2_object_aspect_property):
                 conglomerate_predicate_id = self._get_conglomerate_predicate_id_from_edge(edge)
                 self._add_to_main_index(subject_id, object_id, object_category_ids, conglomerate_predicate_id, edge_id, 1)
-                self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
+                # Record the edge in the reverse direction as well if qualified predicate is symmetric
+                qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
+                has_symmetric_qualified_predicate = qualified_predicate and self.bh.is_symmetric(qualified_predicate)
+                if has_symmetric_qualified_predicate or (not qualified_predicate and has_symmetric_predicate):
+                    self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
             count += 1
             if count % 1000000 == 0:
                 logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
@@ -320,7 +328,7 @@ class PloverDB:
 
     def _build_conglomerate_predicate_descendant_index(self):
         # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular predicate variations)
-        logging.info("  Building conglomerate qualified predicate descendant index..")
+        logging.info("Building conglomerate qualified predicate descendant index..")
         conglomerate_predicates_already_seen = set()
         for edge_id, edge in self.edge_lookup_map.items():
             conglomerate_predicate = self._get_conglomerate_predicate_from_edge(edge)
@@ -341,7 +349,7 @@ class PloverDB:
                 conglomerate_predicates_already_seen.add(conglomerate_predicate)
 
     def _build_subclass_index(self, subclass_sources: Set[str]):
-        logging.info(f"  Building subclass_of index using {subclass_sources} edges..")
+        logging.info(f"Building subclass_of index using {subclass_sources} edges..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
@@ -435,7 +443,7 @@ class PloverDB:
                           }
                 json.dump(report, report_file, indent=2)
 
-        logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
+        logging.info(f"Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
     @staticmethod
     def _download_and_unzip_remote_file(remote_file_name: str, local_destination_path: str):
@@ -624,27 +632,32 @@ class PloverDB:
         output_categories = {self.category_map.get(category, self.non_biolink_item_id) for category in output_category_names}
         return output_categories
 
-    def _consider_bidirectional(self, predicate: str, direct_qg_predicates: Set[str], respect_symmetry: bool,
-                                enforce_directionality: bool) -> bool:
+    def _consider_bidirectional(self, predicate: str, direct_qg_predicates: Set[str]) -> bool:
         """
         This function determines whether or not QEdge direction should be ignored for a particular predicate or
         'conglomerate' predicate based on the Biolink model and QG parameters.
         """
         if "--" in predicate:  # Means it's a 'conglomerate' predicate
-            predicate = predicate.split("--")[0]
+            predicate = self._get_used_predicate(predicate)
         # Make sure we extract the true predicate/qualified predicate from conglomerate predicates
-        direct_qg_predicates = {direct_predicate.split("--")[0] for direct_predicate in direct_qg_predicates}
+        direct_qg_predicates = {self._get_used_predicate(direct_predicate) for direct_predicate in direct_qg_predicates}
+
         ancestor_predicates = set(self.bh.get_ancestors(predicate, include_mixins=False))
         ancestor_predicates_in_qg = ancestor_predicates.intersection(direct_qg_predicates)
         has_symmetric_ancestor_in_qg = any(self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
         has_asymmetric_ancestor_in_qg = any(not self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
-        if respect_symmetry:
-            if self.bh.is_symmetric(predicate) or (has_symmetric_ancestor_in_qg and not has_asymmetric_ancestor_in_qg):
-                return True
-            else:
-                return False
+        if self.bh.is_symmetric(predicate) or (has_symmetric_ancestor_in_qg and not has_asymmetric_ancestor_in_qg):
+            return True
         else:
-            return True if not enforce_directionality else False
+            return False
+
+    @staticmethod
+    def _get_used_predicate(conglomerate_predicate: str) -> str:
+        """
+        This extracts the predicate used as part of the conglomerate predicate (which could be either the qualified
+        predicate or regular predicate).
+        """
+        return conglomerate_predicate.split("--")[0]
 
     def _force_qedge_to_canonical_predicates(self, qedge: dict):
         user_qual_predicates = self._get_qualified_predicates_from_qedge(qedge)
@@ -688,8 +701,6 @@ class PloverDB:
         of flattened or conglomerated into one derived predicate string), or its regular predicates when no qualified
         info is available. It also returns descendants of the predicates/conglomerate predicates.
         """
-        enforce_directionality = trapi_query.get("enforce_directionality")
-        respect_symmetry = trapi_query.get("respect_predicate_symmetry")
         # Use 'conglomerate' predicates if the query has any qualifier constraints
         logging.info(f"Qedge is {qedge}\n")
         if qedge.get("qualifier_constraints"):
@@ -708,11 +719,11 @@ class PloverDB:
             qedge_predicates = self.bh.replace_mixins_with_direct_mappings(qg_predicates_raw)
             qedge_predicates_expanded = {descendant_predicate for qg_predicate in qedge_predicates
                                       for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
-
-        logging.info(f"Qedge predicates expanded are: {qedge_predicates_expanded}")
-        # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
+            logging.info(f"Qedge predicates expanded are: {qedge_predicates_expanded}")
+        # Convert the string/english versions of categories/predicates/conglomerate predicates into integer IDs (helps save space)
         qedge_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
-                                        self._consider_bidirectional(predicate, qedge_predicates, respect_symmetry, enforce_directionality)
+                                        self._consider_bidirectional(predicate,
+                                                                     qedge_predicates)
                                     for predicate in qedge_predicates_expanded}
 
         return qedge_predicate_ids_dict
