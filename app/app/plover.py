@@ -118,14 +118,6 @@ class PloverDB:
                 edge["subject"] = edge["object"]
                 edge["object"] = original_subject
 
-            # Correct missing biolink prefixes for object directions and aspects (patch for now)
-            qualified_obj_direction = edge.get(self.kg2_object_direction_property)
-            qualified_obj_aspect = edge.get(self.kg2_object_aspect_property)
-            if qualified_obj_direction and not qualified_obj_direction.startswith("biolink"):
-                edge[self.kg2_object_direction_property] = f"biolink:{qualified_obj_direction}"
-            if qualified_obj_aspect and not qualified_obj_aspect.startswith("biolink"):
-                edge[self.kg2_object_aspect_property] = f"biolink:{qualified_obj_aspect}"
-
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
             logging.info(f"Narrowing down test JSON file to make sure node IDs used by edges appear in nodes dict")
