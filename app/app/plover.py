@@ -43,6 +43,7 @@ class PloverDB:
         self.core_node_properties = {"name", "category"}
         self.non_biolink_item_id = 9999
         self.category_map = dict()  # Maps category english name --> int ID
+        self.category_map_reversed = dict()  # Maps category int ID --> english name
         self.predicate_map = dict()  # Maps predicate english name --> int ID
         self.predicate_map_reversed = dict()  # Maps predicate int ID --> english name
         self.node_lookup_map = dict()
@@ -239,8 +240,9 @@ class PloverDB:
             self.main_index = all_indexes["main_index"]
             self.subclass_index = all_indexes["subclass_index"]
             self.predicate_map = all_indexes["predicate_map"]
-            self.predicate_map_reversed = {value: key for key, value in self.predicate_map.items()}
+            self.predicate_map_reversed = self._reverse_dictionary(self.predicate_map)
             self.category_map = all_indexes["category_map"]
+            self.category_map_reversed = self._reverse_dictionary(self.category_map)
             self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
             biolink_version = all_indexes["biolink_version"]
 
@@ -275,34 +277,6 @@ class PloverDB:
                                                 object_direction=object_direction,
                                                 object_aspect=object_aspect)
 
-    def _get_conglomerate_predicates_from_qedge(self, qedge: dict) -> Set[str]:
-        qedge_conglomerate_predicates = set()
-        # First get the direct conglomerate predicates for this query edge
-        for qualifier_constraint in qedge.get("qualifier_constraints", []):
-            qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]
-                              # TODO: Ask TRAPI group why qualifier_set isn't a dict?
-                              for qualifier in qualifier_constraint["qualifier_set"]}
-            # Use the regular predicate (could be multiple) if no qualified predicate is specified
-            qualified_predicate = qualifier_dict.get(self.qedge_qualified_predicate_property)
-            object_aspect_qualifier = qualifier_dict.get(self.qedge_object_aspect_property)
-            object_direction_qualifier = qualifier_dict.get(self.qedge_object_direction_property)
-            predicates = qedge.get("predicates")
-            if predicates and not qualified_predicate:
-                # We'll use any regular predicate(s) if no qualified predicate was given
-                new_conglomerate_predicates = {self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
-                                                                                predicate=predicate,
-                                                                                object_direction=object_direction_qualifier,
-                                                                                object_aspect=object_aspect_qualifier)
-                                               for predicate in predicates}
-                qedge_conglomerate_predicates = qedge_conglomerate_predicates.union(new_conglomerate_predicates)
-            else:
-                # Use the qualified predicate (is 'None' if not available)
-                qedge_conglomerate_predicates.add(self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
-                                                                                   predicate=None,
-                                                                                   object_direction=object_direction_qualifier,
-                                                                                   object_aspect=object_aspect_qualifier))
-        return qedge_conglomerate_predicates
-
     def _get_predicate_id(self, predicate_name: str) -> int:
         if predicate_name not in self.predicate_map:
             num_predicates = len(self.predicate_map)
@@ -325,6 +299,10 @@ class PloverDB:
             num_categories = len(self.category_map)
             self.category_map[category_name] = num_categories
         return self.category_map[category_name]
+
+    @staticmethod
+    def _reverse_dictionary(some_dict: dict) -> dict:
+        return {value: key for key, value in some_dict.items()}
 
     def _build_conglomerate_predicate_descendant_index(self):
         # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular predicate variations)
@@ -457,6 +435,19 @@ class PloverDB:
             temp_location = temp_location.strip(".gz")
         subprocess.check_call(["mv", temp_location, local_destination_path])
 
+    def _print_main_index_human_friendly(self):
+        for input_curie, categories_dict in self.main_index.items():
+            print(f"{input_curie}: #####################################################################")
+            for category_id, predicates_dict in categories_dict.items():
+                print(f"    {self.category_map_reversed[category_id]}: ------------------------------")
+                for predicate_id, directions_tuple in predicates_dict.items():
+                    print(f"        {self.predicate_map_reversed[predicate_id]}:")
+                    for direction_dict in directions_tuple:
+                        print(f"        {'Forwards' if directions_tuple.index(direction_dict) == 1 else 'Backwards'}:")
+                        for output_curie, edge_ids in direction_dict.items():
+                            print(f"            {output_curie}:")
+                            print(f"                {edge_ids}")
+
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
@@ -517,7 +508,10 @@ class PloverDB:
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
         output_categories = self._get_output_category_ids(output_qnode_key, trapi_query)
-        qedge_predicates_derived = self._get_derived_qedge_predicates(qedge, trapi_query)
+        qedge_predicates_derived = self._get_derived_qedge_predicates(qedge)
+        logging.info(f"Input curies are {input_curies}")
+        logging.info(f"Output curies are {output_curies}")
+        logging.info(f"QEdge predicates derived are {qedge_predicates_derived}")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -695,17 +689,17 @@ class PloverDB:
                     qualified_predicates.add(qualifier["qualifier_value"])
         return qualified_predicates
 
-    def _get_derived_qedge_predicates(self, qedge: dict, trapi_query: dict) -> dict:
+    def _get_derived_qedge_predicates(self, qedge: dict) -> Dict[str, bool]:
         """
         This function returns a qedge's "conglomerate" predicates for qualified qedges (where the qualified info is kind
         of flattened or conglomerated into one derived predicate string), or its regular predicates when no qualified
         info is available. It also returns descendants of the predicates/conglomerate predicates.
         """
         # Use 'conglomerate' predicates if the query has any qualifier constraints
-        logging.info(f"Qedge is {qedge}\n")
+        logging.info(f"Qedge is {qedge}")
         if qedge.get("qualifier_constraints"):
             qedge_conglomerate_predicates = self._get_conglomerate_predicates_from_qedge(qedge)
-            logging.info(f"Qedge conglomerate predicates are: {qedge_conglomerate_predicates}\n\n")
+            logging.info(f"Qedge conglomerate predicates are: {qedge_conglomerate_predicates}")
             # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
             qedge_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qedge_conglomerate_predicates
                                                       for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
@@ -714,19 +708,46 @@ class PloverDB:
             qedge_predicates_expanded = qedge_conglomerate_predicates_expanded
         # Otherwise we'll use the regular predicates if no qualified predicates were given
         else:
-            qg_predicates_raw = self._convert_to_set(qedge.get("predicates"))
-            qg_predicates_raw = {self.bh.get_root_predicate()} if not qg_predicates_raw else qg_predicates_raw
-            qedge_predicates = self.bh.replace_mixins_with_direct_mappings(qg_predicates_raw)
+            qedge_predicates_raw = self._convert_to_set(qedge.get("predicates"))
+            qedge_predicates_raw = {self.bh.get_root_predicate()} if not qedge_predicates_raw else qedge_predicates_raw
+            qedge_predicates = self.bh.replace_mixins_with_direct_mappings(qedge_predicates_raw)
             qedge_predicates_expanded = {descendant_predicate for qg_predicate in qedge_predicates
-                                      for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
+                                         for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
             logging.info(f"Qedge predicates expanded are: {qedge_predicates_expanded}")
-        # Convert the string/english versions of categories/predicates/conglomerate predicates into integer IDs (helps save space)
+        # Convert english categories/predicates/conglomerate predicates into integer IDs (helps save space)
         qedge_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
-                                        self._consider_bidirectional(predicate,
-                                                                     qedge_predicates)
+                                        self._consider_bidirectional(predicate, qedge_predicates)
                                     for predicate in qedge_predicates_expanded}
 
         return qedge_predicate_ids_dict
+
+    def _get_conglomerate_predicates_from_qedge(self, qedge: dict) -> Set[str]:
+        qedge_conglomerate_predicates = set()
+        # First get the direct conglomerate predicates for this query edge
+        for qualifier_constraint in qedge.get("qualifier_constraints", []):
+            qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]
+                              # TODO: Ask TRAPI group why qualifier_set isn't a dict?
+                              for qualifier in qualifier_constraint["qualifier_set"]}
+            # Use the regular predicate (could be multiple) if no qualified predicate is specified
+            qualified_predicate = qualifier_dict.get(self.qedge_qualified_predicate_property)
+            object_aspect_qualifier = qualifier_dict.get(self.qedge_object_aspect_property)
+            object_direction_qualifier = qualifier_dict.get(self.qedge_object_direction_property)
+            predicates = qedge.get("predicates")
+            if predicates and not qualified_predicate:
+                # We'll use any regular predicate(s) if no qualified predicate was given
+                new_conglomerate_predicates = {self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                                                predicate=predicate,
+                                                                                object_direction=object_direction_qualifier,
+                                                                                object_aspect=object_aspect_qualifier)
+                                               for predicate in predicates}
+                qedge_conglomerate_predicates = qedge_conglomerate_predicates.union(new_conglomerate_predicates)
+            else:
+                # Use the qualified predicate (is 'None' if not available)
+                qedge_conglomerate_predicates.add(self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                                                   predicate=None,
+                                                                                   object_direction=object_direction_qualifier,
+                                                                                   object_aspect=object_aspect_qualifier))
+        return qedge_conglomerate_predicates
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
