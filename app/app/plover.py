@@ -458,7 +458,7 @@ class PloverDB:
     def _get_object_memory_consumption(some_object: any):
         mem_consumption_bytes = sys.getsizeof(some_object)
         mem_consumption_gigs = mem_consumption_bytes / (1024**3)
-        return mem_consumption_gigs
+        return round(mem_consumption_gigs, 2)
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
