@@ -7,6 +7,7 @@ import pathlib
 import pickle
 import statistics
 import subprocess
+import sys
 import time
 from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional, Tuple
@@ -145,6 +146,7 @@ class PloverDB:
         logging.info("Building main index..")
         count = 0
         total = len(self.edge_lookup_map)
+        max_allowed_size_in_gigs = 90
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
@@ -170,6 +172,10 @@ class PloverDB:
             count += 1
             if count % 1000000 == 0:
                 logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
+                main_index_size = self._get_object_memory_consumption(self.main_index)
+                logging.info(f"  Main index memory consumption is currently {main_index_size}G")
+                if main_index_size > max_allowed_size_in_gigs:
+                    raise MemoryError(f"Main index size is greater than {max_allowed_size_in_gigs}G; terminating")
 
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
@@ -447,6 +453,12 @@ class PloverDB:
                         for output_curie, edge_ids in direction_dict.items():
                             print(f"            {output_curie}:")
                             print(f"                {edge_ids}")
+
+    @staticmethod
+    def _get_object_memory_consumption(some_object: any):
+        mem_consumption_bytes = sys.getsizeof(some_object)
+        mem_consumption_gigs = mem_consumption_bytes / (1024**3)
+        return mem_consumption_gigs
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
