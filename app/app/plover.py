@@ -12,6 +12,8 @@ import time
 from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional, Tuple
 
+import psutil
+
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
 
@@ -146,7 +148,7 @@ class PloverDB:
         logging.info("Building main index..")
         count = 0
         total = len(self.edge_lookup_map)
-        max_allowed_size_in_gigs = 90
+        max_allowed_percent_memory_usage = 90
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
@@ -171,15 +173,15 @@ class PloverDB:
                     self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
             count += 1
             if count % 1000000 == 0:
-                main_index_size = self._get_object_memory_consumption(self.main_index)
+                memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
                 logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%). "
-                             f"Main index is {main_index_size}G..")
-                if main_index_size > max_allowed_size_in_gigs:
+                             f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
+                if memory_usage_percent > max_allowed_percent_memory_usage:
                     main_index_file_name = "main_index_PARTIAL.json"
                     with open(main_index_file_name, "w+") as main_index_file:
                         json.dump(self.main_index, main_index_file, default=self.serialize_with_sets, indent=2)
-                    raise MemoryError(f"Main index size is greater than {max_allowed_size_in_gigs}G; terminating. "
-                                      f"Saved the main index thus far to {main_index_file_name}.")
+                    raise MemoryError(f"Main index size is greater than {max_allowed_percent_memory_usage}%;"
+                                      f" terminating. Saved the main index thus far to {main_index_file_name}.")
 
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
@@ -459,10 +461,12 @@ class PloverDB:
                             print(f"                {edge_ids}")
 
     @staticmethod
-    def _get_object_memory_consumption(some_object: any):
-        mem_consumption_bytes = sys.getsizeof(some_object)
-        mem_consumption_gigs = mem_consumption_bytes / (1024**3)
-        return round(mem_consumption_gigs, 2)
+    def _get_current_memory_usage():
+        # Thanks https://www.geeksforgeeks.org/how-to-get-current-cpu-and-ram-usage-in-python/
+        virtual_mem_usage_info = psutil.virtual_memory()
+        memory_percent_used = virtual_mem_usage_info[2]
+        memory_used_in_gb = virtual_mem_usage_info[3] / 10**9
+        return round(memory_used_in_gb, 1), memory_percent_used
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
