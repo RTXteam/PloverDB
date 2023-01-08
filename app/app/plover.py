@@ -171,11 +171,15 @@ class PloverDB:
                     self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
             count += 1
             if count % 1000000 == 0:
-                logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
                 main_index_size = self._get_object_memory_consumption(self.main_index)
-                logging.info(f"  Main index memory consumption is currently {main_index_size}G")
+                logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%). "
+                             f"Main index is {main_index_size}G..")
                 if main_index_size > max_allowed_size_in_gigs:
-                    raise MemoryError(f"Main index size is greater than {max_allowed_size_in_gigs}G; terminating")
+                    main_index_file_name = "main_index_PARTIAL.json"
+                    with open(main_index_file_name, "w+") as main_index_file:
+                        json.dump(self.main_index, main_index_file, default=self.serialize_with_sets, indent=2)
+                    raise MemoryError(f"Main index size is greater than {max_allowed_size_in_gigs}G; terminating. "
+                                      f"Saved the main index thus far to {main_index_file_name}.")
 
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
@@ -788,6 +792,14 @@ class PloverDB:
             return set(input_item)
         else:
             return set()
+
+    @staticmethod
+    def serialize_with_sets(obj: any) -> any:
+        # Thank you https://stackoverflow.com/a/60544597
+        if isinstance(obj, set):
+            return list(obj)
+        else:
+            return obj
 
 
 def main():
