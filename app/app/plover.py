@@ -7,7 +7,6 @@ import pathlib
 import pickle
 import statistics
 import subprocess
-import sys
 import time
 from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional, Tuple
