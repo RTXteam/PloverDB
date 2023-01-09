@@ -145,7 +145,8 @@ class PloverDB:
 
         # Build our main index (modified/nested adjacency list kind of structure)
         logging.info("Building main index..")
-        count = 0
+        edges_count = 0
+        qualified_edges_count = 0
         total = len(self.edge_lookup_map)
         max_allowed_percent_memory_usage = 90
         for edge_id, edge in self.edge_lookup_map.items():
@@ -170,17 +171,18 @@ class PloverDB:
                 has_symmetric_qualified_predicate = qualified_predicate and self.bh.is_symmetric(qualified_predicate)
                 if has_symmetric_qualified_predicate or (not qualified_predicate and has_symmetric_predicate):
                     self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
-            count += 1
-            if count % 1000000 == 0:
+                qualified_edges_count += 1
+            edges_count += 1
+            if edges_count % 1000000 == 0:
                 memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
-                logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%). "
-                             f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
+                logging.info(f"  Have processed {edges_count} edges ({round((edges_count / total) * 100)}%), "
+                             f"{qualified_edges_count} of which were qualified edges. Memory usage is currently "
+                             f"{memory_usage_percent}% ({memory_usage_gb}G)..")
                 if memory_usage_percent > max_allowed_percent_memory_usage:
-                    main_index_file_name = "main_index_PARTIAL.json"
-                    with open(main_index_file_name, "w+") as main_index_file:
-                        json.dump(self.main_index, main_index_file, default=self.serialize_with_sets, indent=2)
                     raise MemoryError(f"Main index size is greater than {max_allowed_percent_memory_usage}%;"
-                                      f" terminating. Saved the main index thus far to {main_index_file_name}.")
+                                      f" terminating.")
+        logging.info(f"Done building main index; there were {edges_count} edges, {qualified_edges_count} of which "
+                     f"were qualified.")
 
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
