@@ -50,8 +50,6 @@ class PloverDB:
         self.predicate_map_reversed = dict()  # Maps predicate int ID --> english name
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
-        self.node_id_map = dict()  # Maps node curie --> int ID
-        self.node_id_map_reversed = dict()  # Maps int ID --> node curie
         self.main_index = dict()
         self.subclass_index = dict()
         self.conglomerate_predicate_descendant_index = defaultdict(set)
@@ -93,16 +91,9 @@ class PloverDB:
         from biolink_helper import BiolinkHelper
         self.bh = BiolinkHelper(biolink_version=biolink_version)
 
-        # Convert node IDs to integers, for space reasons
-        self.node_id_map = {node["id"]: index for index, node in enumerate(kg2c_dict["nodes"])}
-        for edge in kg2c_dict["edges"]:
-            edge["subject"] = self.node_id_map[edge["subject"]]
-            edge["object"] = self.node_id_map[edge["object"]]
-        self.node_id_map_reversed = self._reverse_dictionary(self.node_id_map)
-
         # Create basic node/edge lookup maps
         logging.info(f"Building basic node/edge lookup maps")
-        self.node_lookup_map = {self.node_id_map[node["id"]]: node for node in kg2c_dict["nodes"]}
+        self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
         logging.info(f"node_lookup_map contains {len(self.node_lookup_map)} nodes, "
                      f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
@@ -234,8 +225,6 @@ class PloverDB:
                        "predicate_map_reversed": self.predicate_map_reversed,
                        "category_map": self.category_map,
                        "category_map_reversed": self.category_map_reversed,
-                       "node_id_map": self.node_id_map,
-                       "node_id_map_reversed": self.node_id_map_reversed,
                        "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
                        "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
@@ -273,8 +262,6 @@ class PloverDB:
             self.predicate_map_reversed = all_indexes["predicate_map_reversed"]
             self.category_map = all_indexes["category_map"]
             self.category_map_reversed = all_indexes["category_map_reversed"]
-            self.node_id_map = all_indexes["node_id_map"]
-            self.node_id_map_reversed = all_indexes["node_id_map_reversed"]
             self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
             biolink_version = all_indexes["biolink_version"]
 
@@ -469,7 +456,7 @@ class PloverDB:
 
     def _print_main_index_human_friendly(self):
         for input_curie, categories_dict in self.main_index.items():
-            print(f"{self.node_id_map_reversed[input_curie]}: #####################################################################")
+            print(f"{input_curie}: #####################################################################")
             for category_id, predicates_dict in categories_dict.items():
                 print(f"    {self.category_map_reversed[category_id]}: ------------------------------")
                 for predicate_id, directions_tuple in predicates_dict.items():
@@ -477,7 +464,7 @@ class PloverDB:
                     for direction_dict in directions_tuple:
                         print(f"        {'Forwards' if directions_tuple.index(direction_dict) == 1 else 'Backwards'}:")
                         for output_curie, edge_ids in direction_dict.items():
-                            print(f"            {self.node_id_map_reversed[output_curie]}:")
+                            print(f"            {output_curie}:")
                             print(f"                {edge_ids}")
 
     @staticmethod
@@ -492,7 +479,6 @@ class PloverDB:
 
     def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
         logging.info(f"TRAPI query is: {trapi_query}")
-        trapi_query = self._convert_trapi_query_to_node_int_ids(trapi_query)
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
@@ -603,16 +589,14 @@ class PloverDB:
         # Form final response according to parameter passed in query
         if trapi_query.get("include_metadata"):
             nodes = {
-                input_qnode_key: {self.node_id_map_reversed[node_id]:
-                                      self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map[input_qnode_key].get(node_id, set())),)
+                input_qnode_key: {node_id: self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map[input_qnode_key].get(node_id, set())),)
                                   for node_id in final_input_qnode_answers},
-                output_qnode_key: {self.node_id_map_reversed[node_id]:
-                                       self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map[output_qnode_key].get(node_id, set())),)
+                output_qnode_key: {node_id: self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map[output_qnode_key].get(node_id, set())),)
                                    for node_id in final_output_qnode_answers}}
-            edges = {qedge_key: {edge_id: self._make_use_node_curies(self.edge_lookup_map[edge_id]) for edge_id in final_qedge_answers}}
+            edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
         else:
-            nodes = {input_qnode_key: [self.node_id_map_reversed[node_id] for node_id in final_input_qnode_answers],
-                     output_qnode_key: [self.node_id_map_reversed[node_id] for node_id in final_output_qnode_answers]}
+            nodes = {input_qnode_key: [node_id for node_id in final_input_qnode_answers],
+                     output_qnode_key: list(final_output_qnode_answers)}
             edges = {qedge_key: list(final_qedge_answers)}
         answer_kg = {"nodes": nodes, "edges": edges}
 
@@ -638,11 +622,10 @@ class PloverDB:
             found_curies = set(input_curies).intersection(set(self.node_lookup_map))
             if found_curies:
                 if trapi_query.get("include_metadata"):
-                    answer_kg["nodes"][qnode_key] = {self.node_id_map_reversed[node_id]:
-                                                         self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map.get(node_id, set())),)
+                    answer_kg["nodes"][qnode_key] = {node_id: self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map.get(node_id, set())),)
                                                      for node_id in found_curies}
                 else:
-                    answer_kg["nodes"][qnode_key] = [self.node_id_map_reversed[node_id] for node_id in found_curies]
+                    answer_kg["nodes"][qnode_key] = list(found_curies)
         return answer_kg
 
     def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
@@ -651,13 +634,6 @@ class PloverDB:
                               for descendant_id in self.subclass_index.get(node_id, set())}
         descendants = proper_descendants.union(node_ids)
         return list(descendants)
-
-    def _convert_trapi_query_to_node_int_ids(self, trapi_query: dict) -> dict:
-        for qnode_key, qnode in trapi_query["nodes"].items():
-            if qnode.get("ids"):
-                qnode["ids"] = [self.node_id_map[node_curie] for node_curie in qnode["ids"]]
-        # Note: QEdges don't have any node curies specified in them
-        return trapi_query
 
     @staticmethod
     def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, Union[str, List[str], None]]]) -> str:
@@ -677,13 +653,6 @@ class PloverDB:
         output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
         output_categories = {self.category_map.get(category, self.non_biolink_item_id) for category in output_category_names}
         return output_categories
-
-    def _make_use_node_curies(self, edge_tuple: tuple) -> list:
-        # Convert the edge's subject/object from int IDs back to node curies
-        edited_edge_row = list(edge_tuple)
-        edited_edge_row[0] = self.node_id_map_reversed[edge_tuple[0]]
-        edited_edge_row[1] = self.node_id_map_reversed[edge_tuple[1]]
-        return edited_edge_row
 
     def _consider_bidirectional(self, predicate: str, direct_qg_predicates: Set[str]) -> bool:
         """
