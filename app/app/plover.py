@@ -145,8 +145,6 @@ class PloverDB:
             most_specific_categories = categories.difference(all_proper_ancestors)
             node_to_category_labels_map[node_id] = {self._get_category_id(category_name)
                                                     for category_name in most_specific_categories}
-            print(f"for node {node_id}, categories are {categories}, proper_ancestors_for_each_cateogry is {proper_ancestors_for_each_category}, "
-                  f"all proper ancestors is {all_proper_ancestors}, most specific categories is {most_specific_categories}")
 
         # Build our main index (modified/nested adjacency list kind of structure)
         logging.info("Building main index..")
