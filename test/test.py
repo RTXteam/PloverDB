@@ -261,85 +261,13 @@ def test_11():
 
 def test_12():
     ids = ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL2106453"]
-    # Test subject as input node with enforced direction
+    # Test predicate symmetry is handled properly
     query = {
         "edges": {
             "e00": {
                 "subject": "n00",
-                "object": "n01"
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ids
-            },
-            "n01": {
-            }
-        },
-        "include_metadata": True,
-        "enforce_directionality": True
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_enforce_direction_subject = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_enforce_direction_subject} edges")
-    assert all(edge for edge in kg["edges"]["e00"].items() if edge[0] in ids)
-
-    # Test object as input node with enforced direction
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00"
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ids
-            },
-            "n01": {
-            }
-        },
-        "include_metadata": True,
-        "enforce_directionality": True
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_enforce_direction_object = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_enforce_direction_object} edges")
-    assert all(edge for edge in kg["edges"]["e00"].items() if edge[1] in ids)
-
-    # Test subject as input node with ignored direction
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01"
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ids
-            },
-            "n01": {
-            }
-        },
-        "include_metadata": True,
-        "enforce_directionality": False
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_ignore_direction_subject = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_ignore_direction_subject} edges")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] in ids)
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] in ids)
-
-    # Test object as input node with ignored direction
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00"
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"]
             }
         },
         "nodes": {
@@ -351,16 +279,74 @@ def test_12():
         },
         "include_metadata": True
     }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_ignore_direction_object = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_ignore_direction_object} edges")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] in ids)
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] in ids)
+    kg_symmetric = _run_query(query)
 
-    # Final checks on edge counts to make sure all makes sense
-    assert num_edges_ignore_direction_subject == num_edges_ignore_direction_object
-    assert num_edges_enforce_direction_subject + num_edges_enforce_direction_object == num_edges_ignore_direction_object
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:interacts_with"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ids
+            },
+            "n01": {
+            }
+        },
+        "include_metadata": True
+    }
+    kg_symmetric_reversed = _run_query(query)
+
+    assert kg_symmetric["nodes"]["n00"] and kg_symmetric["nodes"]["n01"] and kg_symmetric["edges"]["e00"]
+    assert set(kg_symmetric["nodes"]["n01"]) == set(kg_symmetric_reversed["nodes"]["n01"])
+
+    # Test treats only returns edges with direction matching QG
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:treats"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ids
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg_asymmetric = _run_query(query)
+    assert kg_asymmetric["nodes"]["n00"] and kg_asymmetric["nodes"]["n01"] and kg_asymmetric["edges"]["e00"]
+    assert all(edge[0] in kg_asymmetric["nodes"]["n00"] for edge in kg_asymmetric["edges"]["e00"].values())
+
+    # Test no edges are returned for backwards treats query
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:treats"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ids
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg_asymmetric_reversed = _run_query(query)
+    assert not kg_asymmetric_reversed["edges"]["e00"]
 
 
 def test_13():
@@ -370,7 +356,7 @@ def test_13():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:physically_interacts_with"]
+                "predicates": ["biolink:interacts_with"]
             }
         },
         "nodes": {
@@ -378,7 +364,7 @@ def test_13():
                 "ids": ["UniProtKB:Q9BYZ6"]
             },
             "n01": {
-                "categories": ["biolink:SmallMolecule"]
+                "categories": ["biolink:ChemicalEntity"]
             }
         },
         "include_metadata": True
@@ -651,6 +637,39 @@ def test_version():
     }
     kg = _run_query(query)
     print(kg)
+
+
+# def test_qualifiers():
+#     query = {
+#         "include_metadata": True,
+#         "edges": {
+#             "e00": {
+#                 "subject": "n00",
+#                 "object": "n01",
+#                 "predicates": ["biolink:interacts_with"],
+#                 "qualifier_constraints": [
+#                     {"qualifier_set": [
+#                         # {"qualifier_type_id": "biolink:qualified_predicate",
+#                         #  "qualifier_value": "biolink:causes"},
+#                         # {"qualifier_type_id": "biolink:object_direction_qualifier",
+#                         #  "qualifier_value": "increased"},
+#                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
+#                          "qualifier_value": "localization"}
+#                     ]}
+#                 ]
+#             }
+#         },
+#         "nodes": {
+#             "n00": {
+#                 "ids": ["MONDO:0005148"]
+#             },
+#             "n01": {
+#                 "categories": ["biolink:BiologicalEntity"]
+#             }
+#         }
+#     }
+#     kg = _run_query(query)
+#     print(kg)
 
 
 if __name__ == "__main__":
