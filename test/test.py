@@ -15,7 +15,9 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
     response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
-        return response.json()
+        json_response = response.json()
+        _print_kg(json_response)
+        return json_response
     else:
         print(f"Response status code was {response.status_code}. Response was: {response.text}")
         return dict()
@@ -43,7 +45,6 @@ def test_1():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_2():
@@ -67,7 +68,6 @@ def test_2():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_3():
@@ -91,7 +91,6 @@ def test_3():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_4():
@@ -114,7 +113,6 @@ def test_4():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_5():
@@ -138,7 +136,6 @@ def test_5():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_6():
@@ -161,7 +158,6 @@ def test_6():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_7():
@@ -184,7 +180,6 @@ def test_7():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_8():
@@ -200,7 +195,6 @@ def test_8():
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n00"]) == 1
-    _print_kg(kg)
 
 
 def test_9():
@@ -216,7 +210,6 @@ def test_9():
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n00"]) == 2
-    _print_kg(kg)
 
 
 def test_10():
@@ -236,7 +229,6 @@ def test_10():
     kg = _run_query(query)
     assert len(kg["nodes"]["n00"]) == 1
     assert len(kg["nodes"]["n01"]) == 1
-    _print_kg(kg)
 
 
 def test_11():
@@ -371,7 +363,6 @@ def test_13():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_14():
@@ -389,7 +380,6 @@ def test_14():
     }
     kg = _run_query(query_subclass)
     assert len(kg["nodes"]["n00"]) > 1
-    _print_kg(kg)
     query_no_subclass = {
         "include_metadata": True,
         "edges": {
@@ -402,7 +392,6 @@ def test_14():
     }
     kg = _run_query(query_no_subclass)
     assert len(kg["nodes"]["n00"]) == 1
-    _print_kg(kg)
 
 
 def test_15():
@@ -624,6 +613,328 @@ def test_20():
     assert type_1_diabetes_node_tuple[-1] == [diabetes_curie]
 
 
+pos_regulation_stem_cell_differentiation = "UMLS:C3546743"
+stem_cell_differentiation = "UMLS:C2262995"
+
+
+def test_21():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_22():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
+                        #  "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_23():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        # {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                        #  "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_24():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
+                        #  "qualifier_value": "increased"},
+                        # {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                        #  "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_25():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation not in kg["nodes"]["n01"]  # It's regular predicate is 'regulates'
+
+
+def test_26():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        # {"qualifier_type_id": "biolink:qualified_predicate",
+                        #  "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation not in kg["nodes"]["n01"]  # It's regular predicate is 'regulates'
+
+
+def test_27():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:regulates"],
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_28():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:regulates"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_29():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_30():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        # {"qualifier_type_id": "biolink:qualified_predicate",
+                        #  "qualifier_value": "biolink:causes"},
+                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
+                        #  "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
 def test_version():
     # Print out the version of the KG2c being tested
     query = {
@@ -637,39 +948,6 @@ def test_version():
     }
     kg = _run_query(query)
     print(kg)
-
-
-# def test_qualifiers():
-#     query = {
-#         "include_metadata": True,
-#         "edges": {
-#             "e00": {
-#                 "subject": "n00",
-#                 "object": "n01",
-#                 "predicates": ["biolink:interacts_with"],
-#                 "qualifier_constraints": [
-#                     {"qualifier_set": [
-#                         # {"qualifier_type_id": "biolink:qualified_predicate",
-#                         #  "qualifier_value": "biolink:causes"},
-#                         # {"qualifier_type_id": "biolink:object_direction_qualifier",
-#                         #  "qualifier_value": "increased"},
-#                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
-#                          "qualifier_value": "localization"}
-#                     ]}
-#                 ]
-#             }
-#         },
-#         "nodes": {
-#             "n00": {
-#                 "ids": ["MONDO:0005148"]
-#             },
-#             "n01": {
-#                 "categories": ["biolink:BiologicalEntity"]
-#             }
-#         }
-#     }
-#     kg = _run_query(query)
-#     print(kg)
 
 
 if __name__ == "__main__":
