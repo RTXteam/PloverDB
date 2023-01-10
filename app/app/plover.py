@@ -157,23 +157,16 @@ class PloverDB:
             object_id = edge["object"]
             predicate = edge[self.edge_predicate_property]
             predicate_id = self._get_predicate_id(predicate)
-            has_symmetric_predicate = self.bh.is_symmetric(predicate)
             subject_category_ids = node_to_category_labels_map[subject_id]
             object_category_ids = node_to_category_labels_map[object_id]
-            # Record this edge in the forwards direction, under its regular predicate
+            # Record this edge in the forwards and backwards directions
             self._add_to_main_index(subject_id, object_id, object_category_ids, predicate_id, edge_id, 1)
-            # Also record the edge in the reverse direction under its regular predicate, if it's symmetric
-            if has_symmetric_predicate:
-                self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
+            self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
             # Record this edge under its qualified predicate/other properties, if such info is provided
             if edge.get(self.kg2_qualified_predicate_property) or edge.get(self.kg2_object_direction_property) or edge.get(self.kg2_object_aspect_property):
                 conglomerate_predicate_id = self._get_conglomerate_predicate_id_from_edge(edge)
                 self._add_to_main_index(subject_id, object_id, object_category_ids, conglomerate_predicate_id, edge_id, 1)
-                # Record the edge in the reverse direction as well if qualified predicate is symmetric
-                qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
-                has_symmetric_qualified_predicate = qualified_predicate and self.bh.is_symmetric(qualified_predicate)
-                if has_symmetric_qualified_predicate or (not qualified_predicate and has_symmetric_predicate):
-                    self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
+                self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
                 qualified_edges_count += 1
             edges_count += 1
             if edges_count % 1000000 == 0:
