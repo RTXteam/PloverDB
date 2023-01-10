@@ -134,14 +134,17 @@ class PloverDB:
             logging.info(f"After narrowing down test file, node_lookup_map contains {len(self.node_lookup_map)} nodes, "
                          f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
 
-        # Build a helper map of nodes --> category labels (including ancestors)
-        logging.info("Determining nodes' category labels (including Biolink ancestors)..")
+        # Build a helper map of nodes --> category labels
+        logging.info("Determining nodes' category labels (most specific Biolink categories)..")
         node_to_category_labels_map = dict()
         for node_id, node in self.node_lookup_map.items():
-            category_names = node[self.categories_property]
-            category_names_with_ancestors = self.bh.get_ancestors(category_names, include_mixins=False)
+            categories = set(node[self.categories_property])
+            proper_ancestors_for_each_category = [set(self.bh.get_ancestors(category, include_mixins=False, include_conflations=False)).difference({category})
+                                                  for category in categories]
+            all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
+            most_specific_categories = categories.difference(all_proper_ancestors)
             node_to_category_labels_map[node_id] = {self._get_category_id(category_name)
-                                                    for category_name in category_names_with_ancestors}
+                                                    for category_name in most_specific_categories}
 
         # Build our main index (modified/nested adjacency list kind of structure)
         logging.info("Building main index..")
@@ -154,23 +157,16 @@ class PloverDB:
             object_id = edge["object"]
             predicate = edge[self.edge_predicate_property]
             predicate_id = self._get_predicate_id(predicate)
-            has_symmetric_predicate = self.bh.is_symmetric(predicate)
             subject_category_ids = node_to_category_labels_map[subject_id]
             object_category_ids = node_to_category_labels_map[object_id]
-            # Record this edge in the forwards direction, under its regular predicate
+            # Record this edge in the forwards and backwards directions
             self._add_to_main_index(subject_id, object_id, object_category_ids, predicate_id, edge_id, 1)
-            # Also record the edge in the reverse direction under its regular predicate, if it's symmetric
-            if has_symmetric_predicate:
-                self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
+            self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
             # Record this edge under its qualified predicate/other properties, if such info is provided
             if edge.get(self.kg2_qualified_predicate_property) or edge.get(self.kg2_object_direction_property) or edge.get(self.kg2_object_aspect_property):
                 conglomerate_predicate_id = self._get_conglomerate_predicate_id_from_edge(edge)
                 self._add_to_main_index(subject_id, object_id, object_category_ids, conglomerate_predicate_id, edge_id, 1)
-                # Record the edge in the reverse direction as well if qualified predicate is symmetric
-                qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
-                has_symmetric_qualified_predicate = qualified_predicate and self.bh.is_symmetric(qualified_predicate)
-                if has_symmetric_qualified_predicate or (not qualified_predicate and has_symmetric_predicate):
-                    self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
+                self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
                 qualified_edges_count += 1
             edges_count += 1
             if edges_count % 1000000 == 0:
@@ -535,11 +531,11 @@ class PloverDB:
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
-        output_categories = self._get_output_category_ids(output_qnode_key, trapi_query)
-        qedge_predicates_derived = self._get_derived_qedge_predicates(qedge)
+        output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_query)
+        qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
         logging.info(f"Input curies are {input_curies}")
         logging.info(f"Output curies are {output_curies}")
-        logging.info(f"QEdge predicates derived are {qedge_predicates_derived}")
+        logging.info(f"QEdge predicates derived are {qedge_predicates_expanded}")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -551,14 +547,14 @@ class PloverDB:
             if input_curie in main_index:
                 # Consider ALL output categories if none were provided or if output curies were specified
                 categories_present = set(main_index[input_curie])
-                categories_to_inspect = output_categories.intersection(categories_present) if output_categories and not output_curies else categories_present
+                categories_to_inspect = output_categories_expanded.intersection(categories_present) if output_categories_expanded and not output_curies else categories_present
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = set(qedge_predicates_derived).intersection(predicates_present)
+                        predicates_to_inspect = set(qedge_predicates_expanded).intersection(predicates_present)
                         # Loop through each QG predicate (and their descendants), looking up answers as we go
                         for predicate in predicates_to_inspect:
-                            consider_bidirectional = qedge_predicates_derived.get(predicate)
+                            consider_bidirectional = qedge_predicates_expanded.get(predicate)
                             if consider_bidirectional:
                                 directions = {0, 1}
                             else:
@@ -647,12 +643,13 @@ class PloverDB:
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
 
-    def _get_output_category_ids(self, output_qnode_key: str, trapi_query: dict) -> Set[int]:
+    def _get_expanded_output_category_ids(self, output_qnode_key: str, trapi_query: dict) -> Set[int]:
         output_category_names_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
         output_category_names_raw = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
         output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
-        output_categories = {self.category_map.get(category, self.non_biolink_item_id) for category in output_category_names}
-        return output_categories
+        output_categories_with_descendants = self.bh.get_descendants(output_category_names, include_mixins=False)
+        output_category_ids = {self.category_map.get(category, self.non_biolink_item_id) for category in output_categories_with_descendants}
+        return output_category_ids
 
     def _consider_bidirectional(self, predicate: str, direct_qg_predicates: Set[str]) -> bool:
         """
@@ -717,7 +714,7 @@ class PloverDB:
                     qualified_predicates.add(qualifier["qualifier_value"])
         return qualified_predicates
 
-    def _get_derived_qedge_predicates(self, qedge: dict) -> Dict[str, bool]:
+    def _get_expanded_qedge_predicates(self, qedge: dict) -> Dict[str, bool]:
         """
         This function returns a qedge's "conglomerate" predicates for qualified qedges (where the qualified info is kind
         of flattened or conglomerated into one derived predicate string), or its regular predicates when no qualified

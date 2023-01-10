@@ -15,7 +15,9 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
     response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
-        return response.json()
+        json_response = response.json()
+        _print_kg(json_response)
+        return json_response
     else:
         print(f"Response status code was {response.status_code}. Response was: {response.text}")
         return dict()
@@ -43,7 +45,6 @@ def test_1():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_2():
@@ -67,7 +68,6 @@ def test_2():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_3():
@@ -91,7 +91,6 @@ def test_3():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_4():
@@ -114,7 +113,6 @@ def test_4():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_5():
@@ -138,7 +136,6 @@ def test_5():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_6():
@@ -161,7 +158,6 @@ def test_6():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_7():
@@ -184,7 +180,6 @@ def test_7():
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_8():
@@ -200,7 +195,6 @@ def test_8():
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n00"]) == 1
-    _print_kg(kg)
 
 
 def test_9():
@@ -216,7 +210,6 @@ def test_9():
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n00"]) == 2
-    _print_kg(kg)
 
 
 def test_10():
@@ -236,7 +229,6 @@ def test_10():
     kg = _run_query(query)
     assert len(kg["nodes"]["n00"]) == 1
     assert len(kg["nodes"]["n01"]) == 1
-    _print_kg(kg)
 
 
 def test_11():
@@ -261,85 +253,13 @@ def test_11():
 
 def test_12():
     ids = ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL2106453"]
-    # Test subject as input node with enforced direction
+    # Test predicate symmetry is handled properly
     query = {
         "edges": {
             "e00": {
                 "subject": "n00",
-                "object": "n01"
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ids
-            },
-            "n01": {
-            }
-        },
-        "include_metadata": True,
-        "enforce_directionality": True
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_enforce_direction_subject = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_enforce_direction_subject} edges")
-    assert all(edge for edge in kg["edges"]["e00"].items() if edge[0] in ids)
-
-    # Test object as input node with enforced direction
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00"
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ids
-            },
-            "n01": {
-            }
-        },
-        "include_metadata": True,
-        "enforce_directionality": True
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_enforce_direction_object = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_enforce_direction_object} edges")
-    assert all(edge for edge in kg["edges"]["e00"].items() if edge[1] in ids)
-
-    # Test subject as input node with ignored direction
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01"
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ids
-            },
-            "n01": {
-            }
-        },
-        "include_metadata": True,
-        "enforce_directionality": False
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_ignore_direction_subject = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_ignore_direction_subject} edges")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] in ids)
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] in ids)
-
-    # Test object as input node with ignored direction
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00"
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"]
             }
         },
         "nodes": {
@@ -351,16 +271,74 @@ def test_12():
         },
         "include_metadata": True
     }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    num_edges_ignore_direction_object = len(kg['edges']['e00'])
-    print(f"Got back {num_edges_ignore_direction_object} edges")
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[0] in ids)
-    assert any(edge for edge in kg["edges"]["e00"].values() if edge[1] in ids)
+    kg_symmetric = _run_query(query)
 
-    # Final checks on edge counts to make sure all makes sense
-    assert num_edges_ignore_direction_subject == num_edges_ignore_direction_object
-    assert num_edges_enforce_direction_subject + num_edges_enforce_direction_object == num_edges_ignore_direction_object
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:interacts_with"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ids
+            },
+            "n01": {
+            }
+        },
+        "include_metadata": True
+    }
+    kg_symmetric_reversed = _run_query(query)
+
+    assert kg_symmetric["nodes"]["n00"] and kg_symmetric["nodes"]["n01"] and kg_symmetric["edges"]["e00"]
+    assert set(kg_symmetric["nodes"]["n01"]) == set(kg_symmetric_reversed["nodes"]["n01"])
+
+    # Test treats only returns edges with direction matching QG
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:treats"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ids
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg_asymmetric = _run_query(query)
+    assert kg_asymmetric["nodes"]["n00"] and kg_asymmetric["nodes"]["n01"] and kg_asymmetric["edges"]["e00"]
+    assert all(edge[0] in kg_asymmetric["nodes"]["n00"] for edge in kg_asymmetric["edges"]["e00"].values())
+
+    # Test no edges are returned for backwards treats query
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:treats"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ids
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg_asymmetric_reversed = _run_query(query)
+    assert not kg_asymmetric_reversed["edges"]["e00"]
 
 
 def test_13():
@@ -370,7 +348,7 @@ def test_13():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:physically_interacts_with"]
+                "predicates": ["biolink:interacts_with"]
             }
         },
         "nodes": {
@@ -378,14 +356,13 @@ def test_13():
                 "ids": ["UniProtKB:Q9BYZ6"]
             },
             "n01": {
-                "categories": ["biolink:SmallMolecule"]
+                "categories": ["biolink:ChemicalEntity"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-    _print_kg(kg)
 
 
 def test_14():
@@ -403,7 +380,6 @@ def test_14():
     }
     kg = _run_query(query_subclass)
     assert len(kg["nodes"]["n00"]) > 1
-    _print_kg(kg)
     query_no_subclass = {
         "include_metadata": True,
         "edges": {
@@ -416,7 +392,6 @@ def test_14():
     }
     kg = _run_query(query_no_subclass)
     assert len(kg["nodes"]["n00"]) == 1
-    _print_kg(kg)
 
 
 def test_15():
@@ -636,6 +611,352 @@ def test_20():
     assert not type_2_diabetes_node_tuple[-1]
     # Descendant curies should indicate which QG curie they correspond to
     assert type_1_diabetes_node_tuple[-1] == [diabetes_curie]
+
+
+pos_regulation_stem_cell_differentiation = "UMLS:C3546743"
+stem_cell_differentiation = "UMLS:C2262995"
+
+
+def test_21():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_22():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
+                        #  "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_23():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        # {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                        #  "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_24():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
+                        #  "qualifier_value": "increased"},
+                        # {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                        #  "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_25():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation not in kg["nodes"]["n01"]  # It's regular predicate is 'regulates'
+
+
+def test_26():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        # {"qualifier_type_id": "biolink:qualified_predicate",
+                        #  "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation not in kg["nodes"]["n01"]  # It's regular predicate is 'regulates'
+
+
+def test_27():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:regulates"],
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_28():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:regulates"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_29():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_30():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        # {"qualifier_type_id": "biolink:qualified_predicate",
+                        #  "qualifier_value": "biolink:causes"},
+                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
+                        #  "qualifier_value": "increased"},
+                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
+                         "qualifier_value": "activity_or_abundance"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [pos_regulation_stem_cell_differentiation]
+            },
+            "n01": {
+                "categories": ["biolink:PhysiologicalProcess"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert stem_cell_differentiation in kg["nodes"]["n01"]
+
+
+def test_31():
+    # Test treats
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:treats"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["MONDO:0004985"]
+            },
+            "n01": {
+                "categories": ["biolink:Drug"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert len(kg["nodes"]["n01"])
 
 
 def test_version():
