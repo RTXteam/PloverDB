@@ -935,6 +935,30 @@ def test_30():
     assert stem_cell_differentiation in kg["nodes"]["n01"]
 
 
+def test_31():
+    # Test treats
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:treats"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["MONDO:0004985"]
+            },
+            "n01": {
+                "categories": ["biolink:Drug"]
+            }
+        },
+        "include_metadata": True
+    }
+    kg = _run_query(query)
+    assert len(kg["nodes"]["n01"])
+
+
 def test_version():
     # Print out the version of the KG2c being tested
     query = {
