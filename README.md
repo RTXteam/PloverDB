@@ -72,7 +72,7 @@ To verify that your new service is working, you can run the pytest suite against
 1. If you haven't already done so on the machine you'll be sending the tests from:
     1. Clone this repo and `cd` into it
     1. Run `pip install -r requirements.txt`
-1. `pytest -v test/test.py --endpoint [your_endpoint_url]`
+1. Run `pytest -v test/test.py --endpoint [your_endpoint_url]`
     * Example endpoint URL: `http://kg2cplover.rtx.ai:9990`
     * If no endpoint is specified, the tests will use: `http://localhost:9990`
 
