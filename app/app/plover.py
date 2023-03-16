@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import itertools
 import json
 import logging
 import os
@@ -9,6 +10,8 @@ import subprocess
 import time
 from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional, Tuple
+
+import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
@@ -29,18 +32,29 @@ class PloverDB:
         self.pickle_index_name, self.kg_json_name = self._get_local_file_names()
         self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
         self.pickle_index_path = f"{SCRIPT_DIR}/../{self.pickle_index_name}"
-        self.predicate_property = self.kg_config["labels"]["edges"]
+        self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
+        self.kg2_qualified_predicate_property = "qualified_predicate"
+        self.kg2_object_direction_property = "qualified_object_direction"  # Later this might use same as qedge?
+        self.kg2_object_aspect_property = "qualified_object_aspect"  # Later this might use same as qedge?
+        self.qedge_qualified_predicate_property = "biolink:qualified_predicate"
+        self.qedge_object_direction_property = "biolink:object_direction_qualifier"
+        self.qedge_object_aspect_property = "biolink:object_aspect_qualifier"
+        self.bh_branch = self.kg_config["biolink_helper_branch"]  # The RTX branch to download BiolinkHelper from
         self.bh = None  # BiolinkHelper is downloaded later on
         self.core_node_properties = {"name", "category"}
         self.non_biolink_item_id = 9999
         self.category_map = dict()  # Maps category english name --> int ID
+        self.category_map_reversed = dict()  # Maps category int ID --> english name
         self.predicate_map = dict()  # Maps predicate english name --> int ID
         self.predicate_map_reversed = dict()  # Maps predicate int ID --> english name
         self.node_lookup_map = dict()
         self.edge_lookup_map = dict()
         self.main_index = dict()
         self.subclass_index = dict()
+        self.conglomerate_predicate_descendant_index = defaultdict(set)
+        self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
+                                     self.qedge_object_aspect_property}
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -72,7 +86,7 @@ class PloverDB:
         bh_file_name = "biolink_helper.py"
         logging.info(f"Downloading {bh_file_name} from RTX repo")
         local_path = f"{SCRIPT_DIR}/{bh_file_name}"
-        remote_path = f"https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
+        remote_path = f"https://github.com/RTXteam/RTX/blob/{self.bh_branch}/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
         subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
         from biolink_helper import BiolinkHelper
         self.bh = BiolinkHelper(biolink_version=biolink_version)
@@ -81,20 +95,35 @@ class PloverDB:
         logging.info(f"Building basic node/edge lookup maps")
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        logging.info(f"node_lookup_map contains {len(self.node_lookup_map)} nodes, "
+                     f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
 
-        # Convert all edges to their canonical predicate form
+        # Convert all edges to their canonical predicate form; correct missing biolink prefixes
         logging.info(f"Converting edges to their canonical form")
         for edge_id, edge in self.edge_lookup_map.items():
-            canonical_predicate = self.bh.get_canonical_predicates(edge["predicate"])[0]
-            if canonical_predicate != edge["predicate"]:
+            predicate = edge[self.edge_predicate_property]
+            qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
+            canonical_predicate = self.bh.get_canonical_predicates(predicate)[0]
+            canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate)[0] if qualified_predicate else None
+            predicate_is_canonical = canonical_predicate == predicate
+            qualified_predicate_is_canonical = canonical_qualified_predicate == qualified_predicate
+            if qualified_predicate and \
+                    ((predicate_is_canonical and not qualified_predicate_is_canonical) or
+                     (not predicate_is_canonical and qualified_predicate_is_canonical)):
+                logging.error(f"Edge {edge_id} has one of [predicate, qualified_predicate] that is in canonical form "
+                              f"and one that is not; cannot reconcile")
+                return
+            elif canonical_predicate != predicate:  # Both predicate and qualified_pred must be non-canonical
                 # Flip the edge (because the original predicate must be the canonical predicate's inverse)
-                edge["predicate"] = canonical_predicate
+                edge[self.edge_predicate_property] = canonical_predicate
+                edge[self.kg2_qualified_predicate_property] = canonical_qualified_predicate
                 original_subject = edge["subject"]
                 edge["subject"] = edge["object"]
                 edge["object"] = original_subject
 
         if self.is_test:
             # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
+            logging.info(f"Narrowing down test JSON file to make sure node IDs used by edges appear in nodes dict")
             node_ids_used_by_edges = {edge["subject"] for edge in self.edge_lookup_map.values()}.union(edge["object"] for edge in self.edge_lookup_map.values())
             node_lookup_map_trimmed = {node_id: self.node_lookup_map[node_id] for node_id in node_ids_used_by_edges
                                        if node_id in self.node_lookup_map}
@@ -102,32 +131,57 @@ class PloverDB:
             edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
+            logging.info(f"After narrowing down test file, node_lookup_map contains {len(self.node_lookup_map)} nodes, "
+                         f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
 
-        # Build a helper map of nodes --> category labels (including ancestors)
-        logging.info("Determining nodes' category labels (including Biolink ancestors)..")
+        # Build a helper map of nodes --> category labels
+        logging.info("Determining nodes' category labels (most specific Biolink categories)..")
         node_to_category_labels_map = dict()
         for node_id, node in self.node_lookup_map.items():
-            category_names = node[self.categories_property]
-            category_names_with_ancestors = self.bh.get_ancestors(category_names, include_mixins=False)
+            categories = set(node[self.categories_property])
+            proper_ancestors_for_each_category = [set(self.bh.get_ancestors(category, include_mixins=False, include_conflations=False)).difference({category})
+                                                  for category in categories]
+            all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
+            most_specific_categories = categories.difference(all_proper_ancestors)
             node_to_category_labels_map[node_id] = {self._get_category_id(category_name)
-                                                    for category_name in category_names_with_ancestors}
+                                                    for category_name in most_specific_categories}
 
         # Build our main index (modified/nested adjacency list kind of structure)
         logging.info("Building main index..")
-        count = 0
+        edges_count = 0
+        qualified_edges_count = 0
         total = len(self.edge_lookup_map)
+        max_allowed_percent_memory_usage = 90
         for edge_id, edge in self.edge_lookup_map.items():
             subject_id = edge["subject"]
             object_id = edge["object"]
-            predicate = self._get_predicate_id(edge[self.predicate_property])
-            subject_categories = node_to_category_labels_map[subject_id]
-            object_categories = node_to_category_labels_map[object_id]
-            # Record this edge in both the forwards and backwards direction
-            self._add_to_main_index(subject_id, object_id, object_categories, predicate, edge_id, 1)
-            self._add_to_main_index(object_id, subject_id, subject_categories, predicate, edge_id, 0)
-            count += 1
-            if count % 1000000 == 0:
-                logging.info(f"  Have processed {count} edges ({round((count / total) * 100)}%)..")
+            predicate = edge[self.edge_predicate_property]
+            predicate_id = self._get_predicate_id(predicate)
+            subject_category_ids = node_to_category_labels_map[subject_id]
+            object_category_ids = node_to_category_labels_map[object_id]
+            # Record this edge in the forwards and backwards directions
+            self._add_to_main_index(subject_id, object_id, object_category_ids, predicate_id, edge_id, 1)
+            self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
+            # Record this edge under its qualified predicate/other properties, if such info is provided
+            if edge.get(self.kg2_qualified_predicate_property) or edge.get(self.kg2_object_direction_property) or edge.get(self.kg2_object_aspect_property):
+                conglomerate_predicate_id = self._get_conglomerate_predicate_id_from_edge(edge)
+                self._add_to_main_index(subject_id, object_id, object_category_ids, conglomerate_predicate_id, edge_id, 1)
+                self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
+                qualified_edges_count += 1
+            edges_count += 1
+            if edges_count % 1000000 == 0:
+                memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
+                logging.info(f"  Have processed {edges_count} edges ({round((edges_count / total) * 100)}%), "
+                             f"{qualified_edges_count} of which were qualified edges. Memory usage is currently "
+                             f"{memory_usage_percent}% ({memory_usage_gb}G)..")
+                if memory_usage_percent > max_allowed_percent_memory_usage:
+                    raise MemoryError(f"Main index size is greater than {max_allowed_percent_memory_usage}%;"
+                                      f" terminating.")
+        logging.info(f"Done building main index; there were {edges_count} edges, {qualified_edges_count} of which "
+                     f"were qualified.")
+
+        # Record each conglomerate predicate in the KG under its ancestors
+        self._build_conglomerate_predicate_descendant_index()
 
         # Build the subclass_of index as needed
         if self.kg_config.get("subclass_sources"):
@@ -138,7 +192,8 @@ class PloverDB:
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
-        edge_properties = ("subject", "object", "predicate", "knowledge_source")
+        edge_properties = ("subject", "object", self.edge_predicate_property, "knowledge_source",
+                           self.kg2_qualified_predicate_property, self.kg2_object_direction_property, self.kg2_object_aspect_property)
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
@@ -150,6 +205,10 @@ class PloverDB:
             edge_tuple = tuple([edge[property_name] for property_name in edge_properties])
             self.edge_lookup_map[edge_id] = edge_tuple
 
+        # Create reversed category/predicate maps now that we're done building those maps
+        self.category_map_reversed = self._reverse_dictionary(self.category_map)
+        self.predicate_map_reversed = self._reverse_dictionary(self.predicate_map)
+
         # Save all indexes in a big pickle
         logging.info(f"Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
@@ -159,13 +218,17 @@ class PloverDB:
                        "main_index": self.main_index,
                        "subclass_index": self.subclass_index,
                        "predicate_map": self.predicate_map,
+                       "predicate_map_reversed": self.predicate_map_reversed,
                        "category_map": self.category_map,
+                       "category_map_reversed": self.category_map_reversed,
+                       "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
                        "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        logging.info(f"Removing {self.kg_json_name} from the image now that index building is done")
-        subprocess.call(["rm", "-f", self.kg_json_path])
+        if not self.is_test:
+            logging.info(f"Removing {self.kg_json_name} from the image now that index building is done")
+            subprocess.call(["rm", "-f", self.kg_json_path])
 
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
@@ -192,8 +255,10 @@ class PloverDB:
             self.main_index = all_indexes["main_index"]
             self.subclass_index = all_indexes["subclass_index"]
             self.predicate_map = all_indexes["predicate_map"]
-            self.predicate_map_reversed = {value: key for key, value in self.predicate_map.items()}
+            self.predicate_map_reversed = all_indexes["predicate_map_reversed"]
             self.category_map = all_indexes["category_map"]
+            self.category_map_reversed = all_indexes["category_map_reversed"]
+            self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
             biolink_version = all_indexes["biolink_version"]
 
         # Set up BiolinkHelper
@@ -202,18 +267,30 @@ class PloverDB:
 
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
 
-    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_categories: Set[int], predicate: int,
+    def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_category_ids: Set[int], predicate_id: int,
                            edge_id: int, direction: int):
         # Note: A direction of 1 means forwards, 0 means backwards
         main_index = self.main_index
         if node_a_id not in main_index:
             main_index[node_a_id] = dict()
-        for category in node_b_categories:
-            if category not in main_index[node_a_id]:
-                main_index[node_a_id][category] = dict()
-            if predicate not in main_index[node_a_id][category]:
-                main_index[node_a_id][category][predicate] = (dict(), dict())
-            main_index[node_a_id][category][predicate][direction][node_b_id] = edge_id
+        for category_id in node_b_category_ids:
+            if category_id not in main_index[node_a_id]:
+                main_index[node_a_id][category_id] = dict()
+            if predicate_id not in main_index[node_a_id][category_id]:
+                main_index[node_a_id][category_id][predicate_id] = (dict(), dict())
+            if node_b_id not in main_index[node_a_id][category_id][predicate_id][direction]:
+                main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = set()
+            main_index[node_a_id][category_id][predicate_id][direction][node_b_id].add(edge_id)
+
+    def _get_conglomerate_predicate_from_edge(self, edge: dict) -> str:
+        qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
+        object_direction = edge.get(self.kg2_object_direction_property)
+        object_aspect = edge.get(self.kg2_object_aspect_property)
+        predicate = edge.get(self.edge_predicate_property)
+        return self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                predicate=predicate,
+                                                object_direction=object_direction,
+                                                object_aspect=object_aspect)
 
     def _get_predicate_id(self, predicate_name: str) -> int:
         if predicate_name not in self.predicate_map:
@@ -221,14 +298,51 @@ class PloverDB:
             self.predicate_map[predicate_name] = num_predicates
         return self.predicate_map[predicate_name]
 
+    def _get_conglomerate_predicate_id_from_edge(self, edge: dict) -> int:
+        conglomerate_predicate = self._get_conglomerate_predicate_from_edge(edge)
+        return self._get_predicate_id(conglomerate_predicate)
+
+    @staticmethod
+    def _get_conglomerate_predicate(qualified_predicate: Optional[str], predicate: Optional[str],
+                                    object_direction: Optional[str], object_aspect: Optional[str]) -> str:
+        # If no qualified predicate is provided, use the regular unqualified predicate
+        predicate_to_use = qualified_predicate if qualified_predicate else predicate
+        return f"{predicate_to_use}--{object_direction}--{object_aspect}"
+
     def _get_category_id(self, category_name: str) -> int:
         if category_name not in self.category_map:
             num_categories = len(self.category_map)
             self.category_map[category_name] = num_categories
         return self.category_map[category_name]
 
+    @staticmethod
+    def _reverse_dictionary(some_dict: dict) -> dict:
+        return {value: key for key, value in some_dict.items()}
+
+    def _build_conglomerate_predicate_descendant_index(self):
+        # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular predicate variations)
+        logging.info("Building conglomerate qualified predicate descendant index..")
+        conglomerate_predicates_already_seen = set()
+        for edge_id, edge in self.edge_lookup_map.items():
+            conglomerate_predicate = self._get_conglomerate_predicate_from_edge(edge)
+            qualified_predicate = edge.get(self.kg2_qualified_predicate_property)
+            qualified_obj_direction = edge.get(self.kg2_object_direction_property)
+            qualified_obj_aspect = edge.get(self.kg2_object_aspect_property)
+            if (qualified_predicate or qualified_obj_direction or qualified_obj_aspect) and conglomerate_predicate not in conglomerate_predicates_already_seen:
+                predicate_variations = [qualified_predicate, edge.get(self.edge_predicate_property)]
+                for predicate in predicate_variations:
+                    predicate_ancestors = set(self.bh.get_ancestors(predicate)).union({None})
+                    direction_ancestors = set(self.bh.get_ancestors(qualified_obj_direction)).union({None})
+                    aspect_ancestors = set(self.bh.get_ancestors(qualified_obj_aspect)).union({None})
+                    ancestor_combinations = set(itertools.product(predicate_ancestors, direction_ancestors, aspect_ancestors))
+                    ancestor_conglomerate_predicates = {f"{combination[0]}--{combination[1]}--{combination[2]}"
+                                                        for combination in ancestor_combinations}.difference({"None--None--None"})
+                    for ancestor in ancestor_conglomerate_predicates:
+                        self.conglomerate_predicate_descendant_index[ancestor].add(conglomerate_predicate)
+                conglomerate_predicates_already_seen.add(conglomerate_predicate)
+
     def _build_subclass_index(self, subclass_sources: Set[str]):
-        logging.info(f"  Building subclass_of index using {subclass_sources} edges..")
+        logging.info(f"Building subclass_of index using {subclass_sources} edges..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
@@ -249,7 +363,7 @@ class PloverDB:
         # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
-                             if edge[self.predicate_property] in subclass_predicates and
+                             if edge[self.edge_predicate_property] in subclass_predicates and
                              set(edge.get("knowledge_source", set())).intersection(subclass_sources)}
         logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from specified sources)")
 
@@ -257,8 +371,8 @@ class PloverDB:
         parent_to_child_dict = defaultdict(set)
         for edge_id in subclass_edge_ids:
             edge = self.edge_lookup_map[edge_id]
-            parent_node_id = edge["object"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["subject"]
-            child_node_id = edge["subject"] if edge[self.predicate_property] == "biolink:subclass_of" else edge["object"]
+            parent_node_id = edge["object"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["subject"]
+            child_node_id = edge["subject"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["object"]
             parent_to_child_dict[parent_node_id].add(child_node_id)
         logging.info(f"    A total of {len(parent_to_child_dict)} nodes have child subclasses")
 
@@ -322,7 +436,7 @@ class PloverDB:
                           }
                 json.dump(report, report_file, indent=2)
 
-        logging.info(f"  Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
+        logging.info(f"Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
     @staticmethod
     def _download_and_unzip_remote_file(remote_file_name: str, local_destination_path: str):
@@ -336,9 +450,31 @@ class PloverDB:
             temp_location = temp_location.strip(".gz")
         subprocess.check_call(["mv", temp_location, local_destination_path])
 
+    def _print_main_index_human_friendly(self):
+        for input_curie, categories_dict in self.main_index.items():
+            print(f"{input_curie}: #####################################################################")
+            for category_id, predicates_dict in categories_dict.items():
+                print(f"    {self.category_map_reversed[category_id]}: ------------------------------")
+                for predicate_id, directions_tuple in predicates_dict.items():
+                    print(f"        {self.predicate_map_reversed[predicate_id]}:")
+                    for direction_dict in directions_tuple:
+                        print(f"        {'Forwards' if directions_tuple.index(direction_dict) == 1 else 'Backwards'}:")
+                        for output_curie, edge_ids in direction_dict.items():
+                            print(f"            {output_curie}:")
+                            print(f"                {edge_ids}")
+
+    @staticmethod
+    def _get_current_memory_usage():
+        # Thanks https://www.geeksforgeeks.org/how-to-get-current-cpu-and-ram-usage-in-python/
+        virtual_mem_usage_info = psutil.virtual_memory()
+        memory_percent_used = virtual_mem_usage_info[2]
+        memory_used_in_gb = virtual_mem_usage_info[3] / 10**9
+        return round(memory_used_in_gb, 1), memory_percent_used
+
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
+        logging.info(f"TRAPI query is: {trapi_query}")
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
@@ -355,6 +491,13 @@ class PloverDB:
         object_qnode = trapi_query["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
+        # Make sure there aren't any qualifiers we don't support
+        for qualifier_constraint in qedge.get("qualifier_constraints", []):
+            for qualifier in qualifier_constraint.get("qualifier_set"):
+                if qualifier["qualifier_type_id"] not in self.supported_qualifiers:
+                    raise ValueError(f"Unsupported qedge qualifier encountered: {qualifier['qualifier_type_id']}. "
+                                     f"Supported qualifiers are: {self.supported_qualifiers}")
+
         # Record which curies specified in the QG any descendant curies correspond to
         descendant_to_query_curie_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
         if subject_qnode.get("ids") and subject_qnode.get("allow_subclasses"):
@@ -381,40 +524,18 @@ class PloverDB:
             object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
 
         # Convert to canonical predicates in the QG as needed
-        user_predicates = self._convert_to_set(qedge.get("predicates"))
-        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates))
-        user_non_canonical_predicates = user_predicates.difference(canonical_predicates)
-        user_canonical_predicates = user_predicates.intersection(canonical_predicates)
-        if user_non_canonical_predicates and not user_canonical_predicates:
-            # It's safe to flip this qedge so that it uses only the canonical form
-            original_subject = qedge["subject"]
-            qedge["subject"] = qedge["object"]
-            qedge["object"] = original_subject
-            qedge["predicates"] = list(canonical_predicates)
-        elif user_non_canonical_predicates and user_canonical_predicates:
-            raise ValueError(f"QueryGraph uses both canonical and non-canonical predicates. Canonical: "
-                             f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
-                             f"You must use either all canonical or all non-canonical predicates.")
+        self._force_qedge_to_canonical_predicates(qedge)
 
         # Load the query and do any necessary transformations to categories/predicates
-        enforce_directionality = trapi_query.get("enforce_directionality")
-        respect_symmetry = trapi_query.get("respect_predicate_symmetry")
         input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
         output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
         input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
-        output_category_names_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
-        output_category_names_raw = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
-        output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
         output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
-        qg_predicate_names_raw = self._convert_to_set(qedge.get("predicates"))
-        qg_predicate_names_raw = {self.bh.get_root_predicate()} if not qg_predicate_names_raw else qg_predicate_names_raw
-        qg_predicate_names = self.bh.replace_mixins_with_direct_mappings(qg_predicate_names_raw)
-        qg_predicate_names_expanded = {descendant_predicate for qg_predicate in qg_predicate_names
-                                       for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
-        # Convert the string/english versions of categories/predicates into integer IDs (helps save space)
-        output_categories = {self.category_map.get(category, self.non_biolink_item_id) for category in output_category_names}
-        qg_predicates = {self.predicate_map.get(predicate, self.non_biolink_item_id): self._consider_bidirectional(predicate, qg_predicate_names, respect_symmetry, enforce_directionality)
-                         for predicate in qg_predicate_names_expanded}
+        output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_query)
+        qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
+        logging.info(f"Input curies are {input_curies}")
+        logging.info(f"Output curies are {output_curies}")
+        logging.info(f"QEdge predicates derived are {qedge_predicates_expanded}")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -426,14 +547,14 @@ class PloverDB:
             if input_curie in main_index:
                 # Consider ALL output categories if none were provided or if output curies were specified
                 categories_present = set(main_index[input_curie])
-                categories_to_inspect = output_categories.intersection(categories_present) if output_categories and not output_curies else categories_present
+                categories_to_inspect = output_categories_expanded.intersection(categories_present) if output_categories_expanded and not output_curies else categories_present
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = set(qg_predicates).intersection(predicates_present)
+                        predicates_to_inspect = set(qedge_predicates_expanded).intersection(predicates_present)
                         # Loop through each QG predicate (and their descendants), looking up answers as we go
                         for predicate in predicates_to_inspect:
-                            consider_bidirectional = qg_predicates.get(predicate)
+                            consider_bidirectional = qedge_predicates_expanded.get(predicate)
                             if consider_bidirectional:
                                 directions = {0, 1}
                             else:
@@ -445,10 +566,10 @@ class PloverDB:
                                     curies_present = set(main_index[input_curie][output_category][predicate][direction])
                                     matching_output_curies = output_curies.intersection(curies_present)
                                     for output_curie in matching_output_curies:
-                                        answer_edge_ids.append(main_index[input_curie][output_category][predicate][direction][output_curie])
+                                        answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction][output_curie])
                             else:
                                 for direction in directions:
-                                    answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction].values())
+                                    answer_edge_ids += list(set().union(*main_index[input_curie][output_category][predicate][direction].values()))
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
@@ -470,7 +591,7 @@ class PloverDB:
                                    for node_id in final_output_qnode_answers}}
             edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
         else:
-            nodes = {input_qnode_key: list(final_input_qnode_answers),
+            nodes = {input_qnode_key: [node_id for node_id in final_input_qnode_answers],
                      output_qnode_key: list(final_output_qnode_answers)}
             edges = {qedge_key: list(final_qedge_answers)}
         answer_kg = {"nodes": nodes, "edges": edges}
@@ -522,23 +643,135 @@ class PloverDB:
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
 
-    def _consider_bidirectional(self, predicate_name: str, input_qg_predicate_names: Set[str], respect_symmetry: bool,
-                                enforce_directionality: bool) -> bool:
+    def _get_expanded_output_category_ids(self, output_qnode_key: str, trapi_query: dict) -> Set[int]:
+        output_category_names_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
+        output_category_names_raw = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
+        output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
+        output_categories_with_descendants = self.bh.get_descendants(output_category_names, include_mixins=False)
+        output_category_ids = {self.category_map.get(category, self.non_biolink_item_id) for category in output_categories_with_descendants}
+        return output_category_ids
+
+    def _consider_bidirectional(self, predicate: str, direct_qg_predicates: Set[str]) -> bool:
         """
-        This function determines whether or not QEdge direction should be ignored for a particular predicate
-        based on the Biolink model and QG parameters.
+        This function determines whether or not QEdge direction should be ignored for a particular predicate or
+        'conglomerate' predicate based on the Biolink model and QG parameters.
         """
-        ancestor_predicates = set(self.bh.get_ancestors(predicate_name, include_mixins=False))
-        ancestor_predicates_in_qg = ancestor_predicates.intersection(input_qg_predicate_names)
+        if "--" in predicate:  # Means it's a 'conglomerate' predicate
+            predicate = self._get_used_predicate(predicate)
+        # Make sure we extract the true predicate/qualified predicate from conglomerate predicates
+        direct_qg_predicates = {self._get_used_predicate(direct_predicate) for direct_predicate in direct_qg_predicates}
+
+        ancestor_predicates = set(self.bh.get_ancestors(predicate, include_mixins=False))
+        ancestor_predicates_in_qg = ancestor_predicates.intersection(direct_qg_predicates)
         has_symmetric_ancestor_in_qg = any(self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
         has_asymmetric_ancestor_in_qg = any(not self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
-        if respect_symmetry:
-            if self.bh.is_symmetric(predicate_name) or (has_symmetric_ancestor_in_qg and not has_asymmetric_ancestor_in_qg):
-                return True
-            else:
-                return False
+        if self.bh.is_symmetric(predicate) or (has_symmetric_ancestor_in_qg and not has_asymmetric_ancestor_in_qg):
+            return True
         else:
-            return True if not enforce_directionality else False
+            return False
+
+    @staticmethod
+    def _get_used_predicate(conglomerate_predicate: str) -> str:
+        """
+        This extracts the predicate used as part of the conglomerate predicate (which could be either the qualified
+        predicate or regular predicate).
+        """
+        return conglomerate_predicate.split("--")[0]
+
+    def _force_qedge_to_canonical_predicates(self, qedge: dict):
+        user_qual_predicates = self._get_qualified_predicates_from_qedge(qedge)
+        user_regular_predicates = self._convert_to_set(qedge.get("predicates"))
+        user_predicates = user_qual_predicates if user_qual_predicates else user_regular_predicates
+        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates))
+        user_non_canonical_predicates = user_predicates.difference(canonical_predicates)
+        user_canonical_predicates = user_predicates.intersection(canonical_predicates)
+        if user_non_canonical_predicates and not user_canonical_predicates:
+            # It's safe to flip this qedge's direction so that it uses only the canonical form
+            original_subject = qedge["subject"]
+            qedge["subject"] = qedge["object"]
+            qedge["object"] = original_subject
+            if user_qual_predicates:
+                # Flip all of the qualified predicates
+                for qualifier_constraint in qedge.get("qualifier_constraints", []):
+                    for qualifier in qualifier_constraint.get("qualifier_set"):
+                        if qualifier["qualifier_type_id"] == self.qedge_qualified_predicate_property:
+                            canonical_qual_predicate = self.bh.get_canonical_predicates(qualifier["qualifier_value"])[0]
+                            qualifier["qualifier_value"] = canonical_qual_predicate
+            else:
+                # Otherwise just flip all of the regular predicates
+                qedge["predicates"] = list(canonical_predicates)
+        elif user_non_canonical_predicates and user_canonical_predicates:
+            raise ValueError(f"QueryGraph uses both canonical and non-canonical "
+                             f"{'qualified ' if user_qual_predicates else ''}predicates. Canonical: "
+                             f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
+                             f"You must use either all canonical or all non-canonical predicates.")
+
+    def _get_qualified_predicates_from_qedge(self, qedge: dict) -> Set[str]:
+        qualified_predicates = set()
+        for qualifier_constraint in qedge.get("qualifier_constraints", []):
+            for qualifier in qualifier_constraint.get("qualifier_set"):
+                if qualifier["qualifier_type_id"] == self.qedge_qualified_predicate_property:
+                    qualified_predicates.add(qualifier["qualifier_value"])
+        return qualified_predicates
+
+    def _get_expanded_qedge_predicates(self, qedge: dict) -> Dict[str, bool]:
+        """
+        This function returns a qedge's "conglomerate" predicates for qualified qedges (where the qualified info is kind
+        of flattened or conglomerated into one derived predicate string), or its regular predicates when no qualified
+        info is available. It also returns descendants of the predicates/conglomerate predicates.
+        """
+        # Use 'conglomerate' predicates if the query has any qualifier constraints
+        if qedge.get("qualifier_constraints"):
+            qedge_conglomerate_predicates = self._get_conglomerate_predicates_from_qedge(qedge)
+            logging.info(f"Qedge conglomerate predicates are: {qedge_conglomerate_predicates}")
+            # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
+            qedge_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qedge_conglomerate_predicates
+                                                      for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
+            logging.info(f"Qedge conglomerate predicates expanded are: {qedge_conglomerate_predicates_expanded}")
+            qedge_predicates = qedge_conglomerate_predicates
+            qedge_predicates_expanded = qedge_conglomerate_predicates_expanded
+        # Otherwise we'll use the regular predicates if no qualified predicates were given
+        else:
+            qedge_predicates_raw = self._convert_to_set(qedge.get("predicates"))
+            qedge_predicates_raw = {self.bh.get_root_predicate()} if not qedge_predicates_raw else qedge_predicates_raw
+            qedge_predicates = self.bh.replace_mixins_with_direct_mappings(qedge_predicates_raw)
+            qedge_predicates_expanded = {descendant_predicate for qg_predicate in qedge_predicates
+                                         for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
+            logging.info(f"Qedge predicates expanded are: {qedge_predicates_expanded}")
+        # Convert english categories/predicates/conglomerate predicates into integer IDs (helps save space)
+        qedge_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
+                                        self._consider_bidirectional(predicate, qedge_predicates)
+                                    for predicate in qedge_predicates_expanded}
+
+        return qedge_predicate_ids_dict
+
+    def _get_conglomerate_predicates_from_qedge(self, qedge: dict) -> Set[str]:
+        qedge_conglomerate_predicates = set()
+        # First get the direct conglomerate predicates for this query edge
+        for qualifier_constraint in qedge.get("qualifier_constraints", []):
+            qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]
+                              # TODO: Ask TRAPI group why qualifier_set isn't a dict?
+                              for qualifier in qualifier_constraint["qualifier_set"]}
+            # Use the regular predicate (could be multiple) if no qualified predicate is specified
+            qualified_predicate = qualifier_dict.get(self.qedge_qualified_predicate_property)
+            object_aspect_qualifier = qualifier_dict.get(self.qedge_object_aspect_property)
+            object_direction_qualifier = qualifier_dict.get(self.qedge_object_direction_property)
+            predicates = qedge.get("predicates")
+            if predicates and not qualified_predicate:
+                # We'll use any regular predicate(s) if no qualified predicate was given
+                new_conglomerate_predicates = {self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                                                predicate=predicate,
+                                                                                object_direction=object_direction_qualifier,
+                                                                                object_aspect=object_aspect_qualifier)
+                                               for predicate in predicates}
+                qedge_conglomerate_predicates = qedge_conglomerate_predicates.union(new_conglomerate_predicates)
+            else:
+                # Use the qualified predicate (is 'None' if not available)
+                qedge_conglomerate_predicates.add(self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                                                   predicate=None,
+                                                                                   object_direction=object_direction_qualifier,
+                                                                                   object_aspect=object_aspect_qualifier))
+        return qedge_conglomerate_predicates
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
@@ -567,6 +800,14 @@ class PloverDB:
             return set(input_item)
         else:
             return set()
+
+    @staticmethod
+    def serialize_with_sets(obj: any) -> any:
+        # Thank you https://stackoverflow.com/a/60544597
+        if isinstance(obj, set):
+            return list(obj)
+        else:
+            return obj
 
 
 def main():
