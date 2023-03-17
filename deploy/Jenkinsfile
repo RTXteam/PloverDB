@@ -58,7 +58,7 @@ pipeline {
             }
             steps {
                 configFileProvider([
-                    configFile(fileId: 'ploverdb-prod-values.yaml', targetLocation: 'values-ncats.yaml'),
+                    configFile(fileId: 'ploverdb-values.yaml', targetLocation: 'values-ncats.yaml'),
                     configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
                 ]){
                     sh '''
