@@ -15,7 +15,7 @@ pipeline {
         pollSCM('H/5 * * * *')
     }
     environment {
-        DOCKER_REPO_NAME = "translator-rtx-ploverdb"
+        DOCKER_REPO_NAME = "853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb"
         KUBERNETES_BLUE_CLUSTER_NAME = "translator-eks-test-blue-cluster"
         KUBERNETES_GREEN_CLUSTER_NAME = "translator-eks-test-green-cluster"
     }
@@ -25,7 +25,7 @@ pipeline {
             steps{
                 script {
                     BUILD_VERSION_GENERATED = VersionNumber(
-                        versionNumberString: 'v${BUILD_YEAR, XX}.${BUILD_MONTH, XX}${BUILD_DAY, XX}.${BUILDS_TODAY}-TEST',
+                        versionNumberString: 'v${BUILD_YEAR, XX}.${BUILD_MONTH, XX}${BUILD_DAY, XX}.${BUILDS_TODAY}',
                         projectStartDate:    '1970-01-01',
                         skipFailedBuilds:    true)
                     currentBuild.displayName = BUILD_VERSION_GENERATED
@@ -54,22 +54,17 @@ pipeline {
         }
         stage('Deploy to AWS EKS Blue') {
             agent {
-                label 'translator && ci && deploy'
+                label 'translator && test && deploy'
             }
             steps {
-                sshagent (credentials: ['labshare-svc']) {
-                    sh 'git clone git@github.com:Sphinx-Automation/translator-ops.git'
-                        configFileProvider([
-                            configFile(fileId: 'ploverdb-test-values.yaml', targetLocation: 'translator-ops/ops/team-expander/ploverdb/values-ncats.yaml')
-                        ]){
-                            withAWS(credentials:'eks-test-access') {
-                                sh '''
-                                    aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
-                                    kubectl delete deployment ploverdb -n rtx
-                                    cd translator-ops/ops/team-expander/ploverdb/ && /bin/bash deploy.sh
-                                   '''
-                        }
-                    }
+                configFileProvider([
+                    configFile(fileId: 'ploverdb-test-values.yaml', targetLocation: 'values-ncats.yaml'),
+                    configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
+                ]){
+                    sh '''
+                        aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
+                        /bin/bash prepare.sh
+                       '''
                 }
             }
         }
