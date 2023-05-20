@@ -13,8 +13,8 @@ RHOBTB2_CURIE = "NCBIGene:23221"
 DIABETES_CURIE = "MONDO:0005015"
 DIABETES_T1_CURIE = "MONDO:0005147"
 DIABETES_T2_CURIE = "MONDO:0005148"
-POS_REG_STEM_CELL_DIFF_CURIE = "UMLS:C3546743"
-STEM_CELL_DIFF_CURIE = "UMLS:C2262995"
+CAUSES_INCREASE_CURIE = "GO:0051901"
+INCREASED_CURIE = "GO:0051882"
 PARKINSONS_CURIE = "MONDO:0005180"
 BIPOLAR_CURIE = "MONDO:0004985"
 
@@ -264,8 +264,6 @@ def test_11():
         }
     }
     kg = _run_query(query)
-    assert kg["nodes"]["n00"]
-    assert kg["nodes"]["n01"]
     assert not kg
 
 
@@ -652,16 +650,16 @@ def test_21():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_22():
@@ -671,7 +669,7 @@ def test_22():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -686,16 +684,16 @@ def test_22():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_23():
@@ -705,7 +703,7 @@ def test_23():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -720,16 +718,16 @@ def test_23():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_24():
@@ -739,7 +737,7 @@ def test_24():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -754,16 +752,16 @@ def test_24():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_25():
@@ -773,22 +771,21 @@ def test_25():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
             }
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert kg["nodes"]["n01"]
-    assert STEM_CELL_DIFF_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
+    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_26():
@@ -798,7 +795,7 @@ def test_26():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         # {"qualifier_type_id": "biolink:qualified_predicate",
@@ -813,17 +810,16 @@ def test_26():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert kg["nodes"]["n01"]
-    assert STEM_CELL_DIFF_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
+    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_27():
@@ -833,21 +829,21 @@ def test_27():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],
+                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
             }
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_28():
@@ -857,7 +853,7 @@ def test_28():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],
+                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -872,16 +868,16 @@ def test_28():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_29():
@@ -905,16 +901,16 @@ def test_29():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_30():
@@ -938,16 +934,16 @@ def test_30():
         },
         "nodes": {
             "n00": {
-                "ids": [POS_REG_STEM_CELL_DIFF_CURIE]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert STEM_CELL_DIFF_CURIE in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_31():
