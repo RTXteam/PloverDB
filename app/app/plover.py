@@ -122,12 +122,8 @@ class PloverDB:
                 edge["object"] = original_subject
 
         if self.is_test:
-            # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
+            # Narrow down our test JSON file to exclude orphan edges
             logging.info(f"Narrowing down test JSON file to make sure node IDs used by edges appear in nodes dict")
-            node_ids_used_by_edges = {edge["subject"] for edge in self.edge_lookup_map.values()}.union(edge["object"] for edge in self.edge_lookup_map.values())
-            node_lookup_map_trimmed = {node_id: self.node_lookup_map[node_id] for node_id in node_ids_used_by_edges
-                                       if node_id in self.node_lookup_map}
-            self.node_lookup_map = node_lookup_map_trimmed
             edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
