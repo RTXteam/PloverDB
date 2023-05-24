@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: bash -x run.sh [container name] [image name] [docker command e.g., "sudo docker"]
+# Usage: bash -x run.sh [image name] [container name] [docker command e.g., "sudo docker"]
 
 image_name="${1:-myimage}"
 container_name="${2:-mycontainer}"
