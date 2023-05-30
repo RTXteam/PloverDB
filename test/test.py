@@ -3,6 +3,22 @@ import requests
 from typing import Dict, Union, List
 
 
+ASPIRIN_CURIE = "PUBCHEM.COMPOUND:2244"
+TICLOPIDINE_CURIE = "PUBCHEM.COMPOUND:5472"
+ACETAMINOPHEN_CURIE = "PUBCHEM.COMPOUND:1983"
+PROC_CURIE = "NCBIGene:5624"
+DIETHYLSTILBESTROL_CURIE = "PUBCHEM.COMPOUND:448537"
+METHYLPREDNISOLONE_CURIE = "PUBCHEM.COMPOUND:23663977"
+RHOBTB2_CURIE = "NCBIGene:23221"
+DIABETES_CURIE = "MONDO:0005015"
+DIABETES_T1_CURIE = "MONDO:0005147"
+DIABETES_T2_CURIE = "MONDO:0005148"
+CAUSES_INCREASE_CURIE = "GO:0051901"
+INCREASED_CURIE = "GO:0051882"
+PARKINSONS_CURIE = "MONDO:0005180"
+BIPOLAR_CURIE = "MONDO:0004985"
+
+
 def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]]):
     nodes_by_qg_id = kg["nodes"]
     edges_by_qg_id = kg["edges"]
@@ -35,7 +51,7 @@ def test_1():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL25"],
+             "ids": [ASPIRIN_CURIE],
              "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
@@ -59,7 +75,7 @@ def test_2():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL25"],
+             "ids": [ASPIRIN_CURIE],
              "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
@@ -81,7 +97,7 @@ def test_3():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL25"],
+             "ids": [ASPIRIN_CURIE],
              "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
@@ -104,7 +120,7 @@ def test_4():
        },
        "nodes": {
           "n00": {
-             "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
+             "ids": [ASPIRIN_CURIE]
           },
           "n01": {
               "categories": ["biolink:Protein", "biolink:Procedure"]
@@ -127,7 +143,7 @@ def test_5():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
+                "ids": [ASPIRIN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Protein", "biolink:Gene"]
@@ -149,10 +165,10 @@ def test_6():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
+                "ids": [ASPIRIN_CURIE]
             },
             "n01": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL833", "CHEMBL.COMPOUND:CHEMBL4128999", "CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [TICLOPIDINE_CURIE, ACETAMINOPHEN_CURIE]
             }
         }
     }
@@ -171,7 +187,7 @@ def test_7():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "UniProtKB:P04070"]
+                "ids": [ASPIRIN_CURIE, PROC_CURIE]
             },
             "n01": {
             }
@@ -189,7 +205,7 @@ def test_8():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
+                "ids": [ASPIRIN_CURIE]
             }
         }
     }
@@ -204,7 +220,7 @@ def test_9():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ASPIRIN_CURIE, ACETAMINOPHEN_CURIE]
             }
         }
     }
@@ -219,10 +235,10 @@ def test_10():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
+                "ids": [ASPIRIN_CURIE]
             },
             "n01": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             }
         }
     }
@@ -240,10 +256,10 @@ def test_11():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL25"]
+                "ids": [ASPIRIN_CURIE]
             },
             "n01": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL411"]
+                "ids": [DIETHYLSTILBESTROL_CURIE]
             }
         }
     }
@@ -252,7 +268,7 @@ def test_11():
 
 
 def test_12():
-    ids = ["CHEMBL.COMPOUND:CHEMBL25", "CHEMBL.COMPOUND:CHEMBL2106453"]
+    ids = [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
     # Test predicate symmetry is handled properly
     query = {
         "edges": {
@@ -353,7 +369,7 @@ def test_13():
         },
         "nodes": {
             "n00": {
-                "ids": ["UniProtKB:Q9BYZ6"]
+                "ids": [RHOBTB2_CURIE]
             },
             "n01": {
                 "categories": ["biolink:ChemicalEntity"]
@@ -373,7 +389,7 @@ def test_14():
         },
         "nodes": {
             "n00": {
-                "ids": ["MONDO:0005015"],  # Diabetes mellitus
+                "ids": [DIABETES_CURIE],  # Diabetes mellitus
                 "allow_subclasses": True
             }
         }
@@ -386,7 +402,7 @@ def test_14():
         },
         "nodes": {
             "n00": {
-                "ids": ["MONDO:0005015"]  # Diabetes mellitus
+                "ids": [DIABETES_CURIE]  # Diabetes mellitus
             }
         }
     }
@@ -406,7 +422,7 @@ def test_15():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -414,6 +430,7 @@ def test_15():
         }
     }
     kg = _run_query(query)
+    assert kg["nodes"]["n01"]
 
     query_respecting_symmetry = {
         "edges": {
@@ -425,7 +442,7 @@ def test_15():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -434,6 +451,7 @@ def test_15():
         "respect_predicate_symmetry": True
     }
     kg_symmetry = _run_query(query_respecting_symmetry)
+    assert kg_symmetry["nodes"]["n01"]
 
     query_symmetry_backwards = {
         "edges": {
@@ -445,7 +463,7 @@ def test_15():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -469,7 +487,7 @@ def test_16():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:PhysicalEssence"]
@@ -492,7 +510,7 @@ def test_17():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -513,7 +531,7 @@ def test_17():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -539,7 +557,7 @@ def test_18():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -564,7 +582,7 @@ def test_19():
         },
         "nodes": {
             "n00": {
-                "ids": ["CHEMBL.COMPOUND:CHEMBL112"]
+                "ids": [ACETAMINOPHEN_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Protein"]
@@ -579,9 +597,6 @@ def test_19():
 
 def test_20():
     # Test that the proper 'query_id' mapping (for TRAPI) is returned
-    diabetes_curie = "MONDO:0005015"
-    type_1_diabetes_curie = "MONDO:0005147"
-    type_2_diabetes_curie = "MONDO:0005148"
     query = {
         "include_metadata": True,
         "edges": {
@@ -592,7 +607,7 @@ def test_20():
         },
         "nodes": {
             "n00": {
-                "ids": [diabetes_curie, type_2_diabetes_curie],
+                "ids": [DIABETES_CURIE, DIABETES_T2_CURIE],
                 "allow_subclasses": True
             },
             "n01": {
@@ -602,19 +617,15 @@ def test_20():
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n00"]) > 1
-    assert {diabetes_curie, type_1_diabetes_curie, type_2_diabetes_curie}.issubset(set(kg["nodes"]["n00"]))
-    diabetes_node_tuple = kg["nodes"]["n00"][diabetes_curie]
-    type_1_diabetes_node_tuple = kg["nodes"]["n00"][type_1_diabetes_curie]
-    type_2_diabetes_node_tuple = kg["nodes"]["n00"][type_2_diabetes_curie]
+    assert {DIABETES_CURIE, DIABETES_T1_CURIE, DIABETES_T2_CURIE}.issubset(set(kg["nodes"]["n00"]))
+    diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_CURIE]
+    type_1_diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_T1_CURIE]
+    type_2_diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_T2_CURIE]
     # Curies that appear in the QG should have no query_id listed
     assert not diabetes_node_tuple[-1]
     assert not type_2_diabetes_node_tuple[-1]
     # Descendant curies should indicate which QG curie they correspond to
-    assert type_1_diabetes_node_tuple[-1] == [diabetes_curie]
-
-
-pos_regulation_stem_cell_differentiation = "UMLS:C3546743"
-stem_cell_differentiation = "UMLS:C2262995"
+    assert type_1_diabetes_node_tuple[-1] == [DIABETES_CURIE]
 
 
 def test_21():
@@ -639,16 +650,16 @@ def test_21():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_22():
@@ -658,7 +669,7 @@ def test_22():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -673,16 +684,16 @@ def test_22():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_23():
@@ -692,7 +703,7 @@ def test_23():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -707,16 +718,16 @@ def test_23():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_24():
@@ -726,7 +737,7 @@ def test_24():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -741,16 +752,16 @@ def test_24():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_25():
@@ -760,21 +771,21 @@ def test_25():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
             }
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation not in kg["nodes"]["n01"]  # It's regular predicate is 'regulates'
+    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_26():
@@ -784,7 +795,7 @@ def test_26():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         # {"qualifier_type_id": "biolink:qualified_predicate",
@@ -799,16 +810,16 @@ def test_26():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation not in kg["nodes"]["n01"]  # It's regular predicate is 'regulates'
+    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_27():
@@ -818,21 +829,21 @@ def test_27():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],
+                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
             }
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_28():
@@ -842,7 +853,7 @@ def test_28():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],
+                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -857,16 +868,16 @@ def test_28():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_29():
@@ -890,16 +901,16 @@ def test_29():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_30():
@@ -923,16 +934,16 @@ def test_30():
         },
         "nodes": {
             "n00": {
-                "ids": [pos_regulation_stem_cell_differentiation]
+                "ids": [CAUSES_INCREASE_CURIE]
             },
             "n01": {
-                "categories": ["biolink:PhysiologicalProcess"]
+                "categories": ["biolink:NamedThing"]
             }
         },
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert stem_cell_differentiation in kg["nodes"]["n01"]
+    assert INCREASED_CURIE in kg["nodes"]["n01"]
 
 
 def test_31():
@@ -947,7 +958,7 @@ def test_31():
         },
         "nodes": {
             "n00": {
-                "ids": ["MONDO:0004985"]
+                "ids": [BIPOLAR_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Drug"]
@@ -972,6 +983,7 @@ def test_version():
     }
     kg = _run_query(query)
     print(kg)
+    assert kg["nodes"]["n00"]
 
 
 if __name__ == "__main__":
