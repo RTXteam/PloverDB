@@ -29,7 +29,7 @@ It returns the IDs of the nodes and edges comprising the answer to the query in 
   }
 }
 ```
-Where `n00`, `n01`, and `e00` are the `key`s of the `QNode`s/`QEdge`s in the submitted query graph.
+Where `n00`, `n01`, and `e00` are the `key`s of the `QNode`s/`QEdge`s in the submitted query graph. 
 
 In your JSON KG file, **required properties** for nodes/edges are:
 * **Nodes**: `id` and some sort of `categories` property (specify its exact name in `kg_config.json`)
