@@ -1,4 +1,4 @@
-# PloverDB
+g# PloverDB
 
 Plover is a prototype **read-only in-memory database service** that can answer **one-hop queries** on a given biomedical knowledge graph (supplied in JSON [Biolink](https://biolink.github.io/biolink-model/) format).
 
@@ -73,7 +73,21 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
     * `docker build -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
-Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress.
+Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, and if you see output like this:
+```
+2023-06-29 21:13:56,028 INFO: Indexes are fully loaded! Took 5.52 minutes.
+WSGI app 0 (mountpoint='') ready in 332 seconds on interpreter 0x5629c42d36f0 pid: 10 (default app)
+*** uWSGI is running in multiple interpreter mode ***
+spawned uWSGI master process (pid: 10)
+spawned uWSGI worker 1 (pid: 13, cores: 1)
+spawned uWSGI worker 2 (pid: 14, cores: 1)
+running "unix_signal:15 gracefully_kill_them_all" (master-start)...
+```
+And if you can connect locally (on the PloverDB server, if you have shell access) to port 9990 like this:
+```
+telnet 0 9990
+```
+Then PloverDB is running and ready.
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
