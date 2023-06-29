@@ -37,6 +37,26 @@ In your JSON KG file, **required properties** for nodes/edges are:
 
 All other node/edge properties will be ignored.
 
+### Data model returned
+
+#### Node properties
+The properties of a node returned will be in a list with the following entries, in order:
+
+- `name`
+- `category`
+  
+#### Edge properties
+
+The properties of an edge returned will be in a list with the following entries, in order:
+
+- `subject`
+- `object`
+- `predicate`
+- `primary_knowledge_source`
+- `qualified_predicate`
+- `object_direction`
+- `object_aspect`
+
 ### How to run
 
 ##### To host the latest RTX-KG2c
