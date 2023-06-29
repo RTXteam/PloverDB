@@ -49,7 +49,7 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Clone this repo
 1. `cd` into `PloverDB/`
-1. Build your Docker image and run a container off of it:
+1. Build your Docker image and run a container off of it (remember, on Ubuntu, `docker` should be run with `sudo`):
     * `docker build -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
