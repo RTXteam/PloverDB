@@ -85,13 +85,11 @@ running "unix_signal:15 gracefully_kill_them_all" (master-start)...
 ```
 And if you can connect locally (on the PloverDB server, if you have shell access) to port 9990 like this:
 ```
-telnet 0 9990
+nc -v 0 9990
 ```
 if you see
 ```
-Trying 0.0.0.0...
-Connected to 0.
-Escape character is '^]'.
+Connection to 0 9990 port [tcp/*] succeeded!
 ```
 then PloverDB is running and ready. Send a `Ctrl-C` to disconnect and you are ready to use or test PloverDB.
 You should now be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
