@@ -87,7 +87,13 @@ And if you can connect locally (on the PloverDB server, if you have shell access
 ```
 telnet 0 9990
 ```
-Then PloverDB is running and ready.
+if you see
+```
+Trying 0.0.0.0...
+Connected to 0.
+Escape character is '^]'.
+```
+then PloverDB is running and ready. Send a SIGINT to disconnect and you are ready to use or test PloverDB.
 
 Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
