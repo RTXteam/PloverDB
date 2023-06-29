@@ -44,7 +44,7 @@ All other node/edge properties will be ignored.
 _Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
 
 1. Install Docker (if needed)
-    * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX-KG2/blob/master/install-docker-ubuntu18.sh)
+    * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX-KG2/blob/master/install-docker-ubuntu18.sh). For Ubuntu 20.04, try `sudo apt-get install -y docker.io`.
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Clone this repo
