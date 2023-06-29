@@ -94,9 +94,7 @@ Connected to 0.
 Escape character is '^]'.
 ```
 then PloverDB is running and ready. Send a `Ctrl-C` to disconnect and you are ready to use or test PloverDB.
-
-Once it's finished loading, you should be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
-
+You should now be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 ##### To host your own KG file
 
 Follow the same steps as above, but between steps 3 and 4, do the following within your clone of the repo:
