@@ -1,4 +1,4 @@
-g# PloverDB
+# PloverDB
 
 Plover is a prototype **read-only in-memory database service** that can answer **one-hop queries** on a given biomedical knowledge graph (supplied in JSON [Biolink](https://biolink.github.io/biolink-model/) format).
 
