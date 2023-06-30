@@ -641,7 +641,7 @@ def test_21():
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
                         {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "increased"},
+                         "qualifier_value": "decreased"},
                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
                          "qualifier_value": "activity_or_abundance"}
                     ]}
@@ -650,7 +650,7 @@ def test_21():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": ["PUBCHEM.COMPOUND:6323266"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -659,7 +659,7 @@ def test_21():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert "NCBIGene:1890" in kg["nodes"]["n01"]
 
 
 def test_22():
@@ -674,8 +674,6 @@ def test_22():
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
-                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
-                        #  "qualifier_value": "increased"},
                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
                          "qualifier_value": "activity_or_abundance"}
                     ]}
@@ -684,7 +682,7 @@ def test_22():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": ["PUBCHEM.COMPOUND:6323266"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -693,7 +691,7 @@ def test_22():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert "NCBIGene:1890" in kg["nodes"]["n01"]
 
 
 def test_23():
@@ -859,7 +857,7 @@ def test_28():
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
                         {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "increased"},
+                         "qualifier_value": "decreased"},
                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
                          "qualifier_value": "activity_or_abundance"}
                     ]}
@@ -868,7 +866,7 @@ def test_28():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": ["PUBCHEM.COMPOUND:6323266"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -877,7 +875,7 @@ def test_28():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert "NCBIGene:1890" in kg["nodes"]["n01"]
 
 
 def test_29():
@@ -892,7 +890,7 @@ def test_29():
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
                         {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "increased"},
+                         "qualifier_value": "decreased"},
                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
                          "qualifier_value": "activity_or_abundance"}
                     ]}
@@ -901,7 +899,7 @@ def test_29():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": ["PUBCHEM.COMPOUND:6323266"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -910,7 +908,7 @@ def test_29():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert "NCBIGene:1890" in kg["nodes"]["n01"]
 
 
 def test_30():
@@ -922,10 +920,6 @@ def test_30():
                 "object": "n01",
                 "qualifier_constraints": [
                     {"qualifier_set": [
-                        # {"qualifier_type_id": "biolink:qualified_predicate",
-                        #  "qualifier_value": "biolink:causes"},
-                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
-                        #  "qualifier_value": "increased"},
                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
                          "qualifier_value": "activity_or_abundance"}
                     ]}
@@ -934,7 +928,7 @@ def test_30():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": ["PUBCHEM.COMPOUND:6323266"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -943,7 +937,7 @@ def test_30():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert "NCBIGene:1890" in kg["nodes"]["n01"]
 
 
 def test_31():
