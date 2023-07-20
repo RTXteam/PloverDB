@@ -73,7 +73,7 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
     * `docker build -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
-Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be a few minutes (appx. 5 minutes) until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, and if you see output like this:
+Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be approximately 15 minutes until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, and if you see output like this:
 ```
 2023-06-29 21:13:56,028 INFO: Indexes are fully loaded! Took 5.52 minutes.
 WSGI app 0 (mountpoint='') ready in 332 seconds on interpreter 0x5629c42d36f0 pid: 10 (default app)
