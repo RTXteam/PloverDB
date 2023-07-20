@@ -122,12 +122,8 @@ class PloverDB:
                 edge["object"] = original_subject
 
         if self.is_test:
-            # Narrow down our test JSON file to make sure all node IDs used by edges appear in our node_lookup_map
+            # Narrow down our test JSON file to exclude orphan edges
             logging.info(f"Narrowing down test JSON file to make sure node IDs used by edges appear in nodes dict")
-            node_ids_used_by_edges = {edge["subject"] for edge in self.edge_lookup_map.values()}.union(edge["object"] for edge in self.edge_lookup_map.values())
-            node_lookup_map_trimmed = {node_id: self.node_lookup_map[node_id] for node_id in node_ids_used_by_edges
-                                       if node_id in self.node_lookup_map}
-            self.node_lookup_map = node_lookup_map_trimmed
             edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
@@ -192,7 +188,7 @@ class PloverDB:
         # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
         logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
-        edge_properties = ("subject", "object", self.edge_predicate_property, "knowledge_source",
+        edge_properties = ("subject", "object", self.edge_predicate_property, "primary_knowledge_source",
                            self.kg2_qualified_predicate_property, self.kg2_object_direction_property, self.kg2_object_aspect_property)
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
@@ -364,7 +360,7 @@ class PloverDB:
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
                              if edge[self.edge_predicate_property] in subclass_predicates and
-                             set(edge.get("knowledge_source", set())).intersection(subclass_sources)}
+                             edge.get("primary_knowledge_source") in subclass_sources}
         logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from specified sources)")
 
         # Build a map of nodes to their direct 'subclass_of' children
