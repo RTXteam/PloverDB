@@ -14,7 +14,7 @@ from typing import List, Dict, Union, Set, Optional, Tuple
 import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
-
+KG2C_DUMP_URL_BASE = "https://kg2webhost.rtx.ai"
 
 class PloverDB:
 
@@ -436,9 +436,10 @@ class PloverDB:
 
     @staticmethod
     def _download_and_unzip_remote_file(remote_file_name: str, local_destination_path: str):
-        logging.info(f"Downloading remote file {remote_file_name} from translator-lfs-artifacts repo")
         temp_location = f"{SCRIPT_DIR}/{remote_file_name}"
-        remote_path = f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{remote_file_name}?raw=true"
+#        remote_path = f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{remote_file_name}?raw=true"
+        remote_path = f"{KG2C_DUMP_URL_BASE}/{remote_file_name}"
+        logging.info(f"Downloading remote file from URL: {remote_path}")
         subprocess.check_call(["curl", "-L", remote_path, "-o", temp_location])
         if remote_file_name.endswith(".gz"):
             logging.info(f"Unzipping downloaded file")
