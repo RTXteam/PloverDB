@@ -1,6 +1,6 @@
 {
   "local_kg_file_name": null,
-  "remote_kg_file_name": "kg2c_lite_2.8.0.1.json.gz",
+  "remote_kg_file_name": "kg2c_lite_2.8.3.json.gz",
   "remote_index_file_name": null,
   "is_test": false,
   "biolink_helper_branch": "master",
