@@ -124,6 +124,11 @@ If you want to save the contents of the log to a file locally, run:
 docker logs mycontainer >& logs/mylog.log
 ```
 
+If you want to use cURL to debug PloverDB, make sure to specify the `-L` (i.e., `--location`) option for the `curl` command, since PloverDB seems to use redirection. Like this:
+```
+curl -L -X POST -d @test20.json -H 'Content-Type: application/json' -H 'accept: application/json' http://kg2cplover2.rtx.ai:9990/query
+```
+
 ### Credits
 
 * Author: Amy Glen
