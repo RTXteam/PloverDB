@@ -61,7 +61,7 @@ The properties of an edge returned will be in a list with the following entries,
 
 ##### To host the latest RTX-KG2c
 
-_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
+_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100 GiB of storage is sufficient.
 
 1. Install Docker (if needed)
     * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX-KG2/blob/master/install-docker-ubuntu18.sh). For Ubuntu 20.04, try `sudo apt-get install -y docker.io`.
