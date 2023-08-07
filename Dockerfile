@@ -11,4 +11,7 @@ RUN apt-get update && apt-get install -y ca-certificates
 COPY ./app /app
 COPY test/kg2c-test.json /app/kg2c-test.json
 
+RUN touch /var/log/ploverdb.log
+RUN chown nobody /var/log/ploverdb.log
+
 RUN python /app/app/build_indexes.py
