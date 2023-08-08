@@ -70,7 +70,7 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
 1. Clone this repo
 1. `cd` into `PloverDB/`
 1. Build your Docker image and run a container off of it (remember, on Ubuntu, `docker` should be run with `sudo`):
-    * `docker build -t yourimage .`
+    * `docker build --progress=plain -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
 Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be approximately 15 minutes until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, and if you see output like this:
