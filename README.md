@@ -129,6 +129,14 @@ If you want to use cURL to debug PloverDB, make sure to specify the `-L` (i.e., 
 curl -L -X POST -d @test20.json -H 'Content-Type: application/json' -H 'accept: application/json' http://kg2cplover2.rtx.ai:9990/query
 ```
 
+To have PloverDB return information about the code version for the `RTXteam/PloverDB`
+project that was used for the running service, you can use the `code_version` API
+function:
+
+```
+curl -L -X GET -H 'accept: application/json' http://kg2cplover2.rtx.ai:9990/code_version
+```
+
 ### Credits
 
 * Author: Amy Glen
