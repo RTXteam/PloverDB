@@ -57,6 +57,7 @@ pipeline {
                 label 'translator && ci && deploy'
             }
             steps {
+                cleanWs()
                 configFileProvider([
                     configFile(fileId: 'ploverdb-ci-values.yaml', targetLocation: 'values-ncats.yaml'),
                     configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
