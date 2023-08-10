@@ -55,6 +55,7 @@ pipeline {
                 label 'translator && test && deploy'
             }
             steps {
+                cleanWs()
                 configFileProvider([
                     configFile(fileId: 'ploverdb-test-values.yaml', targetLocation: 'values-ncats.yaml'),
                     configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
