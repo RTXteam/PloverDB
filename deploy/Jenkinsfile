@@ -51,7 +51,6 @@ pipeline {
         }
         stage('Deploy to AWS EKS Blue') {
             agent {
-                cleanWs()
                 label 'translator && test && deploy'
             }
             steps {
