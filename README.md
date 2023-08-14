@@ -61,7 +61,7 @@ The properties of an edge returned will be in a list with the following entries,
 
 ##### To host the latest RTX-KG2c
 
-_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100G of storage is sufficient.
+_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100 GiB of storage is sufficient.
 
 1. Install Docker (if needed)
     * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX-KG2/blob/master/install-docker-ubuntu18.sh). For Ubuntu 20.04, try `sudo apt-get install -y docker.io`.
@@ -70,10 +70,12 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
 1. Clone this repo
 1. `cd` into `PloverDB/`
 1. Build your Docker image and run a container off of it (remember, on Ubuntu, `docker` should be run with `sudo`):
-    * `docker build -t yourimage .`
+    * `docker build --no-cache --progress=plain -t yourimage .`
     * `docker run -d --name yourcontainer -p 9990:80 yourimage`
 
-Building the image should take 20-30 minutes for KG2c. Upon starting the container, it will be approximately 15 minutes until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, and if you see output like this:
+Building the image should take 20-30 minutes for KG2c. The `--no-cache` option is intended to ensure 
+maximum reproducibility from build to build; it can be dropped if you want to speed up the build time.
+Upon starting the container, it will be approximately 15 minutes until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, and if you see output like this:
 ```
 2023-06-29 21:13:56,028 INFO: Indexes are fully loaded! Took 5.52 minutes.
 WSGI app 0 (mountpoint='') ready in 332 seconds on interpreter 0x5629c42d36f0 pid: 10 (default app)
@@ -122,6 +124,19 @@ To see the logs (includes all components - uwsgi, etc.), run:
 If you want to save the contents of the log to a file locally, run:
 ```
 docker logs mycontainer >& logs/mylog.log
+```
+
+If you want to use cURL to debug PloverDB, make sure to specify the `-L` (i.e., `--location`) option for the `curl` command, since PloverDB seems to use redirection. Like this:
+```
+curl -L -X POST -d @test20.json -H 'Content-Type: application/json' -H 'accept: application/json' http://kg2cplover2.rtx.ai:9990/query
+```
+
+To have PloverDB return information about the code version for the `RTXteam/PloverDB`
+project that was used for the running service, you can use the `code_version` API
+function:
+
+```
+curl -L -X GET -H 'accept: application/json' http://kg2cplover2.rtx.ai:9990/code_version
 ```
 
 ### Credits

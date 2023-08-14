@@ -3,3 +3,4 @@ pytest
 PyYAML
 requests
 treelib
+pygit2

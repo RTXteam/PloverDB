@@ -15,13 +15,16 @@ import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 KG2C_DUMP_URL_BASE = "https://kg2webhost.rtx.ai"
+LOG_FILENAME = "/var/log/ploverdb.log"
+
 
 class PloverDB:
 
     def __init__(self):
         logging.basicConfig(level=logging.INFO,
                             format='%(asctime)s %(levelname)s: %(message)s',
-                            handlers=[logging.StreamHandler()])
+                            handlers=[logging.StreamHandler(),
+                                      logging.FileHandler(LOG_FILENAME)])
         self.config_file_path = f"{SCRIPT_DIR}/../kg_config.json"
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
