@@ -2,7 +2,6 @@ import pytest
 import requests
 from typing import Dict, Union, List
 
-
 ASPIRIN_CURIE = "PUBCHEM.COMPOUND:2244"
 TICLOPIDINE_CURIE = "PUBCHEM.COMPOUND:5472"
 ACETAMINOPHEN_CURIE = "PUBCHEM.COMPOUND:1983"
@@ -641,16 +640,14 @@ def test_21():
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
                         {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "decreased"},
-                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
-                         "qualifier_value": "activity_or_abundance"}
+                         "qualifier_value": "decreased"}
                     ]}
                 ]
             }
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["PUBCHEM.COMPOUND:9915886"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -659,7 +656,7 @@ def test_21():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert "NCBIGene:1890" in kg["nodes"]["n01"]
+    assert "NCBIGene:2554" in kg["nodes"]["n01"]
 
 
 def test_22():
@@ -857,16 +854,14 @@ def test_28():
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
                         {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "decreased"},
-                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
-                         "qualifier_value": "activity_or_abundance"}
+                         "qualifier_value": "decreased"}
                     ]}
                 ]
             }
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["PUBCHEM.COMPOUND:9915886"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -875,7 +870,7 @@ def test_28():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert "NCBIGene:1890" in kg["nodes"]["n01"]
+    assert "NCBIGene:2554" in kg["nodes"]["n01"]
 
 
 def test_29():
@@ -890,16 +885,14 @@ def test_29():
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
                         {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "decreased"},
-                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
-                         "qualifier_value": "activity_or_abundance"}
+                         "qualifier_value": "decreased"}
                     ]}
                 ]
             }
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["PUBCHEM.COMPOUND:9915886"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -908,7 +901,7 @@ def test_29():
         "include_metadata": True
     }
     kg = _run_query(query)
-    assert "NCBIGene:1890" in kg["nodes"]["n01"]
+    assert "NCBIGene:2554" in kg["nodes"]["n01"]
 
 
 def test_30():
