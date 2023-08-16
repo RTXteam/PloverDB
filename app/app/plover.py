@@ -192,7 +192,8 @@ class PloverDB:
         logging.info("Converting node/edge objects to tuple form..")
         node_properties = ("name", "category")
         edge_properties = ("subject", "object", self.edge_predicate_property, "primary_knowledge_source",
-                           self.kg2_qualified_predicate_property, self.kg2_object_direction_property, self.kg2_object_aspect_property)
+                           self.kg2_qualified_predicate_property, self.kg2_object_direction_property, self.kg2_object_aspect_property,
+                           "domain_range_exclusion")
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
