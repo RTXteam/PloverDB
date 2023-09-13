@@ -17,14 +17,14 @@ plover_obj = plover.PloverDB()
 plover_obj.load_indexes()
 
 
-@app.route('/query/', methods=['POST'])
+@app.route('/query', methods=['POST'])
 def run_query():
     query = flask.request.json
     answer = plover_obj.answer_query(query)
     return flask.jsonify(answer)
 
 
-@app.route('/healthcheck/', methods=['GET'])
+@app.route('/healthcheck', methods=['GET'])
 def run_health_check():
     return ''
 
