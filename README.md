@@ -69,13 +69,14 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Clone this repo
 1. `cd` into `PloverDB/`
-1. Build your Docker image and run a container off of it (remember, on Ubuntu, `docker` should be run with `sudo`):
-    * `docker build --no-cache --progress=plain -t yourimage .`
-    * `docker run -d --name yourcontainer -p 9990:80 yourimage`
+1. Then run the following command (if you are not on Ubuntu, you should ommit the "sudo docker" parameter), subbing in whatever names you would like for 'myploverimage' and 'myplovercontainer':
+    * `bash -x run.sh myploverimage myplovercontainer "sudo docker"`
 
-Building the image should take 20-30 minutes for KG2c. The `--no-cache` option is intended to ensure 
-maximum reproducibility from build to build; it can be dropped if you want to speed up the build time.
-Upon starting the container, it will be approximately 15 minutes until the app is fully loaded and ready for use; you can do `docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, and if you see output like this:
+This will build a Docker image and run a container off of it, publishing it at port 9990. Building the image should take 20-30 minutes for KG2c. 
+The `--no-cache` option is intended to ensure maximum reproducibility from build to build; it can be dropped if you want to speed up the build time.
+Upon starting the container, it will be approximately 15 minutes until the app is fully loaded and ready for use; you can do 
+`docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, 
+and if you see output like this:
 ```
 2023-06-29 21:13:56,028 INFO: Indexes are fully loaded! Took 5.52 minutes.
 WSGI app 0 (mountpoint='') ready in 332 seconds on interpreter 0x5629c42d36f0 pid: 10 (default app)
