@@ -69,8 +69,8 @@ _Hardware requirements_: A host machine with 128 GiB of memory is recommended fo
 1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Clone this repo
 1. `cd` into `PloverDB/`
-1. Then run the following command (if you are not on Ubuntu, you should ommit the "sudo docker" parameter), subbing in whatever names you would like for 'myploverimage' and 'myplovercontainer':
-    * `bash -x run.sh myploverimage myplovercontainer "sudo docker"`
+1. Then run the following command (if you are not on Ubuntu, you should ommit the "sudo docker" parameter), subbing in whatever names you would like for 'myimage' and 'mycontainer':
+    * `bash -x run.sh myimage mycontainer "sudo docker"`
 
 This will build a Docker image and run a container off of it, publishing it at port 9990. Building the image should take 20-30 minutes for KG2c. 
 The `--no-cache` option is intended to ensure maximum reproducibility from build to build; it can be dropped if you want to speed up the build time.
