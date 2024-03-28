@@ -585,19 +585,15 @@ class PloverDB:
                 final_input_qnode_answers.add(input_curie)
                 final_output_qnode_answers.add(output_curie)
 
-        # Form final response according to parameter passed in query
-        if trapi_query.get("include_metadata"):
-            # TODO: Actually return TRAPI, not just this... (use descendant_to_query_curie_map to fill out query_id)
-            nodes = {
-                input_qnode_key: {node_id: self.node_lookup_map[node_id]
-                                  for node_id in final_input_qnode_answers},
-                output_qnode_key: {node_id: self.node_lookup_map[node_id]
-                                   for node_id in final_output_qnode_answers}}
-            edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
-        else:
-            nodes = {input_qnode_key: [node_id for node_id in final_input_qnode_answers],
-                     output_qnode_key: list(final_output_qnode_answers)}
-            edges = {qedge_key: list(final_qedge_answers)}
+        # Form final response
+        # TODO: Actually return TRAPI, not just this... (use descendant_to_query_curie_map to fill out query_id)
+        nodes = {
+            input_qnode_key: {node_id: self.node_lookup_map[node_id]
+                              for node_id in final_input_qnode_answers},
+            output_qnode_key: {node_id: self.node_lookup_map[node_id]
+                               for node_id in final_output_qnode_answers}
+        }
+        edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
         answer_kg = {"nodes": nodes, "edges": edges}
 
         return answer_kg

@@ -38,7 +38,7 @@ def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, Non
         return dict()
 
 
-def test_1():
+def test_1a():
     # Simplest one-hop
     query = {
        "edges": {
@@ -50,11 +50,10 @@ def test_1():
        },
        "nodes": {
           "n00": {
-             "ids": [ASPIRIN_CURIE],
-             "categories": ["biolink:ChemicalEntity"]
+             "ids": ["GO:0035329"]
           },
           "n01": {
-             "categories": ["biolink:ChemicalEntity"]
+             "categories": ["biolink:NamedThing"]
           }
        }
     }
@@ -190,8 +189,7 @@ def test_7():
             },
             "n01": {
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
@@ -283,8 +281,7 @@ def test_12():
             },
             "n01": {
             }
-        },
-        "include_metadata": True
+        }
     }
     kg_symmetric = _run_query(query)
 
@@ -302,8 +299,7 @@ def test_12():
             },
             "n01": {
             }
-        },
-        "include_metadata": True
+        }
     }
     kg_symmetric_reversed = _run_query(query)
 
@@ -326,8 +322,7 @@ def test_12():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg_asymmetric = _run_query(query)
     assert kg_asymmetric["nodes"]["n00"] and kg_asymmetric["nodes"]["n01"] and kg_asymmetric["edges"]["e00"]
@@ -349,8 +344,7 @@ def test_12():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg_asymmetric_reversed = _run_query(query)
     assert not kg_asymmetric_reversed["edges"]["e00"]
@@ -373,8 +367,7 @@ def test_13():
             "n01": {
                 "categories": ["biolink:ChemicalEntity"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
@@ -383,7 +376,6 @@ def test_13():
 def test_14():
     # Test subclass_of reasoning
     query_subclass = {
-        "include_metadata": True,
         "edges": {
         },
         "nodes": {
@@ -396,7 +388,6 @@ def test_14():
     kg = _run_query(query_subclass)
     assert len(kg["nodes"]["n00"]) > 1
     query_no_subclass = {
-        "include_metadata": True,
         "edges": {
         },
         "nodes": {
@@ -411,26 +402,6 @@ def test_14():
 
 def test_15():
     # Test predicate symmetry enforcement
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:treats"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n01"]
-
     query_respecting_symmetry = {
         "edges": {
             "e00": {
@@ -446,13 +417,12 @@ def test_15():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "respect_predicate_symmetry": True
+        }
     }
-    kg_symmetry = _run_query(query_respecting_symmetry)
-    assert kg_symmetry["nodes"]["n01"]
+    kg_respecting_symmetry = _run_query(query_respecting_symmetry)
+    assert kg_respecting_symmetry["nodes"]["n01"]
 
-    query_symmetry_backwards = {
+    query_backwards = {
         "edges": {
             "e00": {
                 "subject": "n01",
@@ -467,12 +437,11 @@ def test_15():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "respect_predicate_symmetry": True
+        }
     }
-    kg_symmetry_backwards = _run_query(query_symmetry_backwards)
-    assert not kg_symmetry_backwards["nodes"]["n01"]
-    assert len(kg_symmetry["nodes"]["n01"]) == len(kg["nodes"]["n01"])
+    kg_backwards = _run_query(query_backwards)
+    assert kg_respecting_symmetry["nodes"]["n01"]
+    assert not kg_backwards["nodes"]["n01"]
 
 
 def test_16():
@@ -514,8 +483,7 @@ def test_17():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "respect_predicate_symmetry": True
+        }
     }
     kg_non_canonical = _run_query(query_non_canonical)
     assert len(kg_non_canonical["nodes"]["n01"])
@@ -535,8 +503,7 @@ def test_17():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "respect_predicate_symmetry": True
+        }
     }
     kg_canonical = _run_query(query_canonical)
     assert len(kg_canonical["nodes"]["n01"])
@@ -561,8 +528,7 @@ def test_18():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n01"])
@@ -586,8 +552,7 @@ def test_19():
             "n01": {
                 "categories": ["biolink:Protein"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert len(kg["edges"]["e00"])
@@ -597,7 +562,6 @@ def test_19():
 def test_20():
     # Test that the proper 'query_id' mapping (for TRAPI) is returned
     query = {
-        "include_metadata": True,
         "edges": {
             "e00": {
                 "subject": "n00",
@@ -652,8 +616,7 @@ def test_21():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:2554" in kg["nodes"]["n01"]
@@ -684,8 +647,7 @@ def test_22():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:1890" in kg["nodes"]["n01"]
@@ -718,8 +680,7 @@ def test_23():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert INCREASED_CURIE in kg["nodes"]["n01"]
@@ -752,8 +713,7 @@ def test_24():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert INCREASED_CURIE in kg["nodes"]["n01"]
@@ -776,8 +736,7 @@ def test_25():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
@@ -810,8 +769,7 @@ def test_26():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
@@ -834,8 +792,7 @@ def test_27():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert INCREASED_CURIE in kg["nodes"]["n01"]
@@ -866,8 +823,7 @@ def test_28():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:2554" in kg["nodes"]["n01"]
@@ -897,8 +853,7 @@ def test_29():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:2554" in kg["nodes"]["n01"]
@@ -926,8 +881,7 @@ def test_30():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:1890" in kg["nodes"]["n01"]
@@ -950,8 +904,7 @@ def test_31():
             "n01": {
                 "categories": ["biolink:Drug"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n01"])
@@ -965,8 +918,7 @@ def test_version():
             "n00": {
                 "ids": ["RTX:KG2c"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     print(kg)
