@@ -16,21 +16,27 @@ import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 KG2C_DUMP_URL_BASE = "https://kg2webhost.rtx.ai"
+LOG_FILE_PATH = "/var/log/ploverdb.log"
 
 
 class PloverDB:
 
     def __init__(self):
+        # Set up logging (when run outside of docker, can't write to /var/log - handle that situation)
+        try:
+            logging.basicConfig(level=logging.INFO,
+                                format='%(asctime)s %(levelname)s: %(message)s',
+                                handlers=[logging.StreamHandler(),
+                                          logging.FileHandler(LOG_FILE_PATH)])
+        except Exception:
+            logging.basicConfig(level=logging.INFO,
+                                format='%(asctime)s %(levelname)s: %(message)s',
+                                handlers=[logging.StreamHandler(),
+                                          logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
+
         self.config_file_path = f"{SCRIPT_DIR}/../kg_config.json"
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
-
-        # Set up logging
-        log_filepath = self.kg_config["log_filepath"] if self.kg_config["log_filepath"] else f"{SCRIPT_DIR}/ploverdb.log"
-        logging.basicConfig(level=logging.INFO,
-                            format='%(asctime)s %(levelname)s: %(message)s',
-                            handlers=[logging.StreamHandler(),
-                                      logging.FileHandler(log_filepath)])
 
         self.is_test = self.kg_config["is_test"]
         self.biolink_version = self.kg_config["biolink_version"]
@@ -52,7 +58,6 @@ class PloverDB:
         self.qedge_object_aspect_property = "biolink:object_aspect_qualifier"
         self.bh_branch = self.kg_config["biolink_helper_branch"]  # The RTX branch to download BiolinkHelper from
         self.bh = None  # BiolinkHelper is downloaded later on
-        self.core_node_properties = {"name", "category"}
         self.non_biolink_item_id = 9999
         self.category_map = dict()  # Maps category english name --> int ID
         self.category_map_reversed = dict()  # Maps category int ID --> english name
@@ -198,23 +203,6 @@ class PloverDB:
         else:
             logging.info(f"Not building subclass_of index since no subclass sources were specified in kg_config.json")
 
-        # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
-        logging.info("Converting node/edge objects to tuple form..")
-        node_properties = ("name", "category")
-        edge_properties = ("subject", "object", self.edge_predicate_property, "primary_knowledge_source",
-                           self.kg2_qualified_predicate_property, self.kg2_object_direction_property, self.kg2_object_aspect_property,
-                           "domain_range_exclusion")
-        node_ids = set(self.node_lookup_map)
-        for node_id in node_ids:
-            node = self.node_lookup_map[node_id]
-            node_tuple = tuple([node.get(property_name) for property_name in node_properties])
-            self.node_lookup_map[node_id] = node_tuple
-        edge_ids = set(self.edge_lookup_map)
-        for edge_id in edge_ids:
-            edge = self.edge_lookup_map[edge_id]
-            edge_tuple = tuple([edge.get(property_name) for property_name in edge_properties])
-            self.edge_lookup_map[edge_id] = edge_tuple
-
         # Create reversed category/predicate maps now that we're done building those maps
         self.category_map_reversed = self._reverse_dictionary(self.category_map)
         self.predicate_map_reversed = self._reverse_dictionary(self.predicate_map)
@@ -223,8 +211,6 @@ class PloverDB:
         logging.info(f"Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
-                       "node_headers": node_properties,
-                       "edge_headers": edge_properties,
                        "main_index": self.main_index,
                        "subclass_index": self.subclass_index,
                        "predicate_map": self.predicate_map,
@@ -579,8 +565,8 @@ class PloverDB:
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
                 edge = self.edge_lookup_map[answer_edge_id]
-                subject_curie = edge[0]
-                object_curie = edge[1]
+                subject_curie = edge["subject"]
+                object_curie = edge["object"]
                 output_curie = object_curie if object_curie != input_curie else subject_curie
                 # Add this edge and its nodes to our answer KG
                 final_qedge_answers.add(answer_edge_id)
