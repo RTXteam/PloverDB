@@ -141,4 +141,5 @@ biolink_helper.py
 biolink_lookup*
 *index*.json
 *.jsonl
+*.jsonl.gz
 *.pkl

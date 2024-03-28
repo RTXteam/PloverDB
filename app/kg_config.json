@@ -1,6 +1,6 @@
 {
-  "local_nodes_file_name": "kg2c-2.8.4-nodes-plater-test.jsonl",
-  "local_edges_file_name": "kg2c-2.8.4-edges-plater-test.jsonl",
+  "local_nodes_file_name": null,
+  "local_edges_file_name": null,
   "remote_nodes_file_name": "kg2c-2.8.4-nodes-plater.jsonl.gz",
   "remote_edges_file_name": "kg2c-2.8.4-edges-plater.jsonl.gz",
   "is_test": false,
