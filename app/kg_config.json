@@ -1,12 +1,15 @@
 {
-  "local_kg_file_name": null,
-  "remote_kg_file_name": "kg2c_lite_2.8.4_filtered.json.gz",
-  "remote_index_file_name": null,
+  "local_nodes_file_name": "kg2c-2.8.4-nodes-plater-test.jsonl",
+  "local_edges_file_name": "kg2c-2.8.4-edges-plater-test.jsonl",
+  "remote_nodes_file_name": "kg2c-2.8.4-nodes-plater.jsonl.gz",
+  "remote_edges_file_name": "kg2c-2.8.4-edges-plater.jsonl.gz",
   "is_test": false,
+  "biolink_version": "3.1.2",
   "biolink_helper_branch": "master",
   "labels": {
     "edges": "predicate",
     "nodes": "all_categories"
   },
-  "subclass_sources": ["infores:mondo", "infores:chebi"]
+  "subclass_sources": ["infores:mondo", "infores:chebi"],
+  "log_filepath": "/var/log/ploverdb.log"
 }

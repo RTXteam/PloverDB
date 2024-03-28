@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import itertools
 import json
+import jsonlines
 import logging
 import os
 import pathlib
@@ -15,26 +16,32 @@ import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 KG2C_DUMP_URL_BASE = "https://kg2webhost.rtx.ai"
-LOG_FILENAME = "/var/log/ploverdb.log"
 
 
 class PloverDB:
 
     def __init__(self):
-        logging.basicConfig(level=logging.INFO,
-                            format='%(asctime)s %(levelname)s: %(message)s',
-                            handlers=[logging.StreamHandler(),
-                                      logging.FileHandler(LOG_FILENAME)])
         self.config_file_path = f"{SCRIPT_DIR}/../kg_config.json"
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
+
+        # Set up logging
+        log_filepath = self.kg_config["log_filepath"] if self.kg_config["log_filepath"] else f"{SCRIPT_DIR}/ploverdb.log"
+        logging.basicConfig(level=logging.INFO,
+                            format='%(asctime)s %(levelname)s: %(message)s',
+                            handlers=[logging.StreamHandler(),
+                                      logging.FileHandler(log_filepath)])
+
         self.is_test = self.kg_config["is_test"]
-        self.remote_index_file_name = self.kg_config["remote_index_file_name"]
-        self.remote_kg_file_name = self.kg_config["remote_kg_file_name"]
-        self.local_kg_file_name = self.kg_config["local_kg_file_name"]
-        self.pickle_index_name, self.kg_json_name = self._get_local_file_names()
-        self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
-        self.pickle_index_path = f"{SCRIPT_DIR}/../{self.pickle_index_name}"
+        self.biolink_version = self.kg_config["biolink_version"]
+        self.remote_edges_file_name = self.kg_config["remote_edges_file_name"]
+        self.remote_nodes_file_name = self.kg_config["remote_nodes_file_name"]
+        self.local_edges_file_name = self.kg_config["local_edges_file_name"]
+        self.local_nodes_file_name = self.kg_config["local_nodes_file_name"]
+        self.nodes_file_name_unzipped, self.edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
+        self.nodes_path = f"{SCRIPT_DIR}/../{self.nodes_file_name_unzipped}"
+        self.edges_path = f"{SCRIPT_DIR}/../{self.edges_file_name_unzipped}"
+        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.kg2_qualified_predicate_property = "qualified_predicate"
@@ -65,25 +72,28 @@ class PloverDB:
         logging.info("Starting to build indexes..")
         start = time.time()
 
-        # Download the proper remote data file or get set up to use a local KG file
-        if self.remote_index_file_name:
-            self._download_and_unzip_remote_file(self.remote_index_file_name, self.pickle_index_path)
-            return  # No need to re-build indexes since we were able to download them
-        elif self.remote_kg_file_name:
-            self._download_and_unzip_remote_file(self.remote_kg_file_name, self.kg_json_path)
+        # Use local KG files if given, otherwise download remote files
+        if self.local_edges_file_name and self.local_nodes_file_name:
+            logging.info(f"Will use local KG files {self.local_edges_file_name} and {self.local_nodes_file_name}")
+            if self.local_edges_file_name.endswith(".gz"):
+                logging.info(f"Unzipping local edges file")
+                subprocess.check_call(["gunzip", "-f", f"{self.edges_path}.gz"])
+            if self.local_nodes_file_name.endswith(".gz"):
+                logging.info(f"Unzipping local nodes file")
+                subprocess.check_call(["gunzip", "-f", f"{self.nodes_path}.gz"])
         else:
-            logging.info(f"Will use local KG file {self.local_kg_file_name}")
-            if self.local_kg_file_name.endswith(".gz"):
-                logging.info(f"Unzipping local KG file")
-                subprocess.check_call(["gunzip", "-f", f"{self.kg_json_path}.gz"])
+            self._download_and_unzip_remote_file(self.remote_edges_file_name, self.edges_path)
+            self._download_and_unzip_remote_file(self.remote_nodes_file_name, self.nodes_path)
 
-        # Load the JSON KG
-        logging.info(f"Loading KG JSON file ({self.kg_json_name})..")
-        with open(self.kg_json_path, "r") as kg2c_file:
-            kg2c_dict = json.load(kg2c_file)
-            biolink_version = kg2c_dict.get("biolink_version")
-            if biolink_version:
-                logging.info(f"  Biolink version for this KG is {biolink_version}")
+        # Load the json lines files into a KG
+        logging.info(f"Loading json lines files into memory as a biolink KG.. ({self.nodes_path}, {self.edges_path})")
+        with jsonlines.open(self.nodes_path) as reader:
+            nodes = [node_obj for node_obj in reader]
+        logging.info(f"Have loaded nodes into memory.. now will load edges..")
+        with jsonlines.open(self.edges_path) as reader:
+            edges = [edge_obj for edge_obj in reader]
+        logging.info(f"Have loaded edges into memory.")
+        kg2c_dict = {"nodes": nodes, "edges": edges}
 
         # Set up BiolinkHelper (download from RTX repo)
         bh_file_name = "biolink_helper.py"
@@ -92,7 +102,7 @@ class PloverDB:
         remote_path = f"https://github.com/RTXteam/RTX/blob/{self.bh_branch}/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
         subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
         from biolink_helper import BiolinkHelper
-        self.bh = BiolinkHelper(biolink_version=biolink_version)
+        self.bh = BiolinkHelper(biolink_version=self.biolink_version)
 
         # Create basic node/edge lookup maps
         logging.info(f"Building basic node/edge lookup maps")
@@ -197,12 +207,12 @@ class PloverDB:
         node_ids = set(self.node_lookup_map)
         for node_id in node_ids:
             node = self.node_lookup_map[node_id]
-            node_tuple = tuple([node[property_name] for property_name in node_properties])
+            node_tuple = tuple([node.get(property_name) for property_name in node_properties])
             self.node_lookup_map[node_id] = node_tuple
         edge_ids = set(self.edge_lookup_map)
         for edge_id in edge_ids:
             edge = self.edge_lookup_map[edge_id]
-            edge_tuple = tuple([edge[property_name] for property_name in edge_properties])
+            edge_tuple = tuple([edge.get(property_name) for property_name in edge_properties])
             self.edge_lookup_map[edge_id] = edge_tuple
 
         # Create reversed category/predicate maps now that we're done building those maps
@@ -222,28 +232,23 @@ class PloverDB:
                        "category_map": self.category_map,
                        "category_map_reversed": self.category_map_reversed,
                        "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
-                       "biolink_version": biolink_version}
+                       "biolink_version": self.biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
         if not self.is_test:
-            logging.info(f"Removing {self.kg_json_name} from the image now that index building is done")
-            subprocess.call(["rm", "-f", self.kg_json_path])
+            logging.info(f"Removing local unzipped nodes/edges files from the image now that index building is done")
+            subprocess.call(["rm", "-f", self.nodes_path])
+            subprocess.call(["rm", "-f", self.edges_path])
 
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def load_indexes(self):
-        logging.info(f"Checking whether pickle of indexes is already available..")
+        logging.info(f"Checking whether pickle of indexes ({self.pickle_index_path}) already exists..")
         pickle_index_file = pathlib.Path(self.pickle_index_path)
         if not pickle_index_file.exists():
-            if self.remote_index_file_name:
-                # Download the pre-computed pickle of indexes
-                self._download_and_unzip_remote_file(self.remote_index_file_name, self.pickle_index_path)
-            else:
-                # Otherwise we'll have to build indexes from a KG file
-                logging.info(f"No index pickle exists and none was specified for download in kg_config.json - will "
-                             f"build indexes")
-                self.build_indexes()
+            logging.info(f"No index pickle exists - will build indexes")
+            self.build_indexes()
 
         # Load our pickled indexes into memory
         logging.info(f"Loading pickle of indexes from {self.pickle_index_path}..")
@@ -437,19 +442,6 @@ class PloverDB:
                 json.dump(report, report_file, indent=2)
 
         logging.info(f"Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
-
-    @staticmethod
-    def _download_and_unzip_remote_file(remote_file_name: str, local_destination_path: str):
-        temp_location = f"{SCRIPT_DIR}/{remote_file_name}"
-#        remote_path = f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{remote_file_name}?raw=true"
-        remote_path = f"{KG2C_DUMP_URL_BASE}/{remote_file_name}"
-        logging.info(f"Downloading remote file from URL: {remote_path}")
-        subprocess.check_call(["curl", "-L", remote_path, "-o", temp_location])
-        if remote_file_name.endswith(".gz"):
-            logging.info(f"Unzipping downloaded file")
-            subprocess.check_call(["gunzip", "-f", temp_location])
-            temp_location = temp_location.strip(".gz")
-        subprocess.check_call(["mv", temp_location, local_destination_path])
 
     def _print_main_index_human_friendly(self):
         for input_curie, categories_dict in self.main_index.items():
@@ -776,22 +768,19 @@ class PloverDB:
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
-    def _get_local_file_names(self) -> Tuple[Optional[str], Optional[str]]:
-        remote_index_file_name = self.kg_config.get("remote_index_file_name")
-        remote_kg_file_name = self.kg_config.get("remote_kg_file_name")
-        local_kg_file_name = self.kg_config.get("local_kg_file_name")
-        if not remote_index_file_name and not remote_kg_file_name and not local_kg_file_name:
-            logging.error("In kg_config.json, you must specify either a remote file to download (either a JSON KG "
-                          "file or a pickle file of indexes) from the translator-lfs-artifacts repo or a local KG "
-                          "file to use.")
-            return None, None
+    def _get_file_names_to_use_unzipped(self) -> Tuple[Optional[str], Optional[str]]:
+        remote_edges_file_name = self.kg_config.get("remote_edges_file_name")
+        remote_nodes_file_name = self.kg_config.get("remote_nodes_file_name")
+        local_edges_file_name = self.kg_config.get("local_edges_file_name")
+        local_nodes_file_name = self.kg_config.get("local_nodes_file_name")
+        if local_edges_file_name and local_nodes_file_name:
+            return local_nodes_file_name.strip(".gz"), local_edges_file_name.strip(".gz")
+        elif remote_edges_file_name and remote_nodes_file_name:
+            return remote_nodes_file_name.strip(".gz"), remote_edges_file_name.strip(".gz")
         else:
-            if remote_index_file_name:
-                return remote_index_file_name.strip(".gz"), None
-            else:
-                kg_file_name = remote_kg_file_name.strip(".gz") if remote_kg_file_name else local_kg_file_name.strip(".gz")
-                index_file_name = f"{kg_file_name.strip('.json')}_indexes.pickle"
-                return index_file_name, kg_file_name
+            logging.error("In kg_config.json, you must specify what edge/nodes files to use - either remote files "
+                          "(on kg2webhost) or local files")
+            return None, None
 
     @staticmethod
     def _convert_to_set(input_item: any) -> Set[str]:

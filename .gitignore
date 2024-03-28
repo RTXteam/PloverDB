@@ -140,3 +140,5 @@ kg2c*.json
 biolink_helper.py
 biolink_lookup*
 *index*.json
+*.jsonl
+*.pkl
