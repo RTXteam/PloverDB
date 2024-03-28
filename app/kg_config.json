@@ -11,5 +11,5 @@
     "nodes": "all_categories"
   },
   "subclass_sources": ["infores:mondo", "infores:chebi"],
-  "log_filepath": "/var/log/ploverdb.log"
+  "num_edges_per_answer_cutoff": 1000000
 }

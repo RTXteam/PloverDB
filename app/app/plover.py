@@ -40,6 +40,7 @@ class PloverDB:
 
         self.is_test = self.kg_config["is_test"]
         self.biolink_version = self.kg_config["biolink_version"]
+        self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
         self.remote_edges_file_name = self.kg_config["remote_edges_file_name"]
         self.remote_nodes_file_name = self.kg_config["remote_nodes_file_name"]
         self.local_edges_file_name = self.kg_config["local_edges_file_name"]
@@ -547,7 +548,7 @@ class PloverDB:
         main_index = self.main_index
         for input_curie in input_curies:
             answer_edge_ids = []
-            if input_curie in main_index:
+            if input_curie in main_index and len(answer_edge_ids) < self.num_edges_per_answer_cutoff:
                 # Consider ALL output categories if none were provided or if output curies were specified
                 categories_present = set(main_index[input_curie])
                 categories_to_inspect = output_categories_expanded.intersection(categories_present) if output_categories_expanded and not output_curies else categories_present
