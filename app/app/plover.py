@@ -73,8 +73,10 @@ class PloverDB:
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
         self.core_node_properties = {"name", "category"}
-        self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source"}
+        self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source",
+                                     "qualified_object_aspect", "qualified_object_direction", "qualified_predicate"}
         self.properties_to_include_source_on = {"publications", "publications_info"}
+        self.kg2_infores_curie = "infores:rtx-kg2"
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -639,15 +641,45 @@ class PloverDB:
 
     def _convert_edge_to_trapi_format(self, edge_biolink: dict) -> dict:
         primary_ks = edge_biolink["primary_knowledge_source"]
+        source_primary = {
+            "resource_id": primary_ks,
+            "resource_role": "primary_knowledge_source"
+        }
+        source_aggregator = {
+            "resource_id": self.kg2_infores_curie,
+            "resource_role": "aggregator_knowledge_source",
+            "upstream_resource_ids": [primary_ks]
+        }
         trapi_edge = {
             "subject": edge_biolink["subject"],
             "object": edge_biolink["object"],
             "predicate": edge_biolink["predicate"],
-            "sources": [],
+            "sources": [source_primary, source_aggregator],
             "attributes": [self._get_trapi_edge_attribute(property_name, value, primary_ks)
                            for property_name, value in edge_biolink.items()
                            if property_name not in self.core_edge_properties]
         }
+
+        # Add any qualifier info
+        qualifiers = []
+        if edge_biolink.get("qualified_predicate"):
+            qualifiers.append({
+                "qualifier_type_id": "biolink:qualified_predicate",
+                "qualifier_value": edge_biolink["qualified_predicate"]
+            })
+        if edge_biolink.get("qualified_object_direction"):
+            qualifiers.append({
+                "qualifier_type_id": "biolink:object_direction_qualifier",
+                "qualifier_value": edge_biolink["qualified_object_direction"]
+            })
+        if edge_biolink.get("qualified_object_aspect"):
+            qualifiers.append({
+                "qualifier_type_id": "biolink:object_aspect_qualifier",
+                "qualifier_value": edge_biolink["qualified_object_aspect"]
+            })
+        if qualifiers:
+            trapi_edge["qualifiers"] = qualifiers
+
         return trapi_edge
 
     def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
