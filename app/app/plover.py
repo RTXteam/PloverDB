@@ -72,7 +72,7 @@ class PloverDB:
         self.conglomerate_predicate_descendant_index = defaultdict(set)
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
-        self.core_node_properties = {"name", "category"}
+        self.core_node_properties = {"name", "all_categories"}
         self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source",
                                      "qualified_object_aspect", "qualified_object_direction", "qualified_predicate"}
         self.properties_to_include_source_on = {"publications", "publications_info"}
@@ -122,7 +122,7 @@ class PloverDB:
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         # Undo the 'category' property change that Plater requires (has pre-expanded ancestors; we do that on the fly)
         for node in self.node_lookup_map.values():
-            node["category"] = node["preferred_category"]
+            del node["category"]  # We use all_categories for everything..
             del node["preferred_category"]
             del node["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
@@ -401,8 +401,7 @@ class PloverDB:
             del parent_to_descendants_dict["root"]
             node_ids = set(parent_to_descendants_dict)
             for node_id in node_ids:
-                node = self.node_lookup_map[node_id]
-                if len(parent_to_descendants_dict[node_id]) > 5000 or node["category"] == "biolink:OntologyClass" or node_id.startswith("biolink:"):
+                if len(parent_to_descendants_dict[node_id]) > 5000 or node_id.startswith("biolink:"):
                     del parent_to_descendants_dict[node_id]
             deleted_node_ids = node_ids.difference(set(parent_to_descendants_dict))
 
@@ -632,7 +631,7 @@ class PloverDB:
     def _convert_node_to_trapi_format(self, node_biolink: dict) -> dict:
         trapi_node = {
             "name": node_biolink.get("name"),
-            "categories": [node_biolink["category"]],
+            "categories": node_biolink["all_categories"],
             "attributes": [self._get_trapi_node_attribute(property_name, value)
                            for property_name, value in node_biolink.items()
                            if property_name not in self.core_node_properties]
