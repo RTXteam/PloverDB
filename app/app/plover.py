@@ -40,6 +40,7 @@ class PloverDB:
 
         self.is_test = self.kg_config["is_test"]
         self.biolink_version = self.kg_config["biolink_version"]
+        self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
         self.remote_edges_file_name = self.kg_config["remote_edges_file_name"]
         self.remote_nodes_file_name = self.kg_config["remote_nodes_file_name"]
@@ -71,6 +72,9 @@ class PloverDB:
         self.conglomerate_predicate_descendant_index = defaultdict(set)
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
+        self.core_node_properties = {"name", "category"}
+        self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source"}
+        self.properties_to_include_source_on = {"publications", "publications_info"}
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -118,11 +122,14 @@ class PloverDB:
         for node in self.node_lookup_map.values():
             node["category"] = node["preferred_category"]
             del node["preferred_category"]
+            del node["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading node lookup map. Memory usage is currently "
                      f"{memory_usage_percent}% ({memory_usage_gb}G)..")
         logging.info(f"Loading edge lookup map..")
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        for edge in self.edge_lookup_map.values():
+            del edge["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading edge lookup map. Memory usage is currently "
                      f"{memory_usage_percent}% ({memory_usage_gb}G)..")
@@ -477,15 +484,12 @@ class PloverDB:
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
-    def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
+    def answer_query(self, trapi_query: dict) -> dict:
         logging.info(f"TRAPI query is: {trapi_query}")
         # Make sure this is a query we can answer
         if len(trapi_query["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
                              f"{len(trapi_query['edges'])} edges.")
-        # Handle edgeless queries
-        if not trapi_query["edges"]:
-            return self._answer_edgeless_query(trapi_query)
         # Make sure at least one qnode has a curie
         qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
         qedge = trapi_query["edges"][qedge_key]
@@ -586,44 +590,65 @@ class PloverDB:
                 final_input_qnode_answers.add(input_curie)
                 final_output_qnode_answers.add(output_curie)
 
-        # Form final response
-        # TODO: Actually return TRAPI, not just this... (use descendant_to_query_curie_map to fill out query_id)
-        nodes = {
-            input_qnode_key: {node_id: self.node_lookup_map[node_id]
-                              for node_id in final_input_qnode_answers},
-            output_qnode_key: {node_id: self.node_lookup_map[node_id]
-                               for node_id in final_output_qnode_answers}
+        # Form final TRAPI response
+        trapi_response = self._create_response_from_answer_ids(final_input_qnode_answers,
+                                                               final_output_qnode_answers,
+                                                               final_qedge_answers,
+                                                               input_qnode_key,
+                                                               output_qnode_key,
+                                                               qedge_key,
+                                                               trapi_query)
+        return trapi_response
+
+    def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
+                                         final_output_qnode_answers: Set[str],
+                                         final_qedge_answers: Set[str],
+                                         input_qnode_key: str,
+                                         output_qnode_key: str,
+                                         qedge_key: str,
+                                         trapi_query: dict):
+        response = {
+            "log_level": None,
+            "workflow": [
+                {
+                    "id": "lookup"
+                }
+            ],
+            "message": {
+                "query_graph": trapi_query,
+                "knowledge_graph": {
+                    "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
+                              for node_id in final_input_qnode_answers.union(final_output_qnode_answers)},
+                    "edges": {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
+                              for edge_id in final_qedge_answers}
+                },
+                "results": []
+            },
         }
-        edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
-        answer_kg = {"nodes": nodes, "edges": edges}
+        return response
 
-        return answer_kg
+    def _convert_node_to_trapi_format(self, node_biolink: dict) -> dict:
+        trapi_node = {
+            "name": node_biolink.get("name"),
+            "categories": [node_biolink["category"]],
+            "attributes": [self._get_trapi_node_attribute(property_name, value)
+                           for property_name, value in node_biolink.items()
+                           if property_name not in self.core_node_properties]
+        }
+        return trapi_node
 
-    def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
-        # When no qedges are involved, we only fulfill qnodes that have a curie
-        if not all(qnode.get("ids") for qnode in trapi_query["nodes"].values()):
-            raise ValueError("For qnode-only queries, every qnode must have curie(s) specified.")
-        answer_kg = {"nodes": dict(), "edges": dict()}
-        for qnode_key, qnode in trapi_query["nodes"].items():
-            descendant_to_query_curie_map = defaultdict(set)
-            qnode_ids = self._convert_to_set(qnode["ids"])
-            input_curies = qnode["ids"]
-            if qnode.get("allow_subclasses"):
-                for query_curie in qnode_ids:
-                    descendants = self._get_descendants(query_curie)
-                    for descendant in descendants:
-                        # Record query curie mapping if this is a descendant not listed in the QG
-                        if descendant not in qnode_ids:
-                            descendant_to_query_curie_map[descendant].add(query_curie)
-                    input_curies += descendants
-            found_curies = set(input_curies).intersection(set(self.node_lookup_map))
-            if found_curies:
-                if trapi_query.get("include_metadata"):
-                    answer_kg["nodes"][qnode_key] = {node_id: self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map.get(node_id, set())),)
-                                                     for node_id in found_curies}
-                else:
-                    answer_kg["nodes"][qnode_key] = list(found_curies)
-        return answer_kg
+    def _convert_edge_to_trapi_format(self, edge_biolink: dict) -> dict:
+        primary_ks = edge_biolink["primary_knowledge_source"]
+        trapi_edge = {
+            "subject": edge_biolink["subject"],
+            "object": edge_biolink["object"],
+            "predicate": edge_biolink["predicate"],
+            "sources": [],
+            "attributes": [self._get_trapi_edge_attribute(property_name, value, primary_ks)
+                           for property_name, value in edge_biolink.items()
+                           if property_name not in self.core_edge_properties]
+        }
+        return trapi_edge
 
     def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
         node_ids = self._convert_to_set(node_ids)
@@ -631,6 +656,19 @@ class PloverDB:
                               for descendant_id in self.subclass_index.get(node_id, set())}
         descendants = proper_descendants.union(node_ids)
         return list(descendants)
+
+    def _get_trapi_node_attribute(self, property_name: str, value: any) -> dict:
+        attribute = self.trapi_attribute_map[property_name]
+        attribute["value"] = value
+        return attribute
+
+    def _get_trapi_edge_attribute(self, property_name: str, value: any, primary_ks: str) -> dict:
+        attribute = self.trapi_attribute_map[property_name]
+        attribute["value"] = value
+        # Add the source to certain edge attributes (like publications)
+        if property_name in self.properties_to_include_source_on:
+            attribute["attribute_source"] = primary_ks
+        return attribute
 
     @staticmethod
     def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, Union[str, List[str], None]]]) -> str:

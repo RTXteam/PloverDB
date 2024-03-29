@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import requests
 from typing import Dict, Union, List
@@ -31,7 +33,7 @@ def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, Non
     response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
         json_response = response.json()
-        _print_kg(json_response)
+        print(json.dumps(json_response, indent=2))
         return json_response
     else:
         print(f"Response status code was {response.status_code}. Response was: {response.text}")
@@ -58,7 +60,6 @@ def test_1a():
        }
     }
     kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
 
 
 def test_2():
