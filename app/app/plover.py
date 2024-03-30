@@ -598,7 +598,8 @@ class PloverDB:
                                                                input_qnode_key,
                                                                output_qnode_key,
                                                                qedge_key,
-                                                               trapi_query)
+                                                               trapi_query,
+                                                               descendant_to_query_curie_map)
         return trapi_response
 
     def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
@@ -607,7 +608,8 @@ class PloverDB:
                                          input_qnode_key: str,
                                          output_qnode_key: str,
                                          qedge_key: str,
-                                         trapi_query: dict):
+                                         trapi_query: dict,
+                                         descendant_to_query_curie_map: dict) -> dict:
         response = {
             "log_level": None,
             "workflow": [
@@ -623,7 +625,13 @@ class PloverDB:
                     "edges": {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
                               for edge_id in final_qedge_answers}
                 },
-                "results": []
+                "results": self._get_trapi_results(final_input_qnode_answers,
+                                                   final_output_qnode_answers,
+                                                   final_qedge_answers,
+                                                   input_qnode_key,
+                                                   output_qnode_key,
+                                                   qedge_key,
+                                                   descendant_to_query_curie_map)
             },
         }
         return response
@@ -681,13 +689,6 @@ class PloverDB:
 
         return trapi_edge
 
-    def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
-        node_ids = self._convert_to_set(node_ids)
-        proper_descendants = {descendant_id for node_id in node_ids
-                              for descendant_id in self.subclass_index.get(node_id, set())}
-        descendants = proper_descendants.union(node_ids)
-        return list(descendants)
-
     def _get_trapi_node_attribute(self, property_name: str, value: any) -> dict:
         attribute = self.trapi_attribute_map[property_name]
         attribute["value"] = value
@@ -700,6 +701,68 @@ class PloverDB:
         if property_name in self.properties_to_include_source_on:
             attribute["attribute_source"] = primary_ks
         return attribute
+
+    def _get_trapi_results(self, final_input_qnode_answers: Set[str],
+                           final_output_qnode_answers: Set[str],
+                           final_qedge_answers: Set[str],
+                           input_qnode_key: str,
+                           output_qnode_key: str,
+                           qedge_key: str,
+                           descendant_to_query_id_map: dict) -> List[dict]:
+        # Group edges with the same node bindings
+        edge_groups = defaultdict(set)
+        for edge_id in final_qedge_answers:
+            edge = self.edge_lookup_map[edge_id]
+            subject_id = edge["subject"]
+            object_id = edge["object"]
+            result_hash = (subject_id, object_id) if (subject_id in final_input_qnode_answers and
+                                                      object_id in final_output_qnode_answers) else (object_id, subject_id)
+            edge_groups[result_hash].add(edge_id)
+
+        # Form actual results for each pair of node bindings
+        results = []
+        for result_hash, edge_ids in edge_groups.items():
+            input_node_id = result_hash[0]
+            output_node_id = result_hash[1]
+            output_node = self.node_lookup_map[output_node_id]
+            result = {
+                "essence": output_node.get("name"),
+                "essence_category": output_node["all_categories"],
+                "node_bindings": [
+                    {
+                        input_qnode_key: [self._create_trapi_node_binding(input_node_id,
+                                                                          descendant_to_query_id_map.get(input_node_id))],
+                        output_qnode_key: [self._create_trapi_node_binding(output_node_id,
+                                                                           descendant_to_query_id_map.get(output_node_id))]
+                    }
+                ],
+                "analyses": [
+                    {
+                        "edge_bindings": {
+                            qedge_key: [{"id": edge_id} for edge_id in edge_ids]
+                        },
+                        "resource_id": self.kg2_infores_curie
+                    }
+                ],
+                "resource_id": self.kg2_infores_curie
+            }
+            results.append(result)
+
+        return results
+
+    @staticmethod
+    def _create_trapi_node_binding(node_id: str, query_id: str) -> dict:
+        node_binding = {"id": node_id}
+        if query_id and node_id != query_id:
+            node_binding["query_id"] = query_id
+        return node_binding
+
+    def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
+        node_ids = self._convert_to_set(node_ids)
+        proper_descendants = {descendant_id for node_id in node_ids
+                              for descendant_id in self.subclass_index.get(node_id, set())}
+        descendants = proper_descendants.union(node_ids)
+        return list(descendants)
 
     @staticmethod
     def _determine_input_qnode_key(qnodes: Dict[str, Dict[str, Union[str, List[str], None]]]) -> str:
