@@ -728,14 +728,12 @@ class PloverDB:
             result = {
                 "essence": output_node.get("name"),
                 "essence_category": output_node["all_categories"],
-                "node_bindings": [
-                    {
-                        input_qnode_key: [self._create_trapi_node_binding(input_node_id,
-                                                                          descendant_to_query_id_map.get(input_node_id))],
-                        output_qnode_key: [self._create_trapi_node_binding(output_node_id,
-                                                                           descendant_to_query_id_map.get(output_node_id))]
-                    }
-                ],
+                "node_bindings": {
+                    input_qnode_key: [self._create_trapi_node_binding(input_node_id,
+                                                                      descendant_to_query_id_map.get(input_node_id))],
+                    output_qnode_key: [self._create_trapi_node_binding(output_node_id,
+                                                                       descendant_to_query_id_map.get(output_node_id))]
+                },
                 "analyses": [
                     {
                         "edge_bindings": {
