@@ -509,7 +509,7 @@ class PloverDB:
 
         # Record which curies specified in the QG any descendant curies correspond to
         descendant_to_query_curie_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
-        if subject_qnode.get("ids") and subject_qnode.get("allow_subclasses"):
+        if subject_qnode.get("ids"):
             subject_qnode_curies_with_descendants = list()
             subject_qnode_curies = set(subject_qnode["ids"])
             for query_curie in subject_qnode_curies:
@@ -520,7 +520,7 @@ class PloverDB:
                         descendant_to_query_curie_map[subject_qnode_key][descendant].add(query_curie)
                 subject_qnode_curies_with_descendants += descendants
             subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
-        if object_qnode.get("ids") and object_qnode.get("allow_subclasses"):
+        if object_qnode.get("ids"):
             object_qnode_curies_with_descendants = list()
             object_qnode_curies = set(object_qnode["ids"])
             for query_curie in object_qnode_curies:
