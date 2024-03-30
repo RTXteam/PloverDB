@@ -487,7 +487,10 @@ class PloverDB:
 
     def answer_query(self, trapi_query: dict) -> dict:
         logging.info(f"TRAPI query is: {trapi_query}")
-        # Make sure this is a query we can answer
+        # Handle single-node queries (not part of TRAPI, but handy)
+        if not trapi_query.get("edges"):
+            return self._answer_single_node_query(trapi_query)
+        # Otherwise make sure this is a one-hop query
         if len(trapi_query["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
                              f"{len(trapi_query['edges'])} edges.")
@@ -709,43 +712,56 @@ class PloverDB:
                            output_qnode_key: str,
                            qedge_key: str,
                            descendant_to_query_id_map: dict) -> List[dict]:
-        # Group edges with the same node bindings
-        edge_groups = defaultdict(set)
-        for edge_id in final_qedge_answers:
-            edge = self.edge_lookup_map[edge_id]
-            subject_id = edge["subject"]
-            object_id = edge["object"]
-            result_hash = (subject_id, object_id) if (subject_id in final_input_qnode_answers and
-                                                      object_id in final_output_qnode_answers) else (object_id, subject_id)
-            edge_groups[result_hash].add(edge_id)
+        if qedge_key:  # This is how we detect this isn't a single-node query
+            # Group edges with the same node bindings
+            edge_groups = defaultdict(set)
+            for edge_id in final_qedge_answers:
+                edge = self.edge_lookup_map[edge_id]
+                subject_id = edge["subject"]
+                object_id = edge["object"]
+                result_hash = (subject_id, object_id) if (subject_id in final_input_qnode_answers and
+                                                          object_id in final_output_qnode_answers) else (object_id, subject_id)
+                edge_groups[result_hash].add(edge_id)
 
-        # Form actual results for each pair of node bindings
-        results = []
-        for result_hash, edge_ids in edge_groups.items():
-            input_node_id = result_hash[0]
-            output_node_id = result_hash[1]
-            output_node = self.node_lookup_map[output_node_id]
-            result = {
-                "essence": output_node.get("name"),
-                "essence_category": output_node["all_categories"],
-                "node_bindings": {
-                    input_qnode_key: [self._create_trapi_node_binding(input_node_id,
-                                                                      descendant_to_query_id_map.get(input_node_id))],
-                    output_qnode_key: [self._create_trapi_node_binding(output_node_id,
-                                                                       descendant_to_query_id_map.get(output_node_id))]
-                },
-                "analyses": [
-                    {
-                        "edge_bindings": {
-                            qedge_key: [{"id": edge_id} for edge_id in edge_ids]
-                        },
-                        "resource_id": self.kg2_infores_curie
-                    }
-                ],
-                "resource_id": self.kg2_infores_curie
-            }
-            results.append(result)
-
+            # Form actual results for each pair of node bindings
+            results = []
+            for result_hash, edge_ids in edge_groups.items():
+                input_node_id = result_hash[0]
+                output_node_id = result_hash[1]
+                output_node = self.node_lookup_map[output_node_id]
+                result = {
+                    "essence": output_node.get("name"),
+                    "essence_category": output_node["all_categories"],
+                    "node_bindings": {
+                        input_qnode_key: [self._create_trapi_node_binding(input_node_id,
+                                                                          descendant_to_query_id_map.get(input_node_id))],
+                        output_qnode_key: [self._create_trapi_node_binding(output_node_id,
+                                                                           descendant_to_query_id_map.get(output_node_id))]
+                    },
+                    "analyses": [
+                        {
+                            "edge_bindings": {
+                                qedge_key: [{"id": edge_id} for edge_id in edge_ids]
+                            },
+                            "resource_id": self.kg2_infores_curie
+                        }
+                    ],
+                    "resource_id": self.kg2_infores_curie
+                }
+                results.append(result)
+        else:
+            # Handle single-node queries
+            results = [
+                {
+                    "node_bindings": {
+                        input_qnode_key: [
+                            self._create_trapi_node_binding(node_id, descendant_to_query_id_map.get(node_id))
+                            for node_id in final_input_qnode_answers],
+                    },
+                    "analyses": [],
+                    "resource_id": self.kg2_infores_curie
+                }
+            ]
         return results
 
     @staticmethod
@@ -903,6 +919,38 @@ class PloverDB:
                                                                                    object_direction=object_direction_qualifier,
                                                                                    object_aspect=object_aspect_qualifier))
         return qedge_conglomerate_predicates
+
+    def _answer_single_node_query(self, trapi_query: dict) -> dict:
+        # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of TRAPI; just handy)
+        if len(trapi_query["nodes"]) > 1:
+            raise ValueError(f"Edgeless queries can only involve a single query node")
+        qnode_key = list(trapi_query["nodes"].keys())[0]
+        if not trapi_query["nodes"][qnode_key].get("ids"):
+            raise ValueError("For qnode-only queries, the qnode must have 'ids' specified.")
+
+        logging.info(f"Answering single-node query...")
+        qnode = trapi_query["nodes"][qnode_key]
+        qnode_ids_set = self._convert_to_set(qnode["ids"])
+        input_curies = qnode["ids"].copy()
+        descendant_to_query_curie_map = defaultdict(set)
+        if input_curies:
+            for query_curie in qnode_ids_set:
+                descendants = self._get_descendants(query_curie)
+                for descendant in descendants:
+                    # Record query curie mapping if this is a descendant not listed in the QG
+                    if descendant not in qnode_ids_set:
+                        descendant_to_query_curie_map[descendant].add(query_curie)
+                input_curies += descendants
+        found_curies = set(input_curies).intersection(set(self.node_lookup_map))
+        response = self._create_response_from_answer_ids(final_input_qnode_answers=found_curies,
+                                                         final_output_qnode_answers=set(),
+                                                         final_qedge_answers=set(),
+                                                         input_qnode_key=qnode_key,
+                                                         output_qnode_key="",
+                                                         qedge_key="",
+                                                         trapi_query=trapi_query,
+                                                         descendant_to_query_curie_map=descendant_to_query_curie_map)
+        return response
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
