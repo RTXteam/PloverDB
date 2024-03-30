@@ -511,7 +511,7 @@ class PloverDB:
                                      f"Supported qualifiers are: {self.supported_qualifiers}")
 
         # Record which curies specified in the QG any descendant curies correspond to
-        descendant_to_query_curie_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
+        descendant_to_query_id_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
         if subject_qnode.get("ids"):
             subject_qnode_curies_with_descendants = list()
             subject_qnode_curies = set(subject_qnode["ids"])
@@ -520,7 +520,7 @@ class PloverDB:
                 for descendant in descendants:
                     # We only want to record the mapping in the case of a true descendant
                     if descendant not in subject_qnode_curies:
-                        descendant_to_query_curie_map[subject_qnode_key][descendant].add(query_curie)
+                        descendant_to_query_id_map[subject_qnode_key][descendant].add(query_curie)
                 subject_qnode_curies_with_descendants += descendants
             subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
         if object_qnode.get("ids"):
@@ -531,7 +531,7 @@ class PloverDB:
                 for descendant in descendants:
                     # We only want to record the mapping in the case of a true descendant
                     if descendant not in object_qnode_curies:
-                        descendant_to_query_curie_map[object_qnode_key][descendant].add(query_curie)
+                        descendant_to_query_id_map[object_qnode_key][descendant].add(query_curie)
                 object_qnode_curies_with_descendants += descendants
             object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
 
@@ -602,7 +602,7 @@ class PloverDB:
                                                                output_qnode_key,
                                                                qedge_key,
                                                                trapi_query,
-                                                               descendant_to_query_curie_map)
+                                                               descendant_to_query_id_map)
         return trapi_response
 
     def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
@@ -612,7 +612,7 @@ class PloverDB:
                                          output_qnode_key: str,
                                          qedge_key: str,
                                          trapi_query: dict,
-                                         descendant_to_query_curie_map: dict) -> dict:
+                                         descendant_to_query_id_map: dict) -> dict:
         response = {
             "log_level": None,
             "workflow": [
@@ -634,7 +634,7 @@ class PloverDB:
                                                    input_qnode_key,
                                                    output_qnode_key,
                                                    qedge_key,
-                                                   descendant_to_query_curie_map)
+                                                   descendant_to_query_id_map)
             },
         }
         return response
@@ -734,9 +734,9 @@ class PloverDB:
                     "essence_category": output_node["all_categories"],
                     "node_bindings": {
                         input_qnode_key: [self._create_trapi_node_binding(input_node_id,
-                                                                          descendant_to_query_id_map.get(input_node_id))],
+                                                                          descendant_to_query_id_map[input_qnode_key].get(input_node_id))],
                         output_qnode_key: [self._create_trapi_node_binding(output_node_id,
-                                                                           descendant_to_query_id_map.get(output_node_id))]
+                                                                           descendant_to_query_id_map[output_qnode_key].get(output_node_id))]
                     },
                     "analyses": [
                         {
@@ -755,7 +755,8 @@ class PloverDB:
                 {
                     "node_bindings": {
                         input_qnode_key: [
-                            self._create_trapi_node_binding(node_id, descendant_to_query_id_map.get(node_id))
+                            self._create_trapi_node_binding(node_id,
+                                                            descendant_to_query_id_map[input_qnode_key].get(node_id))
                             for node_id in final_input_qnode_answers],
                     },
                     "analyses": [],
@@ -765,10 +766,12 @@ class PloverDB:
         return results
 
     @staticmethod
-    def _create_trapi_node_binding(node_id: str, query_id: str) -> dict:
+    def _create_trapi_node_binding(node_id: str, query_ids: Optional[Set[str]]) -> dict:
         node_binding = {"id": node_id}
-        if query_id and node_id != query_id:
-            node_binding["query_id"] = query_id
+        if query_ids:
+            query_id = next(query_id for query_id in query_ids)  # TRAPI/translator isn't set up to handle multiple yet
+            if node_id != query_id:
+                node_binding["query_id"] = query_id
         return node_binding
 
     def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
@@ -932,14 +935,14 @@ class PloverDB:
         qnode = trapi_query["nodes"][qnode_key]
         qnode_ids_set = self._convert_to_set(qnode["ids"])
         input_curies = qnode["ids"].copy()
-        descendant_to_query_curie_map = defaultdict(set)
+        descendant_to_query_id_map = {qnode_key: defaultdict(set)}
         if input_curies:
             for query_curie in qnode_ids_set:
                 descendants = self._get_descendants(query_curie)
                 for descendant in descendants:
                     # Record query curie mapping if this is a descendant not listed in the QG
                     if descendant not in qnode_ids_set:
-                        descendant_to_query_curie_map[descendant].add(query_curie)
+                        descendant_to_query_id_map[qnode_key][descendant].add(query_curie)
                 input_curies += descendants
         found_curies = set(input_curies).intersection(set(self.node_lookup_map))
         response = self._create_response_from_answer_ids(final_input_qnode_answers=found_curies,
@@ -949,7 +952,7 @@ class PloverDB:
                                                          output_qnode_key="",
                                                          qedge_key="",
                                                          trapi_query=trapi_query,
-                                                         descendant_to_query_curie_map=descendant_to_query_curie_map)
+                                                         descendant_to_query_id_map=descendant_to_query_id_map)
         return response
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
