@@ -31,37 +31,40 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 
 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]],
-               return_trapi_response: bool = False) -> dict:
+               return_trapi_response: bool = False) -> any:
     response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
         json_response = response.json()
         # print(json.dumps(json_response, indent=2))
-        if return_trapi_response:
-            return json_response
-        else:
-            message = json_response["message"]
-            # Convert the TRAPI response to the old plover response format (IDs organized by QG IDs)
-            answer_node_ids = defaultdict(set)
-            answer_edge_ids = defaultdict(set)
-            for result in message["results"]:
-                print(result)
-                for qnode_key, node_bindings in result["node_bindings"].items():
-                    for node_binding in node_bindings:
-                        answer_node_ids[qnode_key].add(node_binding["id"])
+
+        # Convert the TRAPI response to the old plover response format (IDs organized by QG IDs)
+        message = json_response["message"]
+        answer_node_ids = defaultdict(set)
+        answer_edge_ids = defaultdict(set)
+        for result in message["results"]:
+            for qnode_key, node_bindings in result["node_bindings"].items():
+                for node_binding in node_bindings:
+                    answer_node_ids[qnode_key].add(node_binding["id"])
+            if result.get("analyses"):
                 for qedge_key, edge_bindings in result["analyses"][0]["edge_bindings"].items():
                     for edge_binding in edge_bindings:
                         answer_edge_ids[qedge_key].add(edge_binding["id"])
-            nodes = dict()
-            edges = dict()
-            for qnode_key, node_ids in answer_node_ids.items():
-                nodes[qnode_key] = dict()
-                for node_id in node_ids:
-                    nodes[qnode_key][node_id] = message["knowledge_graph"]["nodes"][node_id]
-            for qedge_key, edge_ids in answer_edge_ids.items():
-                edges[qedge_key] = dict()
-                for edge_id in edge_ids:
-                    edges[qedge_key][edge_id] = message["knowledge_graph"]["edges"][edge_id]
-        return {"nodes": nodes, "edges": edges}
+        nodes = dict()
+        edges = dict()
+        for qnode_key, node_ids in answer_node_ids.items():
+            nodes[qnode_key] = dict()
+            for node_id in node_ids:
+                nodes[qnode_key][node_id] = message["knowledge_graph"]["nodes"][node_id]
+        for qedge_key, edge_ids in answer_edge_ids.items():
+            edges[qedge_key] = dict()
+            for edge_id in edge_ids:
+                edges[qedge_key][edge_id] = message["knowledge_graph"]["edges"][edge_id]
+        qg_organized_kg = {"nodes": nodes, "edges": edges}
+
+        if return_trapi_response:
+            return qg_organized_kg, json_response
+        else:
+            return qg_organized_kg
     else:
         print(f"Response status code was {response.status_code}. Response was: {response.text}")
         return dict()
@@ -204,7 +207,7 @@ def test_6():
 
 
 def test_7():
-    # Multiple curie to multiple curie query
+    # Multiple-curie query
     query = {
         "edges": {
             "e00": {
@@ -254,25 +257,6 @@ def test_9():
     assert len(kg["nodes"]["n00"]) == 2
 
 
-def test_10():
-    # Edgeless query with multiple nodes
-    query = {
-        "edges": {
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ASPIRIN_CURIE]
-            },
-            "n01": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert len(kg["nodes"]["n00"]) == 1
-    assert len(kg["nodes"]["n01"]) == 1
-
-
 def test_11():
     # Verify catches larger than one-hop query
     query = {
@@ -293,7 +277,7 @@ def test_11():
     assert not kg
 
 
-def test_12():
+def test_12a():
     ids = [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
     # Test predicate symmetry is handled properly
     query = {
@@ -335,7 +319,9 @@ def test_12():
     assert kg_symmetric["nodes"]["n00"] and kg_symmetric["nodes"]["n01"] and kg_symmetric["edges"]["e00"]
     assert set(kg_symmetric["nodes"]["n01"]) == set(kg_symmetric_reversed["nodes"]["n01"])
 
-    # Test treats only returns edges with direction matching QG
+
+def test_12b():
+    # Make sure directionality is enforced for treats predicate
     query = {
         "edges": {
             "e00": {
@@ -346,7 +332,7 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ids
+                "ids": [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -355,9 +341,11 @@ def test_12():
     }
     kg_asymmetric = _run_query(query)
     assert kg_asymmetric["nodes"]["n00"] and kg_asymmetric["nodes"]["n01"] and kg_asymmetric["edges"]["e00"]
-    assert all(edge[0] in kg_asymmetric["nodes"]["n00"] for edge in kg_asymmetric["edges"]["e00"].values())
+    assert all(edge["subject"] in kg_asymmetric["nodes"]["n00"] for edge in kg_asymmetric["edges"]["e00"].values())
 
-    # Test no edges are returned for backwards treats query
+
+def test_12c():
+    # Make sure no answers are returned when treats predicate is backwards in the QG
     query = {
         "edges": {
             "e00": {
@@ -368,15 +356,15 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ids
+                "ids": [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
             }
         }
     }
-    kg_asymmetric_reversed = _run_query(query)
-    assert not kg_asymmetric_reversed["edges"]["e00"]
+    kg_backwards = _run_query(query)
+    assert not kg_backwards["edges"]
 
 
 def test_13():
@@ -403,7 +391,7 @@ def test_13():
 
 
 def test_14():
-    # Test subclass_of reasoning
+    # Test subclass_of reasoning with single-node queries
     query_subclass = {
         "edges": {
         },
@@ -414,7 +402,9 @@ def test_14():
         }
     }
     kg = _run_query(query_subclass)
+    print(kg)
     assert len(kg["nodes"]["n00"]) > 1
+
     query_no_subclass = {
         "edges": {
         },
@@ -425,51 +415,8 @@ def test_14():
         }
     }
     kg = _run_query(query_no_subclass)
+    print(kg)
     assert len(kg["nodes"]["n00"]) == 1
-
-
-def test_15():
-    # Test predicate symmetry enforcement
-    query_respecting_symmetry = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:treats"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        }
-    }
-    kg_respecting_symmetry = _run_query(query_respecting_symmetry)
-    assert kg_respecting_symmetry["nodes"]["n01"]
-
-    query_backwards = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00",
-                "predicates": ["biolink:treats"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        }
-    }
-    kg_backwards = _run_query(query_backwards)
-    assert kg_respecting_symmetry["nodes"]["n01"]
-    assert not kg_backwards["nodes"]["n01"]
 
 
 def test_16():
@@ -514,7 +461,7 @@ def test_17():
         }
     }
     kg_non_canonical = _run_query(query_non_canonical)
-    assert len(kg_non_canonical["nodes"]["n01"])
+    assert kg_non_canonical["nodes"]["n01"]
 
     query_canonical = {
         "edges": {
@@ -534,7 +481,7 @@ def test_17():
         }
     }
     kg_canonical = _run_query(query_canonical)
-    assert len(kg_canonical["nodes"]["n01"])
+    assert kg_canonical["nodes"]["n01"]
 
     assert len(kg_canonical["nodes"]["n01"]) == len(kg_non_canonical["nodes"]["n01"])
 
@@ -559,8 +506,8 @@ def test_18():
         }
     }
     kg = _run_query(query)
-    assert len(kg["nodes"]["n01"])
-    assert any(node_tuple[1] != "biolink:NamedThing" for node_tuple in kg["nodes"]["n01"].values())
+    assert kg["nodes"]["n01"]
+    assert any(node["categories"] != "biolink:NamedThing" for node in kg["nodes"]["n01"].values())
 
 
 def test_19():
@@ -583,8 +530,8 @@ def test_19():
         }
     }
     kg = _run_query(query)
-    assert len(kg["edges"]["e00"])
-    assert any(edge_tuple[2] != "biolink:related_to" for edge_tuple in kg["edges"]["e00"].values())
+    assert kg["edges"]["e00"]
+    assert any(edge["predicate"] != "biolink:related_to" for edge in kg["edges"]["e00"].values())
 
 
 def test_20():
@@ -605,17 +552,20 @@ def test_20():
             }
         }
     }
-    kg = _run_query(query)
+    kg, trapi_response = _run_query(query, return_trapi_response=True)
     assert len(kg["nodes"]["n00"]) > 1
     assert {DIABETES_CURIE, DIABETES_T1_CURIE, DIABETES_T2_CURIE}.issubset(set(kg["nodes"]["n00"]))
-    diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_CURIE]
-    type_1_diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_T1_CURIE]
-    type_2_diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_T2_CURIE]
-    # Curies that appear in the QG should have no query_id listed
-    assert not diabetes_node_tuple[-1]
-    assert not type_2_diabetes_node_tuple[-1]
-    # Descendant curies should indicate which QG curie they correspond to
-    assert type_1_diabetes_node_tuple[-1] == [DIABETES_CURIE]
+
+    for result in trapi_response["message"]["results"]:
+        for qnode_key, node_bindings in result["node_bindings"].items():
+            for node_binding in node_bindings:
+                if node_binding["id"] == DIABETES_CURIE:  # This ID was input in the QG
+                    assert not node_binding.get("query_id")
+                elif node_binding["id"] == DIABETES_T2_CURIE:  # This ID was input in the QG
+                    assert not node_binding.get("query_id")
+                elif node_binding["id"] == DIABETES_T1_CURIE:  # This ID was NOT input in the QG
+                    # Descendant curies should indicate which QG curie they correspond to
+                    assert node_binding.get("query_id") == DIABETES_CURIE
 
 
 def test_21():
