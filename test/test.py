@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 
 import pytest
 import requests
@@ -29,12 +30,38 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
         print(f"{qedge_key}: {edge_ids}")
 
 
-def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
+def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]],
+               return_trapi_response: bool = False) -> dict:
     response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
     if response.status_code == 200:
         json_response = response.json()
-        print(json.dumps(json_response, indent=2))
-        return json_response
+        # print(json.dumps(json_response, indent=2))
+        if return_trapi_response:
+            return json_response
+        else:
+            message = json_response["message"]
+            # Convert the TRAPI response to the old plover response format (IDs organized by QG IDs)
+            answer_node_ids = defaultdict(set)
+            answer_edge_ids = defaultdict(set)
+            for result in message["results"]:
+                print(result)
+                for qnode_key, node_bindings in result["node_bindings"].items():
+                    for node_binding in node_bindings:
+                        answer_node_ids[qnode_key].add(node_binding["id"])
+                for qedge_key, edge_bindings in result["analyses"][0]["edge_bindings"].items():
+                    for edge_binding in edge_bindings:
+                        answer_edge_ids[qedge_key].add(edge_binding["id"])
+            nodes = dict()
+            edges = dict()
+            for qnode_key, node_ids in answer_node_ids.items():
+                nodes[qnode_key] = dict()
+                for node_id in node_ids:
+                    nodes[qnode_key][node_id] = message["knowledge_graph"]["nodes"][node_id]
+            for qedge_key, edge_ids in answer_edge_ids.items():
+                edges[qedge_key] = dict()
+                for edge_id in edge_ids:
+                    edges[qedge_key][edge_id] = message["knowledge_graph"]["edges"][edge_id]
+        return {"nodes": nodes, "edges": edges}
     else:
         print(f"Response status code was {response.status_code}. Response was: {response.text}")
         return dict()
@@ -60,6 +87,7 @@ def test_1a():
        }
     }
     kg = _run_query(query)
+    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
 
 
 def test_2():
@@ -382,7 +410,6 @@ def test_14():
         "nodes": {
             "n00": {
                 "ids": [DIABETES_CURIE],  # Diabetes mellitus
-                "allow_subclasses": True
             }
         }
     }
@@ -571,8 +598,7 @@ def test_20():
         },
         "nodes": {
             "n00": {
-                "ids": [DIABETES_CURIE, DIABETES_T2_CURIE],
-                "allow_subclasses": True
+                "ids": [DIABETES_CURIE, DIABETES_T2_CURIE]
             },
             "n01": {
                 "categories": ["biolink:ChemicalEntity"]
