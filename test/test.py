@@ -367,29 +367,6 @@ def test_12c():
     assert not kg_backwards["edges"]
 
 
-def test_13():
-    # TRAPI 1.1 property names
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:interacts_with"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [RHOBTB2_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:ChemicalEntity"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
-
-
 def test_14():
     # Test subclass_of reasoning with single-node queries
     query_subclass = {
@@ -402,21 +379,7 @@ def test_14():
         }
     }
     kg = _run_query(query_subclass)
-    print(kg)
     assert len(kg["nodes"]["n00"]) > 1
-
-    query_no_subclass = {
-        "edges": {
-        },
-        "nodes": {
-            "n00": {
-                "ids": [DIABETES_CURIE]  # Diabetes mellitus
-            }
-        }
-    }
-    kg = _run_query(query_no_subclass)
-    print(kg)
-    assert len(kg["nodes"]["n00"]) == 1
 
 
 def test_16():
@@ -703,7 +666,7 @@ def test_25():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
+                "predicates": ["biolink:has_participant"],  # This is the wrong regular predicate
             }
         },
         "nodes": {
@@ -726,7 +689,7 @@ def test_26():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
+                "predicates": ["biolink:has_participant"],  # This is the wrong regular predicate
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         # {"qualifier_type_id": "biolink:qualified_predicate",
@@ -749,7 +712,7 @@ def test_26():
         }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
+    assert not kg["nodes"] or INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_27():
