@@ -557,7 +557,10 @@ class PloverDB:
         main_index = self.main_index
         for input_curie in input_curies:
             answer_edge_ids = []
-            if input_curie in main_index and len(answer_edge_ids) < self.num_edges_per_answer_cutoff:
+            # Stop looking for further answers if we've reached our edge limit
+            if len(answer_edge_ids) >= self.num_edges_per_answer_cutoff:
+                break
+            elif input_curie in main_index:
                 # Consider ALL output categories if none were provided or if output curies were specified
                 categories_present = set(main_index[input_curie])
                 categories_to_inspect = output_categories_expanded.intersection(categories_present) if output_categories_expanded and not output_curies else categories_present
@@ -720,6 +723,8 @@ class PloverDB:
             input_qnode_is_set = trapi_qg["nodes"][input_qnode_key].get("is_set")
             output_qnode_is_set = trapi_qg["nodes"][output_qnode_key].get("is_set")
             edge_groups = defaultdict(set)
+            input_node_groups = defaultdict(set)
+            output_node_groups = defaultdict(set)
             for edge_id in final_qedge_answers:
                 edge = self.edge_lookup_map[edge_id]
                 # Figure out which is the input vs. output node
@@ -733,27 +738,26 @@ class PloverDB:
                 output_node_hash_key = "*" if output_qnode_is_set else output_node_id
                 # Assign this edge to the result it belongs in (based on its result hash key)
                 result_hash_key = (input_node_hash_key, output_node_hash_key)
-                edge_groups[result_hash_key].add((edge_id, input_node_id, output_node_id))
+                edge_groups[result_hash_key].add(edge_id)
+                input_node_groups[result_hash_key].add(input_node_id)
+                output_node_groups[result_hash_key].add(output_node_id)
 
-            # Then form actual results based on our edge groups
+            # Then form actual results based on our result groups
             results = []
             for result_hash_key, edge_info_tuples in edge_groups.items():
-                edge_ids = {edge_info_tuple[0] for edge_info_tuple in edge_info_tuples}
-                input_node_ids = {edge_info_tuple[1] for edge_info_tuple in edge_info_tuples}  # Deduplicates nodes
-                output_node_ids = {edge_info_tuple[2] for edge_info_tuple in edge_info_tuples}  # Deduplicates nodes
                 result = {
                     "node_bindings": {
                         input_qnode_key: [self._create_trapi_node_binding(input_node_id,
                                                                           descendant_to_query_id_map[input_qnode_key].get(input_node_id))
-                                          for input_node_id in input_node_ids],
+                                          for input_node_id in input_node_groups[result_hash_key]],
                         output_qnode_key: [self._create_trapi_node_binding(output_node_id,
                                                                            descendant_to_query_id_map[output_qnode_key].get(output_node_id))
-                                           for output_node_id in output_node_ids]
+                                           for output_node_id in output_node_groups[result_hash_key]]
                     },
                     "analyses": [
                         {
                             "edge_bindings": {
-                                qedge_key: [{"id": edge_id} for edge_id in edge_ids]
+                                qedge_key: [{"id": edge_id} for edge_id in edge_groups[result_hash_key]]
                             },
                             "resource_id": self.kg2_infores_curie
                         }
