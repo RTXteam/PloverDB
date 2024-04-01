@@ -30,6 +30,28 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
         print(f"{qedge_key}: {edge_ids}")
 
 
+def _print_results(results: List[dict]):
+    print(f"\nPRINTING {len(results)} RESULTS:")
+    result_counter = 0
+    for result in results:
+        result_counter += 1
+        print(f"result {result_counter}:")
+        print(f"  edges:")
+        analysis_counter = 0
+        for analysis in result["analyses"]:
+            analysis_counter += 1
+            print(f"    analysis {analysis_counter}:")
+            for qedge_key, edge_bindings in analysis["edge_bindings"].items():
+                print(f"      {qedge_key} edge bindings:")
+                for edge_binding in edge_bindings:
+                    print(f"        {edge_binding}")
+        print(f"  nodes:")
+        for qnode_key, node_bindings in result["node_bindings"].items():
+            print(f"    {qnode_key}:")
+            for node_binding in node_bindings:
+                print(f"      {node_binding}")
+
+
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]],
                return_trapi_response: bool = False) -> any:
     trapi_query = {"message": {"query_graph": trapi_qg},
@@ -849,6 +871,59 @@ def test_31():
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n01"])
+
+
+def test_32():
+    # Test is_set handling
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:related_to"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [DIABETES_CURIE]
+            },
+            "n01": {
+                "categories": ["biolink:NamedThing"]
+            }
+        }
+    }
+
+    query["nodes"]["n00"]["is_set"] = True
+    query["nodes"]["n01"]["is_set"] = True
+    kg, trapi_response_issettrue = _run_query(query, return_trapi_response=True)
+    results_issettrue = trapi_response_issettrue["message"].get("results")
+    assert results_issettrue
+    assert len(results_issettrue) == 1
+
+    query["nodes"]["n00"]["is_set"] = False
+    query["nodes"]["n01"]["is_set"] = True
+    kg, trapi_response_objectset = _run_query(query, return_trapi_response=True)
+    results_objectset = trapi_response_objectset["message"].get("results")
+    assert results_objectset
+
+    query["nodes"]["n00"]["is_set"] = True
+    query["nodes"]["n01"]["is_set"] = False
+    kg, trapi_response_subjectset = _run_query(query, return_trapi_response=True)
+    results_subjectset = trapi_response_subjectset["message"].get("results")
+    assert results_subjectset
+
+    query["nodes"]["n00"]["is_set"] = False
+    query["nodes"]["n01"]["is_set"] = False
+    kg, trapi_response_issetfalse = _run_query(query, return_trapi_response=True)
+    results_issetfalse = trapi_response_issetfalse["message"].get("results")
+    assert results_issetfalse
+
+    # _print_results(results_issettrue)
+    # _print_results(results_objectset)
+    # _print_results(results_subjectset)
+    # _print_results(results_issetfalse)
+
+    assert len(results_issetfalse) > len(results_subjectset) > len(results_objectset) > len(results_issettrue)
 
 
 def test_version():

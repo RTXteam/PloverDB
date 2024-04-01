@@ -612,7 +612,7 @@ class PloverDB:
                                          input_qnode_key: str,
                                          output_qnode_key: str,
                                          qedge_key: str,
-                                         trapi_query: dict,
+                                         trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
         response = {
             "log_level": None,
@@ -622,7 +622,7 @@ class PloverDB:
                 }
             ],
             "message": {
-                "query_graph": trapi_query,
+                "query_graph": trapi_qg,
                 "knowledge_graph": {
                     "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
                               for node_id in final_input_qnode_answers.union(final_output_qnode_answers)},
@@ -635,6 +635,7 @@ class PloverDB:
                                                    input_qnode_key,
                                                    output_qnode_key,
                                                    qedge_key,
+                                                   trapi_qg,
                                                    descendant_to_query_id_map)
             },
         }
@@ -712,32 +713,42 @@ class PloverDB:
                            input_qnode_key: str,
                            output_qnode_key: str,
                            qedge_key: str,
+                           trapi_qg: dict,
                            descendant_to_query_id_map: dict) -> List[dict]:
         if qedge_key:  # This is how we detect this isn't a single-node query
-            # Group edges with the same node bindings
+            # First group edges that belong in the same result
+            input_qnode_is_set = trapi_qg["nodes"][input_qnode_key].get("is_set")
+            output_qnode_is_set = trapi_qg["nodes"][output_qnode_key].get("is_set")
             edge_groups = defaultdict(set)
             for edge_id in final_qedge_answers:
                 edge = self.edge_lookup_map[edge_id]
+                # Figure out which is the input vs. output node
                 subject_id = edge["subject"]
                 object_id = edge["object"]
-                result_hash = (subject_id, object_id) if (subject_id in final_input_qnode_answers and
-                                                          object_id in final_output_qnode_answers) else (object_id, subject_id)
-                edge_groups[result_hash].add(edge_id)
+                fulfilled_forwards = subject_id in final_input_qnode_answers and object_id in final_output_qnode_answers
+                input_node_id = subject_id if fulfilled_forwards else object_id
+                output_node_id = object_id if fulfilled_forwards else subject_id
+                # Determine the proper hash key for each node
+                input_node_hash_key = "*" if input_qnode_is_set else input_node_id
+                output_node_hash_key = "*" if output_qnode_is_set else output_node_id
+                # Assign this edge to the result it belongs in (based on its result hash key)
+                result_hash_key = (input_node_hash_key, output_node_hash_key)
+                edge_groups[result_hash_key].add((edge_id, input_node_id, output_node_id))
 
-            # Form actual results for each pair of node bindings
+            # Then form actual results based on our edge groups
             results = []
-            for result_hash, edge_ids in edge_groups.items():
-                input_node_id = result_hash[0]
-                output_node_id = result_hash[1]
-                output_node = self.node_lookup_map[output_node_id]
+            for result_hash_key, edge_info_tuples in edge_groups.items():
+                edge_ids = {edge_info_tuple[0] for edge_info_tuple in edge_info_tuples}
+                input_node_ids = {edge_info_tuple[1] for edge_info_tuple in edge_info_tuples}  # Deduplicates nodes
+                output_node_ids = {edge_info_tuple[2] for edge_info_tuple in edge_info_tuples}  # Deduplicates nodes
                 result = {
-                    "essence": output_node.get("name"),
-                    "essence_category": output_node["all_categories"],
                     "node_bindings": {
                         input_qnode_key: [self._create_trapi_node_binding(input_node_id,
-                                                                          descendant_to_query_id_map[input_qnode_key].get(input_node_id))],
+                                                                          descendant_to_query_id_map[input_qnode_key].get(input_node_id))
+                                          for input_node_id in input_node_ids],
                         output_qnode_key: [self._create_trapi_node_binding(output_node_id,
-                                                                           descendant_to_query_id_map[output_qnode_key].get(output_node_id))]
+                                                                           descendant_to_query_id_map[output_qnode_key].get(output_node_id))
+                                           for output_node_id in output_node_ids]
                     },
                     "analyses": [
                         {
@@ -794,8 +805,8 @@ class PloverDB:
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
 
-    def _get_expanded_output_category_ids(self, output_qnode_key: str, trapi_query: dict) -> Set[int]:
-        output_category_names_raw = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("categories"))
+    def _get_expanded_output_category_ids(self, output_qnode_key: str, trapi_qg: dict) -> Set[int]:
+        output_category_names_raw = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("categories"))
         output_category_names_raw = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
         output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
         output_categories_with_descendants = self.bh.get_descendants(output_category_names, include_mixins=False)
@@ -924,16 +935,16 @@ class PloverDB:
                                                                                    object_aspect=object_aspect_qualifier))
         return qedge_conglomerate_predicates
 
-    def _answer_single_node_query(self, trapi_query: dict) -> dict:
+    def _answer_single_node_query(self, trapi_qg: dict) -> dict:
         # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of TRAPI; just handy)
-        if len(trapi_query["nodes"]) > 1:
+        if len(trapi_qg["nodes"]) > 1:
             raise ValueError(f"Edgeless queries can only involve a single query node")
-        qnode_key = list(trapi_query["nodes"].keys())[0]
-        if not trapi_query["nodes"][qnode_key].get("ids"):
+        qnode_key = list(trapi_qg["nodes"].keys())[0]
+        if not trapi_qg["nodes"][qnode_key].get("ids"):
             raise ValueError("For qnode-only queries, the qnode must have 'ids' specified.")
 
         logging.info(f"Answering single-node query...")
-        qnode = trapi_query["nodes"][qnode_key]
+        qnode = trapi_qg["nodes"][qnode_key]
         qnode_ids_set = self._convert_to_set(qnode["ids"])
         input_curies = qnode["ids"].copy()
         descendant_to_query_id_map = {qnode_key: defaultdict(set)}
@@ -952,7 +963,7 @@ class PloverDB:
                                                          input_qnode_key=qnode_key,
                                                          output_qnode_key="",
                                                          qedge_key="",
-                                                         trapi_query=trapi_query,
+                                                         trapi_qg=trapi_qg,
                                                          descendant_to_query_id_map=descendant_to_query_id_map)
         return response
 
