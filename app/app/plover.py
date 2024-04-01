@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import itertools
 import json
+import jsonlines
 import logging
 import os
 import pathlib
@@ -15,26 +16,40 @@ import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 KG2C_DUMP_URL_BASE = "https://kg2webhost.rtx.ai"
-LOG_FILENAME = "/var/log/ploverdb.log"
+LOG_FILE_PATH = "/var/log/ploverdb.log"
 
 
 class PloverDB:
 
     def __init__(self):
-        logging.basicConfig(level=logging.INFO,
-                            format='%(asctime)s %(levelname)s: %(message)s',
-                            handlers=[logging.StreamHandler(),
-                                      logging.FileHandler(LOG_FILENAME)])
+        # Set up logging (when run outside of docker, can't write to /var/log - handle that situation)
+        try:
+            logging.basicConfig(level=logging.INFO,
+                                format='%(asctime)s %(levelname)s: %(message)s',
+                                handlers=[logging.StreamHandler(),
+                                          logging.FileHandler(LOG_FILE_PATH)])
+        except Exception:
+            logging.basicConfig(level=logging.INFO,
+                                format='%(asctime)s %(levelname)s: %(message)s',
+                                handlers=[logging.StreamHandler(),
+                                          logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
+
         self.config_file_path = f"{SCRIPT_DIR}/../kg_config.json"
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
+
         self.is_test = self.kg_config["is_test"]
-        self.remote_index_file_name = self.kg_config["remote_index_file_name"]
-        self.remote_kg_file_name = self.kg_config["remote_kg_file_name"]
-        self.local_kg_file_name = self.kg_config["local_kg_file_name"]
-        self.pickle_index_name, self.kg_json_name = self._get_local_file_names()
-        self.kg_json_path = f"{SCRIPT_DIR}/../{self.kg_json_name}"
-        self.pickle_index_path = f"{SCRIPT_DIR}/../{self.pickle_index_name}"
+        self.biolink_version = self.kg_config["biolink_version"]
+        self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
+        self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
+        self.remote_edges_file_name = self.kg_config["remote_edges_file_name"]
+        self.remote_nodes_file_name = self.kg_config["remote_nodes_file_name"]
+        self.local_edges_file_name = self.kg_config["local_edges_file_name"]
+        self.local_nodes_file_name = self.kg_config["local_nodes_file_name"]
+        self.nodes_file_name_unzipped, self.edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
+        self.nodes_path = f"{SCRIPT_DIR}/../{self.nodes_file_name_unzipped}"
+        self.edges_path = f"{SCRIPT_DIR}/../{self.edges_file_name_unzipped}"
+        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.kg2_qualified_predicate_property = "qualified_predicate"
@@ -45,7 +60,6 @@ class PloverDB:
         self.qedge_object_aspect_property = "biolink:object_aspect_qualifier"
         self.bh_branch = self.kg_config["biolink_helper_branch"]  # The RTX branch to download BiolinkHelper from
         self.bh = None  # BiolinkHelper is downloaded later on
-        self.core_node_properties = {"name", "category"}
         self.non_biolink_item_id = 9999
         self.category_map = dict()  # Maps category english name --> int ID
         self.category_map_reversed = dict()  # Maps category int ID --> english name
@@ -58,6 +72,11 @@ class PloverDB:
         self.conglomerate_predicate_descendant_index = defaultdict(set)
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
+        self.core_node_properties = {"name", "all_categories"}
+        self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source",
+                                     "qualified_object_aspect", "qualified_object_direction", "qualified_predicate"}
+        self.properties_to_include_source_on = {"publications", "publications_info"}
+        self.kg2_infores_curie = "infores:rtx-kg2"
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -65,25 +84,28 @@ class PloverDB:
         logging.info("Starting to build indexes..")
         start = time.time()
 
-        # Download the proper remote data file or get set up to use a local KG file
-        if self.remote_index_file_name:
-            self._download_and_unzip_remote_file(self.remote_index_file_name, self.pickle_index_path)
-            return  # No need to re-build indexes since we were able to download them
-        elif self.remote_kg_file_name:
-            self._download_and_unzip_remote_file(self.remote_kg_file_name, self.kg_json_path)
+        # Use local KG files if given, otherwise download remote files
+        if self.local_edges_file_name and self.local_nodes_file_name:
+            logging.info(f"Will use local KG files {self.local_edges_file_name} and {self.local_nodes_file_name}")
+            if self.local_edges_file_name.endswith(".gz"):
+                logging.info(f"Unzipping local edges file")
+                subprocess.check_call(["gunzip", "-f", f"{self.edges_path}.gz"])
+            if self.local_nodes_file_name.endswith(".gz"):
+                logging.info(f"Unzipping local nodes file")
+                subprocess.check_call(["gunzip", "-f", f"{self.nodes_path}.gz"])
         else:
-            logging.info(f"Will use local KG file {self.local_kg_file_name}")
-            if self.local_kg_file_name.endswith(".gz"):
-                logging.info(f"Unzipping local KG file")
-                subprocess.check_call(["gunzip", "-f", f"{self.kg_json_path}.gz"])
+            self._download_and_unzip_remote_file(self.remote_edges_file_name, self.edges_path)
+            self._download_and_unzip_remote_file(self.remote_nodes_file_name, self.nodes_path)
 
-        # Load the JSON KG
-        logging.info(f"Loading KG JSON file ({self.kg_json_name})..")
-        with open(self.kg_json_path, "r") as kg2c_file:
-            kg2c_dict = json.load(kg2c_file)
-            biolink_version = kg2c_dict.get("biolink_version")
-            if biolink_version:
-                logging.info(f"  Biolink version for this KG is {biolink_version}")
+        # Load the json lines files into a KG
+        logging.info(f"Loading json lines files into memory as a biolink KG.. ({self.nodes_path}, {self.edges_path})")
+        with jsonlines.open(self.nodes_path) as reader:
+            nodes = [node_obj for node_obj in reader]
+        logging.info(f"Have loaded nodes into memory.. now will load edges..")
+        with jsonlines.open(self.edges_path) as reader:
+            edges = [edge_obj for edge_obj in reader]
+        logging.info(f"Have loaded edges into memory.")
+        kg2c_dict = {"nodes": nodes, "edges": edges}
 
         # Set up BiolinkHelper (download from RTX repo)
         bh_file_name = "biolink_helper.py"
@@ -92,12 +114,27 @@ class PloverDB:
         remote_path = f"https://github.com/RTXteam/RTX/blob/{self.bh_branch}/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
         subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
         from biolink_helper import BiolinkHelper
-        self.bh = BiolinkHelper(biolink_version=biolink_version)
+        self.bh = BiolinkHelper(biolink_version=self.biolink_version)
 
         # Create basic node/edge lookup maps
         logging.info(f"Building basic node/edge lookup maps")
+        logging.info(f"Loading node lookup map..")
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
+        # Undo the 'category' property change that Plater requires (has pre-expanded ancestors; we do that on the fly)
+        for node in self.node_lookup_map.values():
+            del node["category"]  # We use all_categories for everything..
+            del node["preferred_category"]
+            del node["id"]  # Don't need this anymore since it's now the key
+        memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
+        logging.info(f"Done loading node lookup map. Memory usage is currently "
+                     f"{memory_usage_percent}% ({memory_usage_gb}G)..")
+        logging.info(f"Loading edge lookup map..")
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        for edge in self.edge_lookup_map.values():
+            del edge["id"]  # Don't need this anymore since it's now the key
+        memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
+        logging.info(f"Done loading edge lookup map. Memory usage is currently "
+                     f"{memory_usage_percent}% ({memory_usage_gb}G)..")
         logging.info(f"node_lookup_map contains {len(self.node_lookup_map)} nodes, "
                      f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
 
@@ -188,23 +225,6 @@ class PloverDB:
         else:
             logging.info(f"Not building subclass_of index since no subclass sources were specified in kg_config.json")
 
-        # Convert node/edge lookup maps into tuple forms (and get rid of extra properties) to save space
-        logging.info("Converting node/edge objects to tuple form..")
-        node_properties = ("name", "category")
-        edge_properties = ("subject", "object", self.edge_predicate_property, "primary_knowledge_source",
-                           self.kg2_qualified_predicate_property, self.kg2_object_direction_property, self.kg2_object_aspect_property,
-                           "domain_range_exclusion")
-        node_ids = set(self.node_lookup_map)
-        for node_id in node_ids:
-            node = self.node_lookup_map[node_id]
-            node_tuple = tuple([node[property_name] for property_name in node_properties])
-            self.node_lookup_map[node_id] = node_tuple
-        edge_ids = set(self.edge_lookup_map)
-        for edge_id in edge_ids:
-            edge = self.edge_lookup_map[edge_id]
-            edge_tuple = tuple([edge[property_name] for property_name in edge_properties])
-            self.edge_lookup_map[edge_id] = edge_tuple
-
         # Create reversed category/predicate maps now that we're done building those maps
         self.category_map_reversed = self._reverse_dictionary(self.category_map)
         self.predicate_map_reversed = self._reverse_dictionary(self.predicate_map)
@@ -213,8 +233,6 @@ class PloverDB:
         logging.info(f"Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
-                       "node_headers": node_properties,
-                       "edge_headers": edge_properties,
                        "main_index": self.main_index,
                        "subclass_index": self.subclass_index,
                        "predicate_map": self.predicate_map,
@@ -222,28 +240,23 @@ class PloverDB:
                        "category_map": self.category_map,
                        "category_map_reversed": self.category_map_reversed,
                        "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
-                       "biolink_version": biolink_version}
+                       "biolink_version": self.biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 
         if not self.is_test:
-            logging.info(f"Removing {self.kg_json_name} from the image now that index building is done")
-            subprocess.call(["rm", "-f", self.kg_json_path])
+            logging.info(f"Removing local unzipped nodes/edges files from the image now that index building is done")
+            subprocess.call(["rm", "-f", self.nodes_path])
+            subprocess.call(["rm", "-f", self.edges_path])
 
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def load_indexes(self):
-        logging.info(f"Checking whether pickle of indexes is already available..")
+        logging.info(f"Checking whether pickle of indexes ({self.pickle_index_path}) already exists..")
         pickle_index_file = pathlib.Path(self.pickle_index_path)
         if not pickle_index_file.exists():
-            if self.remote_index_file_name:
-                # Download the pre-computed pickle of indexes
-                self._download_and_unzip_remote_file(self.remote_index_file_name, self.pickle_index_path)
-            else:
-                # Otherwise we'll have to build indexes from a KG file
-                logging.info(f"No index pickle exists and none was specified for download in kg_config.json - will "
-                             f"build indexes")
-                self.build_indexes()
+            logging.info(f"No index pickle exists - will build indexes")
+            self.build_indexes()
 
         # Load our pickled indexes into memory
         logging.info(f"Loading pickle of indexes from {self.pickle_index_path}..")
@@ -388,8 +401,7 @@ class PloverDB:
             del parent_to_descendants_dict["root"]
             node_ids = set(parent_to_descendants_dict)
             for node_id in node_ids:
-                node = self.node_lookup_map[node_id]
-                if len(parent_to_descendants_dict[node_id]) > 5000 or node["category"] == "biolink:OntologyClass" or node_id.startswith("biolink:"):
+                if len(parent_to_descendants_dict[node_id]) > 5000 or node_id.startswith("biolink:"):
                     del parent_to_descendants_dict[node_id]
             deleted_node_ids = node_ids.difference(set(parent_to_descendants_dict))
 
@@ -441,7 +453,6 @@ class PloverDB:
     @staticmethod
     def _download_and_unzip_remote_file(remote_file_name: str, local_destination_path: str):
         temp_location = f"{SCRIPT_DIR}/{remote_file_name}"
-#        remote_path = f"https://github.com/ncats/translator-lfs-artifacts/blob/main/files/{remote_file_name}?raw=true"
         remote_path = f"{KG2C_DUMP_URL_BASE}/{remote_file_name}"
         logging.info(f"Downloading remote file from URL: {remote_path}")
         subprocess.check_call(["curl", "-L", remote_path, "-o", temp_location])
@@ -474,22 +485,23 @@ class PloverDB:
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
-    def answer_query(self, trapi_query: dict) -> Dict[str, Dict[str, Union[set, dict]]]:
+    def answer_query(self, trapi_query: dict) -> dict:
         logging.info(f"TRAPI query is: {trapi_query}")
-        # Make sure this is a query we can answer
-        if len(trapi_query["edges"]) > 1:
+        trapi_qg = trapi_query["message"]["query_graph"]
+        # Handle single-node queries (not part of TRAPI, but handy)
+        if not trapi_qg.get("edges"):
+            return self._answer_single_node_query(trapi_qg)
+        # Otherwise make sure this is a one-hop query
+        if len(trapi_qg["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
-                             f"{len(trapi_query['edges'])} edges.")
-        # Handle edgeless queries
-        if not trapi_query["edges"]:
-            return self._answer_edgeless_query(trapi_query)
+                             f"{len(trapi_qg['edges'])} edges.")
         # Make sure at least one qnode has a curie
-        qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
-        qedge = trapi_query["edges"][qedge_key]
+        qedge_key = next(qedge_key for qedge_key in trapi_qg["edges"])
+        qedge = trapi_qg["edges"][qedge_key]
         subject_qnode_key = qedge["subject"]
         object_qnode_key = qedge["object"]
-        subject_qnode = trapi_query["nodes"][subject_qnode_key]
-        object_qnode = trapi_query["nodes"][object_qnode_key]
+        subject_qnode = trapi_qg["nodes"][subject_qnode_key]
+        object_qnode = trapi_qg["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
         # Make sure there aren't any qualifiers we don't support
@@ -500,8 +512,8 @@ class PloverDB:
                                      f"Supported qualifiers are: {self.supported_qualifiers}")
 
         # Record which curies specified in the QG any descendant curies correspond to
-        descendant_to_query_curie_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
-        if subject_qnode.get("ids") and subject_qnode.get("allow_subclasses"):
+        descendant_to_query_id_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
+        if subject_qnode.get("ids"):
             subject_qnode_curies_with_descendants = list()
             subject_qnode_curies = set(subject_qnode["ids"])
             for query_curie in subject_qnode_curies:
@@ -509,10 +521,10 @@ class PloverDB:
                 for descendant in descendants:
                     # We only want to record the mapping in the case of a true descendant
                     if descendant not in subject_qnode_curies:
-                        descendant_to_query_curie_map[subject_qnode_key][descendant].add(query_curie)
+                        descendant_to_query_id_map[subject_qnode_key][descendant].add(query_curie)
                 subject_qnode_curies_with_descendants += descendants
             subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
-        if object_qnode.get("ids") and object_qnode.get("allow_subclasses"):
+        if object_qnode.get("ids"):
             object_qnode_curies_with_descendants = list()
             object_qnode_curies = set(object_qnode["ids"])
             for query_curie in object_qnode_curies:
@@ -520,7 +532,7 @@ class PloverDB:
                 for descendant in descendants:
                     # We only want to record the mapping in the case of a true descendant
                     if descendant not in object_qnode_curies:
-                        descendant_to_query_curie_map[object_qnode_key][descendant].add(query_curie)
+                        descendant_to_query_id_map[object_qnode_key][descendant].add(query_curie)
                 object_qnode_curies_with_descendants += descendants
             object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
 
@@ -528,11 +540,11 @@ class PloverDB:
         self._force_qedge_to_canonical_predicates(qedge)
 
         # Load the query and do any necessary transformations to categories/predicates
-        input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
-        output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
-        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
-        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
-        output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_query)
+        input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
+        output_qnode_key = list(set(trapi_qg["nodes"]).difference({input_qnode_key}))[0]
+        input_curies = self._convert_to_set(trapi_qg["nodes"][input_qnode_key]["ids"])
+        output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
+        output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
         logging.info(f"Input curies are {input_curies}")
         logging.info(f"Output curies are {output_curies}")
@@ -545,7 +557,7 @@ class PloverDB:
         main_index = self.main_index
         for input_curie in input_curies:
             answer_edge_ids = []
-            if input_curie in main_index:
+            if input_curie in main_index and len(answer_edge_ids) < self.num_edges_per_answer_cutoff:
                 # Consider ALL output categories if none were provided or if output curies were specified
                 categories_present = set(main_index[input_curie])
                 categories_to_inspect = output_categories_expanded.intersection(categories_present) if output_categories_expanded and not output_curies else categories_present
@@ -575,55 +587,193 @@ class PloverDB:
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
                 edge = self.edge_lookup_map[answer_edge_id]
-                subject_curie = edge[0]
-                object_curie = edge[1]
+                subject_curie = edge["subject"]
+                object_curie = edge["object"]
                 output_curie = object_curie if object_curie != input_curie else subject_curie
                 # Add this edge and its nodes to our answer KG
                 final_qedge_answers.add(answer_edge_id)
                 final_input_qnode_answers.add(input_curie)
                 final_output_qnode_answers.add(output_curie)
 
-        # Form final response according to parameter passed in query
-        if trapi_query.get("include_metadata"):
-            nodes = {
-                input_qnode_key: {node_id: self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map[input_qnode_key].get(node_id, set())),)
-                                  for node_id in final_input_qnode_answers},
-                output_qnode_key: {node_id: self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map[output_qnode_key].get(node_id, set())),)
-                                   for node_id in final_output_qnode_answers}}
-            edges = {qedge_key: {edge_id: self.edge_lookup_map[edge_id] for edge_id in final_qedge_answers}}
+        # Form final TRAPI response
+        trapi_response = self._create_response_from_answer_ids(final_input_qnode_answers,
+                                                               final_output_qnode_answers,
+                                                               final_qedge_answers,
+                                                               input_qnode_key,
+                                                               output_qnode_key,
+                                                               qedge_key,
+                                                               trapi_qg,
+                                                               descendant_to_query_id_map)
+        return trapi_response
+
+    def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
+                                         final_output_qnode_answers: Set[str],
+                                         final_qedge_answers: Set[str],
+                                         input_qnode_key: str,
+                                         output_qnode_key: str,
+                                         qedge_key: str,
+                                         trapi_query: dict,
+                                         descendant_to_query_id_map: dict) -> dict:
+        response = {
+            "log_level": None,
+            "workflow": [
+                {
+                    "id": "lookup"
+                }
+            ],
+            "message": {
+                "query_graph": trapi_query,
+                "knowledge_graph": {
+                    "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
+                              for node_id in final_input_qnode_answers.union(final_output_qnode_answers)},
+                    "edges": {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
+                              for edge_id in final_qedge_answers}
+                },
+                "results": self._get_trapi_results(final_input_qnode_answers,
+                                                   final_output_qnode_answers,
+                                                   final_qedge_answers,
+                                                   input_qnode_key,
+                                                   output_qnode_key,
+                                                   qedge_key,
+                                                   descendant_to_query_id_map)
+            },
+        }
+        return response
+
+    def _convert_node_to_trapi_format(self, node_biolink: dict) -> dict:
+        trapi_node = {
+            "name": node_biolink.get("name"),
+            "categories": node_biolink["all_categories"],
+            "attributes": [self._get_trapi_node_attribute(property_name, value)
+                           for property_name, value in node_biolink.items()
+                           if property_name not in self.core_node_properties]
+        }
+        return trapi_node
+
+    def _convert_edge_to_trapi_format(self, edge_biolink: dict) -> dict:
+        primary_ks = edge_biolink["primary_knowledge_source"]
+        source_primary = {
+            "resource_id": primary_ks,
+            "resource_role": "primary_knowledge_source"
+        }
+        source_aggregator = {
+            "resource_id": self.kg2_infores_curie,
+            "resource_role": "aggregator_knowledge_source",
+            "upstream_resource_ids": [primary_ks]
+        }
+        trapi_edge = {
+            "subject": edge_biolink["subject"],
+            "object": edge_biolink["object"],
+            "predicate": edge_biolink["predicate"],
+            "sources": [source_primary, source_aggregator],
+            "attributes": [self._get_trapi_edge_attribute(property_name, value, primary_ks)
+                           for property_name, value in edge_biolink.items()
+                           if property_name not in self.core_edge_properties]
+        }
+
+        # Add any qualifier info
+        qualifiers = []
+        if edge_biolink.get("qualified_predicate"):
+            qualifiers.append({
+                "qualifier_type_id": "biolink:qualified_predicate",
+                "qualifier_value": edge_biolink["qualified_predicate"]
+            })
+        if edge_biolink.get("qualified_object_direction"):
+            qualifiers.append({
+                "qualifier_type_id": "biolink:object_direction_qualifier",
+                "qualifier_value": edge_biolink["qualified_object_direction"]
+            })
+        if edge_biolink.get("qualified_object_aspect"):
+            qualifiers.append({
+                "qualifier_type_id": "biolink:object_aspect_qualifier",
+                "qualifier_value": edge_biolink["qualified_object_aspect"]
+            })
+        if qualifiers:
+            trapi_edge["qualifiers"] = qualifiers
+
+        return trapi_edge
+
+    def _get_trapi_node_attribute(self, property_name: str, value: any) -> dict:
+        attribute = self.trapi_attribute_map[property_name]
+        attribute["value"] = value
+        return attribute
+
+    def _get_trapi_edge_attribute(self, property_name: str, value: any, primary_ks: str) -> dict:
+        attribute = self.trapi_attribute_map[property_name]
+        attribute["value"] = value
+        # Add the source to certain edge attributes (like publications)
+        if property_name in self.properties_to_include_source_on:
+            attribute["attribute_source"] = primary_ks
+        return attribute
+
+    def _get_trapi_results(self, final_input_qnode_answers: Set[str],
+                           final_output_qnode_answers: Set[str],
+                           final_qedge_answers: Set[str],
+                           input_qnode_key: str,
+                           output_qnode_key: str,
+                           qedge_key: str,
+                           descendant_to_query_id_map: dict) -> List[dict]:
+        if qedge_key:  # This is how we detect this isn't a single-node query
+            # Group edges with the same node bindings
+            edge_groups = defaultdict(set)
+            for edge_id in final_qedge_answers:
+                edge = self.edge_lookup_map[edge_id]
+                subject_id = edge["subject"]
+                object_id = edge["object"]
+                result_hash = (subject_id, object_id) if (subject_id in final_input_qnode_answers and
+                                                          object_id in final_output_qnode_answers) else (object_id, subject_id)
+                edge_groups[result_hash].add(edge_id)
+
+            # Form actual results for each pair of node bindings
+            results = []
+            for result_hash, edge_ids in edge_groups.items():
+                input_node_id = result_hash[0]
+                output_node_id = result_hash[1]
+                output_node = self.node_lookup_map[output_node_id]
+                result = {
+                    "essence": output_node.get("name"),
+                    "essence_category": output_node["all_categories"],
+                    "node_bindings": {
+                        input_qnode_key: [self._create_trapi_node_binding(input_node_id,
+                                                                          descendant_to_query_id_map[input_qnode_key].get(input_node_id))],
+                        output_qnode_key: [self._create_trapi_node_binding(output_node_id,
+                                                                           descendant_to_query_id_map[output_qnode_key].get(output_node_id))]
+                    },
+                    "analyses": [
+                        {
+                            "edge_bindings": {
+                                qedge_key: [{"id": edge_id} for edge_id in edge_ids]
+                            },
+                            "resource_id": self.kg2_infores_curie
+                        }
+                    ],
+                    "resource_id": self.kg2_infores_curie
+                }
+                results.append(result)
         else:
-            nodes = {input_qnode_key: [node_id for node_id in final_input_qnode_answers],
-                     output_qnode_key: list(final_output_qnode_answers)}
-            edges = {qedge_key: list(final_qedge_answers)}
-        answer_kg = {"nodes": nodes, "edges": edges}
+            # Handle single-node queries
+            results = [
+                {
+                    "node_bindings": {
+                        input_qnode_key: [
+                            self._create_trapi_node_binding(node_id,
+                                                            descendant_to_query_id_map[input_qnode_key].get(node_id))
+                            for node_id in final_input_qnode_answers],
+                    },
+                    "analyses": [],
+                    "resource_id": self.kg2_infores_curie
+                }
+            ]
+        return results
 
-        return answer_kg
-
-    def _answer_edgeless_query(self, trapi_query: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]) -> Dict[str, Dict[str, Union[set, dict]]]:
-        # When no qedges are involved, we only fulfill qnodes that have a curie
-        if not all(qnode.get("ids") for qnode in trapi_query["nodes"].values()):
-            raise ValueError("For qnode-only queries, every qnode must have curie(s) specified.")
-        answer_kg = {"nodes": dict(), "edges": dict()}
-        for qnode_key, qnode in trapi_query["nodes"].items():
-            descendant_to_query_curie_map = defaultdict(set)
-            qnode_ids = self._convert_to_set(qnode["ids"])
-            input_curies = qnode["ids"]
-            if qnode.get("allow_subclasses"):
-                for query_curie in qnode_ids:
-                    descendants = self._get_descendants(query_curie)
-                    for descendant in descendants:
-                        # Record query curie mapping if this is a descendant not listed in the QG
-                        if descendant not in qnode_ids:
-                            descendant_to_query_curie_map[descendant].add(query_curie)
-                    input_curies += descendants
-            found_curies = set(input_curies).intersection(set(self.node_lookup_map))
-            if found_curies:
-                if trapi_query.get("include_metadata"):
-                    answer_kg["nodes"][qnode_key] = {node_id: self.node_lookup_map[node_id] + (list(descendant_to_query_curie_map.get(node_id, set())),)
-                                                     for node_id in found_curies}
-                else:
-                    answer_kg["nodes"][qnode_key] = list(found_curies)
-        return answer_kg
+    @staticmethod
+    def _create_trapi_node_binding(node_id: str, query_ids: Optional[Set[str]]) -> dict:
+        node_binding = {"id": node_id}
+        if query_ids:
+            query_id = next(query_id for query_id in query_ids)  # TRAPI/translator isn't set up to handle multiple yet
+            if node_id != query_id:
+                node_binding["query_id"] = query_id
+        return node_binding
 
     def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
         node_ids = self._convert_to_set(node_ids)
@@ -774,24 +924,53 @@ class PloverDB:
                                                                                    object_aspect=object_aspect_qualifier))
         return qedge_conglomerate_predicates
 
+    def _answer_single_node_query(self, trapi_query: dict) -> dict:
+        # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of TRAPI; just handy)
+        if len(trapi_query["nodes"]) > 1:
+            raise ValueError(f"Edgeless queries can only involve a single query node")
+        qnode_key = list(trapi_query["nodes"].keys())[0]
+        if not trapi_query["nodes"][qnode_key].get("ids"):
+            raise ValueError("For qnode-only queries, the qnode must have 'ids' specified.")
+
+        logging.info(f"Answering single-node query...")
+        qnode = trapi_query["nodes"][qnode_key]
+        qnode_ids_set = self._convert_to_set(qnode["ids"])
+        input_curies = qnode["ids"].copy()
+        descendant_to_query_id_map = {qnode_key: defaultdict(set)}
+        if input_curies:
+            for query_curie in qnode_ids_set:
+                descendants = self._get_descendants(query_curie)
+                for descendant in descendants:
+                    # Record query curie mapping if this is a descendant not listed in the QG
+                    if descendant not in qnode_ids_set:
+                        descendant_to_query_id_map[qnode_key][descendant].add(query_curie)
+                input_curies += descendants
+        found_curies = set(input_curies).intersection(set(self.node_lookup_map))
+        response = self._create_response_from_answer_ids(final_input_qnode_answers=found_curies,
+                                                         final_output_qnode_answers=set(),
+                                                         final_qedge_answers=set(),
+                                                         input_qnode_key=qnode_key,
+                                                         output_qnode_key="",
+                                                         qedge_key="",
+                                                         trapi_query=trapi_query,
+                                                         descendant_to_query_id_map=descendant_to_query_id_map)
+        return response
+
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
-    def _get_local_file_names(self) -> Tuple[Optional[str], Optional[str]]:
-        remote_index_file_name = self.kg_config.get("remote_index_file_name")
-        remote_kg_file_name = self.kg_config.get("remote_kg_file_name")
-        local_kg_file_name = self.kg_config.get("local_kg_file_name")
-        if not remote_index_file_name and not remote_kg_file_name and not local_kg_file_name:
-            logging.error("In kg_config.json, you must specify either a remote file to download (either a JSON KG "
-                          "file or a pickle file of indexes) from the translator-lfs-artifacts repo or a local KG "
-                          "file to use.")
-            return None, None
+    def _get_file_names_to_use_unzipped(self) -> Tuple[Optional[str], Optional[str]]:
+        remote_edges_file_name = self.kg_config.get("remote_edges_file_name")
+        remote_nodes_file_name = self.kg_config.get("remote_nodes_file_name")
+        local_edges_file_name = self.kg_config.get("local_edges_file_name")
+        local_nodes_file_name = self.kg_config.get("local_nodes_file_name")
+        if local_edges_file_name and local_nodes_file_name:
+            return local_nodes_file_name.strip(".gz"), local_edges_file_name.strip(".gz")
+        elif remote_edges_file_name and remote_nodes_file_name:
+            return remote_nodes_file_name.strip(".gz"), remote_edges_file_name.strip(".gz")
         else:
-            if remote_index_file_name:
-                return remote_index_file_name.strip(".gz"), None
-            else:
-                kg_file_name = remote_kg_file_name.strip(".gz") if remote_kg_file_name else local_kg_file_name.strip(".gz")
-                index_file_name = f"{kg_file_name.strip('.json')}_indexes.pickle"
-                return index_file_name, kg_file_name
+            logging.error("In kg_config.json, you must specify what edge/nodes files to use - either remote files "
+                          "(on kg2webhost) or local files")
+            return None, None
 
     @staticmethod
     def _convert_to_set(input_item: any) -> Set[str]:

@@ -1,12 +1,52 @@
 {
-  "local_kg_file_name": null,
-  "remote_kg_file_name": "kg2c_lite_2.8.4_filtered.json.gz",
-  "remote_index_file_name": null,
+  "local_nodes_file_name": null,
+  "local_edges_file_name": null,
+  "remote_nodes_file_name": "kg2c-2.8.4-nodes-plater.jsonl.gz",
+  "remote_edges_file_name": "kg2c-2.8.4-edges-plater.jsonl.gz",
   "is_test": false,
+  "biolink_version": "3.1.2",
   "biolink_helper_branch": "master",
   "labels": {
     "edges": "predicate",
     "nodes": "all_categories"
   },
-  "subclass_sources": ["infores:mondo", "infores:chebi"]
+  "subclass_sources": ["infores:mondo", "infores:chebi"],
+  "num_edges_per_answer_cutoff": 1000000,
+  "trapi_attribute_map": {
+    "iri": {
+      "attribute_type_id": "biolink:IriType",
+      "value_type_id": "metatype:Uri"
+    },
+    "description": {
+      "attribute_type_id": "biolink:description",
+      "value_type_id": "metatype:String"
+    },
+    "all_categories": {
+      "attribute_type_id": "biolink:category",
+      "value_type_id": "metatype:Uriorcurie",
+      "description": "Categories of all nodes in this synonym set in RTX-KG2."
+    },
+    "all_names": {
+      "attribute_type_id": "biolink:synonym",
+      "value_type_id": "metatype:String",
+      "description": "Names of all nodes in this synonym set in RTX-KG2."
+    },
+    "equivalent_curies": {
+      "attribute_type_id": "biolink:xref",
+      "value_type_id": "metatype:Nodeidentifier",
+      "description": "Identifiers of all nodes in this synonym set in RTX-KG2."
+    },
+    "publications": {
+      "attribute_type_id": "biolink:publications",
+      "value_type_id": "biolink:Uriorcurie"
+    },
+    "kg2_ids": {
+      "attribute_type_id": "biolink:original_predicate",
+      "value_type_id": "metatype:String",
+      "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping."
+    },
+    "publications_info": {
+      "attribute_type_id": "bts:sentence"
+    }
+  }
 }
