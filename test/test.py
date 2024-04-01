@@ -32,7 +32,9 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
 
 def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]],
                return_trapi_response: bool = False) -> any:
-    response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
+    trapi_query = {"message": {"query_graph": trapi_qg},
+                   "submitter": "ploverdb-test-suite"}
+    response = requests.post(f"{pytest.endpoint}/query", json=trapi_query, headers={'accept': 'application/json'})
     if response.status_code == 200:
         json_response = response.json()
         # print(json.dumps(json_response, indent=2))
