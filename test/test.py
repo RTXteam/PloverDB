@@ -15,8 +15,8 @@ RHOBTB2_CURIE = "NCBIGene:23221"
 DIABETES_CURIE = "MONDO:0005015"
 DIABETES_T1_CURIE = "MONDO:0005147"
 DIABETES_T2_CURIE = "MONDO:0005148"
-CAUSES_INCREASE_CURIE = "GO:0051901"
-INCREASED_CURIE = "GO:0051882"
+POS_REG_OF_MITOCHONDRIAL_DEPOL = "GO:0051901"
+MITOCHONDRIAL_DEPOLARIZATION = "GO:0051882"
 PARKINSONS_CURIE = "MONDO:0005180"
 BIPOLAR_CURIE = "MONDO:0004985"
 
@@ -538,7 +538,6 @@ def test_21():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -600,7 +599,7 @@ def test_23():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
+                "predicates": ["biolink:affects"],
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -615,7 +614,7 @@ def test_23():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -623,7 +622,7 @@ def test_23():
         }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
 
 
 def test_24():
@@ -633,7 +632,7 @@ def test_24():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
+                "predicates": ["biolink:affects"],
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -648,7 +647,7 @@ def test_24():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -656,7 +655,7 @@ def test_24():
         }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
 
 
 def test_25():
@@ -671,7 +670,7 @@ def test_25():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -679,7 +678,7 @@ def test_25():
         }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
+    assert MITOCHONDRIAL_DEPOLARIZATION not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_26():
@@ -689,7 +688,7 @@ def test_26():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:has_participant"],  # This is the wrong regular predicate
+                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         # {"qualifier_type_id": "biolink:qualified_predicate",
@@ -704,7 +703,7 @@ def test_26():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -712,7 +711,7 @@ def test_26():
         }
     }
     kg = _run_query(query)
-    assert not kg["nodes"] or INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
+    assert not kg["nodes"] or MITOCHONDRIAL_DEPOLARIZATION not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_27():
@@ -722,12 +721,12 @@ def test_27():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
+                "predicates": ["biolink:regulates"],
             }
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -735,7 +734,7 @@ def test_27():
         }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
 
 
 def test_28():
@@ -745,7 +744,7 @@ def test_28():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
+                "predicates": ["biolink:regulates"],
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
