@@ -487,20 +487,21 @@ class PloverDB:
 
     def answer_query(self, trapi_query: dict) -> dict:
         logging.info(f"TRAPI query is: {trapi_query}")
+        trapi_qg = trapi_query["message"]["query_graph"]
         # Handle single-node queries (not part of TRAPI, but handy)
-        if not trapi_query.get("edges"):
-            return self._answer_single_node_query(trapi_query)
+        if not trapi_qg.get("edges"):
+            return self._answer_single_node_query(trapi_qg)
         # Otherwise make sure this is a one-hop query
-        if len(trapi_query["edges"]) > 1:
+        if len(trapi_qg["edges"]) > 1:
             raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
-                             f"{len(trapi_query['edges'])} edges.")
+                             f"{len(trapi_qg['edges'])} edges.")
         # Make sure at least one qnode has a curie
-        qedge_key = next(qedge_key for qedge_key in trapi_query["edges"])
-        qedge = trapi_query["edges"][qedge_key]
+        qedge_key = next(qedge_key for qedge_key in trapi_qg["edges"])
+        qedge = trapi_qg["edges"][qedge_key]
         subject_qnode_key = qedge["subject"]
         object_qnode_key = qedge["object"]
-        subject_qnode = trapi_query["nodes"][subject_qnode_key]
-        object_qnode = trapi_query["nodes"][object_qnode_key]
+        subject_qnode = trapi_qg["nodes"][subject_qnode_key]
+        object_qnode = trapi_qg["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
             raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
         # Make sure there aren't any qualifiers we don't support
@@ -539,11 +540,11 @@ class PloverDB:
         self._force_qedge_to_canonical_predicates(qedge)
 
         # Load the query and do any necessary transformations to categories/predicates
-        input_qnode_key = self._determine_input_qnode_key(trapi_query["nodes"])
-        output_qnode_key = list(set(trapi_query["nodes"]).difference({input_qnode_key}))[0]
-        input_curies = self._convert_to_set(trapi_query["nodes"][input_qnode_key]["ids"])
-        output_curies = self._convert_to_set(trapi_query["nodes"][output_qnode_key].get("ids"))
-        output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_query)
+        input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
+        output_qnode_key = list(set(trapi_qg["nodes"]).difference({input_qnode_key}))[0]
+        input_curies = self._convert_to_set(trapi_qg["nodes"][input_qnode_key]["ids"])
+        output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
+        output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
         logging.info(f"Input curies are {input_curies}")
         logging.info(f"Output curies are {output_curies}")
@@ -601,7 +602,7 @@ class PloverDB:
                                                                input_qnode_key,
                                                                output_qnode_key,
                                                                qedge_key,
-                                                               trapi_query,
+                                                               trapi_qg,
                                                                descendant_to_query_id_map)
         return trapi_response
 
