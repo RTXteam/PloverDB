@@ -546,8 +546,8 @@ class PloverDB:
         output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
         output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
-        logging.info(f"Have {len(input_curies)} input curies, {len(output_curies)} output curies, "
-                     f"{len(qedge_predicates_expanded)} derived predicates")
+        logging.info(f"After expansion to descendants, have {len(input_curies)} input curies, "
+                     f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
