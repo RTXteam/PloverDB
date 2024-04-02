@@ -546,19 +546,21 @@ class PloverDB:
         output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
         output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
-        logging.info(f"Input curies are {input_curies}")
-        logging.info(f"Output curies are {output_curies}")
-        logging.info(f"QEdge predicates derived are {qedge_predicates_expanded}")
+        logging.info(f"Have {len(input_curies)} input curies, {len(output_curies)} output curies, "
+                     f"{len(qedge_predicates_expanded)} derived predicates")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
         final_input_qnode_answers = set()
         final_output_qnode_answers = set()
         main_index = self.main_index
+        logging.info(f"Starting to look up answers to query")
         for input_curie in input_curies:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
-            if len(answer_edge_ids) >= self.num_edges_per_answer_cutoff:
+            if len(final_qedge_answers) >= self.num_edges_per_answer_cutoff:
+                logging.info(f"Reached {self.num_edges_per_answer_cutoff} answer edges; "
+                             f"not going to look for further answers")
                 break
             elif input_curie in main_index:
                 # Consider ALL output categories if none were provided or if output curies were specified
@@ -599,6 +601,7 @@ class PloverDB:
                 final_output_qnode_answers.add(output_curie)
 
         # Form final TRAPI response
+        logging.info(f"Transforming answers to TRAPI response format")
         trapi_response = self._create_response_from_answer_ids(final_input_qnode_answers,
                                                                final_output_qnode_answers,
                                                                final_qedge_answers,
@@ -607,6 +610,7 @@ class PloverDB:
                                                                qedge_key,
                                                                trapi_qg,
                                                                descendant_to_query_id_map)
+        logging.info(f"Done with query")
         return trapi_response
 
     def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
@@ -903,7 +907,6 @@ class PloverDB:
             qedge_predicates = self.bh.replace_mixins_with_direct_mappings(qedge_predicates_raw)
             qedge_predicates_expanded = {descendant_predicate for qg_predicate in qedge_predicates
                                          for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
-            logging.info(f"Qedge predicates expanded are: {qedge_predicates_expanded}")
         # Convert english categories/predicates/conglomerate predicates into integer IDs (helps save space)
         qedge_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
                                         self._consider_bidirectional(predicate, qedge_predicates)
