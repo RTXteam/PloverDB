@@ -16,7 +16,7 @@ import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 KG2C_DUMP_URL_BASE = "https://kg2webhost.rtx.ai"
-LOG_FILE_PATH = "/var/log/ploverdb.log"
+LOG_FILENAME = "/var/log/ploverdb.log"
 
 
 class PloverDB:
@@ -27,7 +27,7 @@ class PloverDB:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
-                                          logging.FileHandler(LOG_FILE_PATH)])
+                                          logging.FileHandler(LOG_FILENAME)])
         except Exception:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
