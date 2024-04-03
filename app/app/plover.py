@@ -559,7 +559,7 @@ class PloverDB:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
             if len(final_qedge_answers) >= self.num_edges_per_answer_cutoff:
-                logging.info(f"Reached {self.num_edges_per_answer_cutoff} answer edges; "
+                logging.info(f"Reached {len(final_qedge_answers)} answer edges; "
                              f"not going to look for further answers")
                 break
             elif input_curie in main_index:
