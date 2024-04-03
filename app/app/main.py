@@ -21,7 +21,10 @@ plover_obj.load_indexes()
 def run_query():
     query = flask.request.json
     answer = plover_obj.answer_query(query)
-    return flask.jsonify(answer)
+    if isinstance(answer, tuple):  # Indicates an error
+        return flask.Response(answer[1], status=answer[0])
+    else:
+        return flask.jsonify(answer)
 
 
 @app.route('/healthcheck', methods=['GET'])

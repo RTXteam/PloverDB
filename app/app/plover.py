@@ -485,7 +485,7 @@ class PloverDB:
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
-    def answer_query(self, trapi_query: dict) -> dict:
+    def answer_query(self, trapi_query: dict) -> any:
         logging.info(f"TRAPI query is: {trapi_query}")
         trapi_qg = trapi_query["message"]["query_graph"]
         # Handle single-node queries (not part of TRAPI, but handy)
@@ -493,8 +493,7 @@ class PloverDB:
             return self._answer_single_node_query(trapi_qg)
         # Otherwise make sure this is a one-hop query
         if len(trapi_qg["edges"]) > 1:
-            raise ValueError(f"Can only answer single-hop or single-node queries. Your QG has "
-                             f"{len(trapi_qg['edges'])} edges.")
+            return 400, f"Bad Request. Can only answer single-edge queries. Your QG has {len(trapi_qg['edges'])} edges."
         # Make sure at least one qnode has a curie
         qedge_key = next(qedge_key for qedge_key in trapi_qg["edges"])
         qedge = trapi_qg["edges"][qedge_key]
@@ -503,13 +502,13 @@ class PloverDB:
         subject_qnode = trapi_qg["nodes"][subject_qnode_key]
         object_qnode = trapi_qg["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
-            raise ValueError(f"Can only answer queries where at least one QNode has a curie ('ids') specified.")
+            return 400, f"Bad Request. Can only answer queries where at least one QNode has a curie ('ids') specified."
         # Make sure there aren't any qualifiers we don't support
         for qualifier_constraint in qedge.get("qualifier_constraints", []):
             for qualifier in qualifier_constraint.get("qualifier_set"):
                 if qualifier["qualifier_type_id"] not in self.supported_qualifiers:
-                    raise ValueError(f"Unsupported qedge qualifier encountered: {qualifier['qualifier_type_id']}. "
-                                     f"Supported qualifiers are: {self.supported_qualifiers}")
+                    return 403, (f"Forbidden. Unsupported qedge qualifier encountered: {qualifier['qualifier_type_id']}."
+                                 f" Supported qualifiers are: {self.supported_qualifiers}")
 
         # Record which curies specified in the QG any descendant curies correspond to
         descendant_to_query_id_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
@@ -558,11 +557,7 @@ class PloverDB:
         for input_curie in input_curies:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
-            if len(final_qedge_answers) >= self.num_edges_per_answer_cutoff:
-                logging.info(f"Reached {len(final_qedge_answers)} answer edges; "
-                             f"not going to look for further answers")
-                break
-            elif input_curie in main_index:
+            if input_curie in main_index:
                 # Consider ALL output categories if none were provided or if output curies were specified
                 categories_present = set(main_index[input_curie])
                 categories_to_inspect = output_categories_expanded.intersection(categories_present) if output_categories_expanded and not output_curies else categories_present
@@ -572,22 +567,28 @@ class PloverDB:
                         predicates_to_inspect = set(qedge_predicates_expanded).intersection(predicates_present)
                         # Loop through each QG predicate (and their descendants), looking up answers as we go
                         for predicate in predicates_to_inspect:
-                            consider_bidirectional = qedge_predicates_expanded.get(predicate)
-                            if consider_bidirectional:
-                                directions = {0, 1}
+                            if len(final_qedge_answers) >= self.num_edges_per_answer_cutoff:
+                                return 403, (f"Forbidden. Your query will produce more than "
+                                             f"{self.num_edges_per_answer_cutoff} answer edges. You need to make your "
+                                             f"query smaller by reducing the number of input node IDs and/or using "
+                                             f"more specific categories/predicates.")
                             else:
-                                # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
-                                directions = {1} if input_qnode_key == qedge["subject"] else {0}
-                            if output_curies:
-                                # We need to look for the matching output node(s)
-                                for direction in directions:
-                                    curies_present = set(main_index[input_curie][output_category][predicate][direction])
-                                    matching_output_curies = output_curies.intersection(curies_present)
-                                    for output_curie in matching_output_curies:
-                                        answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction][output_curie])
-                            else:
-                                for direction in directions:
-                                    answer_edge_ids += list(set().union(*main_index[input_curie][output_category][predicate][direction].values()))
+                                consider_bidirectional = qedge_predicates_expanded.get(predicate)
+                                if consider_bidirectional:
+                                    directions = {0, 1}
+                                else:
+                                    # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
+                                    directions = {1} if input_qnode_key == qedge["subject"] else {0}
+                                if output_curies:
+                                    # We need to look for the matching output node(s)
+                                    for direction in directions:
+                                        curies_present = set(main_index[input_curie][output_category][predicate][direction])
+                                        matching_output_curies = output_curies.intersection(curies_present)
+                                        for output_curie in matching_output_curies:
+                                            answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction][output_curie])
+                                else:
+                                    for direction in directions:
+                                        answer_edge_ids += list(set().union(*main_index[input_curie][output_category][predicate][direction].values()))
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
@@ -871,6 +872,7 @@ class PloverDB:
                 # Otherwise just flip all of the regular predicates
                 qedge["predicates"] = list(canonical_predicates)
         elif user_non_canonical_predicates and user_canonical_predicates:
+            # TODO: Change this so that it returns a 400 error...
             raise ValueError(f"QueryGraph uses both canonical and non-canonical "
                              f"{'qualified ' if user_qual_predicates else ''}predicates. Canonical: "
                              f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
@@ -942,13 +944,14 @@ class PloverDB:
                                                                                    object_aspect=object_aspect_qualifier))
         return qedge_conglomerate_predicates
 
-    def _answer_single_node_query(self, trapi_qg: dict) -> dict:
+    def _answer_single_node_query(self, trapi_qg: dict) -> any:
         # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of TRAPI; just handy)
         if len(trapi_qg["nodes"]) > 1:
-            raise ValueError(f"Edgeless queries can only involve a single query node")
+            return 400, (f"Bad Request. Edgeless queries can only involve a single query node. "
+                         f"Your QG has {len(trapi_qg['nodes'])} nodes.")
         qnode_key = list(trapi_qg["nodes"].keys())[0]
         if not trapi_qg["nodes"][qnode_key].get("ids"):
-            raise ValueError("For qnode-only queries, the qnode must have 'ids' specified.")
+            return 400, "For qnode-only queries, the qnode must have 'ids' specified."
 
         logging.info(f"Answering single-node query...")
         qnode = trapi_qg["nodes"][qnode_key]
