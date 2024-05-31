@@ -2,9 +2,9 @@ import pytest
 import requests
 from typing import Dict, Union, List
 
-ASPIRIN_CURIE = "PUBCHEM.COMPOUND:2244"
-TICLOPIDINE_CURIE = "PUBCHEM.COMPOUND:5472"
-ACETAMINOPHEN_CURIE = "PUBCHEM.COMPOUND:1983"
+ASPIRIN_CURIE = "CHEBI:15365"
+TICLOPIDINE_CURIE = "CHEBI:9588"
+ACETAMINOPHEN_CURIE = "CHEBI:46195"
 PROC_CURIE = "NCBIGene:5624"
 DIETHYLSTILBESTROL_CURIE = "PUBCHEM.COMPOUND:448537"
 METHYLPREDNISOLONE_CURIE = "PUBCHEM.COMPOUND:23663977"
@@ -647,7 +647,7 @@ def test_21():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -679,7 +679,7 @@ def test_22():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["CHEBI:90879"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -861,7 +861,7 @@ def test_28():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -892,7 +892,7 @@ def test_29():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -921,7 +921,7 @@ def test_30():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["CHEBI:90879"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
