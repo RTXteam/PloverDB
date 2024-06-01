@@ -504,15 +504,15 @@ def test_17():
             "e00": {
                 "subject": "n01",
                 "object": "n00",
-                "predicates": ["biolink:treated_by"]
+                "predicates": ["biolink:regulated_by"]
             }
         },
         "nodes": {
             "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
+                "ids": ["NCBIGene:4856"]
             },
             "n01": {
-                "categories": ["biolink:Disease"]
+                "categories": ["biolink:Protein"]
             }
         },
         "respect_predicate_symmetry": True
@@ -523,17 +523,17 @@ def test_17():
     query_canonical = {
         "edges": {
             "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:treats"]
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:regulates"]
             }
         },
         "nodes": {
             "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
+                "ids": ["NCBIGene:4856"]
             },
             "n01": {
-                "categories": ["biolink:Disease"]
+                "categories": ["biolink:Protein"]
             }
         },
         "respect_predicate_symmetry": True
