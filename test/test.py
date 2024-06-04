@@ -502,8 +502,8 @@ def test_17():
     query_non_canonical = {
         "edges": {
             "e00": {
-                "subject": "n01",
-                "object": "n00",
+                "subject": "n00",
+                "object": "n01",
                 "predicates": ["biolink:regulated_by"]
             }
         },
