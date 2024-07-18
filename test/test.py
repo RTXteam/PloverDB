@@ -499,47 +499,47 @@ def test_16():
 
 def test_17():
     # Test canonical predicate handling
-    query_non_canonical = {
+    query_canonical = {
         "edges": {
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulated_by"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
             "n00": {
-                "ids": ["NCBIGene:4856"]
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
             },
             "n01": {
-                "categories": ["biolink:Protein"]
-            }
-        },
-        "respect_predicate_symmetry": True
-    }
-    kg_non_canonical = _run_query(query_non_canonical)
-    assert len(kg_non_canonical["nodes"]["n01"])
-
-    query_canonical = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00",
-                "predicates": ["biolink:regulates"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ["NCBIGene:4856"]
-            },
-            "n01": {
-                "categories": ["biolink:Protein"]
+                "categories": ["biolink:Disease"]
             }
         },
         "respect_predicate_symmetry": True
     }
     kg_canonical = _run_query(query_canonical)
     assert len(kg_canonical["nodes"]["n01"])
+
+    query_non_canonical = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:subject_of_treatment_application_or_study_for_treatment_by"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "respect_predicate_symmetry": True
+    }
+    kg_non_canonical = _run_query(query_non_canonical)
+    assert len(kg_non_canonical["nodes"]["n01"])
 
     assert len(kg_canonical["nodes"]["n01"]) == len(kg_non_canonical["nodes"]["n01"])
 
