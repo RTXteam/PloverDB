@@ -985,13 +985,11 @@ def test_undirected_related_to_for_underlying_treats_edge():
         }
     }
     kg_1 = _run_query(query)
-    print(kg_1)
     assert kg_1["nodes"]["n00"] and kg_1["nodes"]["n00_1"]
     # Swap subject/object and make sure we get the same answers
     query["edges"]["e00_1"]["subject"] = "n00"
     query["edges"]["e00_1"]["object"] = "n00_1"
     kg_2 = _run_query(query)
-    print(kg_2)
     assert kg_2["nodes"]["n00"] and kg_2["nodes"]["n00_1"]
     assert len(kg_1["edges"]["e00_1"]) == len(kg_2["edges"]["e00_1"])
     assert len(kg_1["nodes"]["n00"]) == len(kg_2["nodes"]["n00_1"])
