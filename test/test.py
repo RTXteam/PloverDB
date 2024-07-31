@@ -316,7 +316,7 @@ def test_12():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -339,7 +339,7 @@ def test_12():
             "e00": {
                 "subject": "n01",
                 "object": "n00",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -416,7 +416,7 @@ def test_15():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -436,7 +436,7 @@ def test_15():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -457,7 +457,7 @@ def test_15():
             "e00": {
                 "subject": "n01",
                 "object": "n00",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -940,7 +940,7 @@ def test_31():
             "e00": {
                 "subject": "n01",
                 "object": "n00",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -955,6 +955,47 @@ def test_31():
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n01"])
+
+
+def test_undirected_related_to_for_underlying_treats_edge():
+    """
+    Make sure that when a related_to query comes in asking for an edge between two concepts that are connected
+    only by a treats (or treats-ish) edge in the underlying graph, the query is answered in an undirected fashion.
+    """
+    query = {
+        "edges": {
+            "e00_1": {
+                "object": "n00",
+                "subject": "n00_1",
+                "predicates": ["biolink:related_to"]
+            }
+        },
+        "include_metadata": True,
+        "nodes": {
+            "n00": {
+                "ids": [
+                    "UMLS:C2931133"
+                ]
+            },
+            "n00_1": {
+                "ids": [
+                    "UMLS:C0279936"
+                ]
+            }
+        }
+    }
+    kg_1 = _run_query(query)
+    print(kg_1)
+    assert kg_1["nodes"]["n00"] and kg_1["nodes"]["n00_1"]
+    # Swap subject/object and make sure we get the same answers
+    query["edges"]["e00_1"]["subject"] = "n00"
+    query["edges"]["e00_1"]["object"] = "n00_1"
+    kg_2 = _run_query(query)
+    print(kg_2)
+    assert kg_2["nodes"]["n00"] and kg_2["nodes"]["n00_1"]
+    assert len(kg_1["edges"]["e00_1"]) == len(kg_2["edges"]["e00_1"])
+    assert len(kg_1["nodes"]["n00"]) == len(kg_2["nodes"]["n00_1"])
+    assert len(kg_1["nodes"]["n00_1"]) == len(kg_2["nodes"]["n00"])
 
 
 def test_version():
