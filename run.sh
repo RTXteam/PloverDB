@@ -1,9 +1,9 @@
 #!/bin/bash
-# Usage: bash -x run.sh [image name] [container name] [docker command e.g., "sudo docker"]
+# Usage: bash -x run.sh [image name] [container name] [docker command e.g., "docker" or "sudo docker"]
 
-image_name="${1:-myimage}"
-container_name="${2:-mycontainer}"
-docker_command="${3:-docker}"
+image_name="${1:-ploverimage}"
+container_name="${2:-plovercontainer}"
+docker_command="${3:-sudo docker}"
 
 set +e  # Don't stop on error
 ${docker_command} stop ${container_name}
