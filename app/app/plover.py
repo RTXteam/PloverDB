@@ -656,12 +656,6 @@ class PloverDB:
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
         response = {
-            "log_level": None,
-            "workflow": [
-                {
-                    "id": "lookup"
-                }
-            ],
             "message": {
                 "query_graph": trapi_qg,
                 "knowledge_graph": {
@@ -688,7 +682,7 @@ class PloverDB:
             "categories": self._convert_to_list(node_biolink[self.categories_property]),
             "attributes": [self._get_trapi_node_attribute(property_name, value)
                            for property_name, value in node_biolink.items()
-                           if property_name not in self.core_node_properties]
+                           if property_name not in self.core_node_properties]  # Will be empty list if none (required)
         }
         return trapi_node
 
@@ -799,7 +793,8 @@ class PloverDB:
                     "analyses": [
                         {
                             "edge_bindings": {
-                                qedge_key: [{"id": edge_id} for edge_id in edge_groups[result_hash_key]]
+                                qedge_key: [{"id": edge_id, "attributes": []}  # Attributes must be empty list if none
+                                            for edge_id in edge_groups[result_hash_key]]
                             },
                             "resource_id": self.kp_infores_curie
                         }
@@ -825,7 +820,7 @@ class PloverDB:
 
     @staticmethod
     def _create_trapi_node_binding(node_id: str, query_ids: Optional[Set[str]]) -> dict:
-        node_binding = {"id": node_id}
+        node_binding = {"id": node_id, "attributes": []}  # Attributes must be empty list if none
         if query_ids:
             query_id = next(query_id for query_id in query_ids)  # TRAPI/translator isn't set up to handle multiple yet
             if node_id != query_id:
