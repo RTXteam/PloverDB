@@ -16,7 +16,6 @@ from typing import List, Dict, Union, Set, Optional, Tuple
 import psutil
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
-KG2C_DUMP_URL_BASE = "https://kg2webhost.rtx.ai"
 LOG_FILENAME = "/var/log/ploverdb.log"
 
 
@@ -43,8 +42,8 @@ class PloverDB:
         self.biolink_version = self.kg_config["biolink_version"]
         self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
-        self.remote_edges_file_name = self.kg_config["remote_edges_file_name"]
-        self.remote_nodes_file_name = self.kg_config["remote_nodes_file_name"]
+        self.remote_edges_file_path = self.kg_config["remote_edges_file_path"]
+        self.remote_nodes_file_path = self.kg_config["remote_nodes_file_path"]
         self.local_edges_file_name = self.kg_config["local_edges_file_name"]
         self.local_nodes_file_name = self.kg_config["local_nodes_file_name"]
         self.nodes_file_name_unzipped, self.edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
@@ -95,8 +94,8 @@ class PloverDB:
                 logging.info(f"Unzipping local nodes file")
                 subprocess.check_call(["gunzip", "-f", f"{self.nodes_path}.gz"])
         else:
-            self._download_and_unzip_remote_file(self.remote_edges_file_name, self.edges_path)
-            self._download_and_unzip_remote_file(self.remote_nodes_file_name, self.nodes_path)
+            self._download_and_unzip_remote_file(self.remote_edges_file_path, self.edges_path)
+            self._download_and_unzip_remote_file(self.remote_nodes_file_path, self.nodes_path)
 
         # Load the files into a KG, depending on file type
         logging.info(f"Loading KG files into memory as a biolink KG.. ({self.nodes_path}, {self.edges_path})")
@@ -465,11 +464,11 @@ class PloverDB:
         logging.info(f"Building subclass_of index took {round((time.time() - start) / 60, 2)} minutes.")
 
     @staticmethod
-    def _download_and_unzip_remote_file(remote_file_name: str, local_destination_path: str):
+    def _download_and_unzip_remote_file(remote_file_path: str, local_destination_path: str):
+        remote_file_name = remote_file_path.split("/")[-1]
         temp_location = f"{SCRIPT_DIR}/{remote_file_name}"
-        remote_path = f"{KG2C_DUMP_URL_BASE}/{remote_file_name}"
-        logging.info(f"Downloading remote file from URL: {remote_path}")
-        subprocess.check_call(["curl", "-L", remote_path, "-o", temp_location])
+        logging.info(f"Downloading remote file from URL: {remote_file_path}")
+        subprocess.check_call(["curl", "-L", remote_file_path, "-o", temp_location])
         if remote_file_name.endswith(".gz"):
             logging.info(f"Unzipping downloaded file")
             subprocess.check_call(["gunzip", "-f", temp_location])
@@ -1012,8 +1011,8 @@ class PloverDB:
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
     def _get_file_names_to_use_unzipped(self) -> Tuple[Optional[str], Optional[str]]:
-        remote_edges_file_name = self.kg_config.get("remote_edges_file_name")
-        remote_nodes_file_name = self.kg_config.get("remote_nodes_file_name")
+        remote_edges_file_name = self.kg_config.get("remote_edges_file_path").split("/")[-1]
+        remote_nodes_file_name = self.kg_config.get("remote_nodes_file_path").split("/")[-1]
         local_edges_file_name = self.kg_config.get("local_edges_file_name")
         local_nodes_file_name = self.kg_config.get("local_nodes_file_name")
         if local_edges_file_name and local_nodes_file_name:
@@ -1021,8 +1020,8 @@ class PloverDB:
         elif remote_edges_file_name and remote_nodes_file_name:
             return remote_nodes_file_name.strip(".gz"), remote_edges_file_name.strip(".gz")
         else:
-            logging.error("In kg_config.json, you must specify what edge/nodes files to use - either remote files "
-                          "(on kg2webhost) or local files")
+            logging.error("In kg_config.json, you must specify what edge/node files to use - either remote or local "
+                          "files")
             return None, None
 
     @staticmethod
