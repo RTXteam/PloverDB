@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import csv
 import itertools
 import json
 import jsonlines
@@ -72,11 +73,11 @@ class PloverDB:
         self.conglomerate_predicate_descendant_index = defaultdict(set)
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
-        self.core_node_properties = {"name", "all_categories"}
+        self.core_node_properties = {"name", self.categories_property}
         self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source",
                                      "qualified_object_aspect", "qualified_object_direction", "qualified_predicate"}
         self.properties_to_include_source_on = {"publications", "publications_info"}
-        self.kg2_infores_curie = "infores:rtx-kg2"
+        self.kp_infores_curie = self.kg_config["kp_infores_curie"]
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -97,14 +98,26 @@ class PloverDB:
             self._download_and_unzip_remote_file(self.remote_edges_file_name, self.edges_path)
             self._download_and_unzip_remote_file(self.remote_nodes_file_name, self.nodes_path)
 
-        # Load the json lines files into a KG
-        logging.info(f"Loading json lines files into memory as a biolink KG.. ({self.nodes_path}, {self.edges_path})")
-        with jsonlines.open(self.nodes_path) as reader:
-            nodes = [node_obj for node_obj in reader]
+        # Load the files into a KG, depending on file type
+        logging.info(f"Loading KG files into memory as a biolink KG.. ({self.nodes_path}, {self.edges_path})")
+        if self.nodes_path.endswith(".tsv"):
+            nodes = self._load_tsv(self.nodes_path)
+        else:
+            with jsonlines.open(self.nodes_path) as reader:
+                nodes = [node_obj for node_obj in reader]
         logging.info(f"Have loaded nodes into memory.. now will load edges..")
-        with jsonlines.open(self.edges_path) as reader:
-            edges = [edge_obj for edge_obj in reader]
+
+        if self.edges_path.endswith(".tsv"):
+            edges = self._load_tsv(self.edges_path)
+        else:
+            with jsonlines.open(self.edges_path) as reader:
+                edges = [edge_obj for edge_obj in reader]
+        # TODO: Ask Gwenlyn about adding this to edges? This is a patch for now..
+        if self.kp_infores_curie == "infores:ctkp":
+            for edge in edges:
+                edge["primary_knowledge_source"] = edge.get("primary_knowledge_source", "infores:ctgov")
         logging.info(f"Have loaded edges into memory.")
+
         kg2c_dict = {"nodes": nodes, "edges": edges}
 
         # Set up BiolinkHelper (download from RTX repo)
@@ -122,8 +135,9 @@ class PloverDB:
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         # Undo the 'category' property change that Plater requires (has pre-expanded ancestors; we do that on the fly)
         for node in self.node_lookup_map.values():
-            del node["category"]  # We use all_categories for everything..
-            del node["preferred_category"]
+            if self.categories_property == "all_categories":  # Only KG2 needs to delete properties to save space..
+                del node["category"]  # KG2 uses all_categories for everything..
+                del node["preferred_category"]
             del node["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading node lookup map. Memory usage is currently "
@@ -174,7 +188,7 @@ class PloverDB:
         logging.info("Determining nodes' category labels (most specific Biolink categories)..")
         node_to_category_labels_map = dict()
         for node_id, node in self.node_lookup_map.items():
-            categories = set(node[self.categories_property])
+            categories = self._convert_to_set(node[self.categories_property])
             proper_ancestors_for_each_category = [set(self.bh.get_ancestors(category, include_mixins=False, include_conflations=False)).difference({category})
                                                   for category in categories]
             all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
@@ -463,17 +477,22 @@ class PloverDB:
         subprocess.check_call(["mv", temp_location, local_destination_path])
 
     def _print_main_index_human_friendly(self):
+        counter = 0
         for input_curie, categories_dict in self.main_index.items():
-            print(f"{input_curie}: #####################################################################")
-            for category_id, predicates_dict in categories_dict.items():
-                print(f"    {self.category_map_reversed[category_id]}: ------------------------------")
-                for predicate_id, directions_tuple in predicates_dict.items():
-                    print(f"        {self.predicate_map_reversed[predicate_id]}:")
-                    for direction_dict in directions_tuple:
-                        print(f"        {'Forwards' if directions_tuple.index(direction_dict) == 1 else 'Backwards'}:")
-                        for output_curie, edge_ids in direction_dict.items():
-                            print(f"            {output_curie}:")
-                            print(f"                {edge_ids}")
+            if counter <= 10:
+                print(f"{input_curie}: #####################################################################")
+                for category_id, predicates_dict in categories_dict.items():
+                    print(f"    {self.category_map_reversed[category_id]}: ------------------------------")
+                    for predicate_id, directions_tuple in predicates_dict.items():
+                        print(f"        {self.predicate_map_reversed[predicate_id]}:")
+                        for direction_dict in directions_tuple:
+                            print(f"        {'Forwards' if directions_tuple.index(direction_dict) == 1 else 'Backwards'}:")
+                            for output_curie, edge_ids in direction_dict.items():
+                                print(f"            {output_curie}:")
+                                print(f"                {edge_ids}")
+            else:
+                break
+            counter += 1
 
     @staticmethod
     def _get_current_memory_usage():
@@ -482,6 +501,19 @@ class PloverDB:
         memory_percent_used = virtual_mem_usage_info[2]
         memory_used_in_gb = virtual_mem_usage_info[3] / 10**9
         return round(memory_used_in_gb, 1), memory_percent_used
+
+    def _load_tsv(self, tsv_file_path: str) -> List[dict]:
+        items = []
+        with open(tsv_file_path, "r") as tsv_file:
+            reader = csv.reader(tsv_file, delimiter="\t")
+            header_row = next(reader)  # Grabs first row of TSV
+            logging.info(f"Header row in {tsv_file_path} is: {header_row}")
+            for row in reader:
+                item = {header_row[index]: value.split(",") if header_row[index] in self.kg_config["array_properties"] else value
+                        for index, value in enumerate(row)}
+                items.append(item)
+        logging.info(f"Loaded {len(items)} rows from {tsv_file_path}")
+        return items
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
@@ -547,6 +579,7 @@ class PloverDB:
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
         logging.info(f"After expansion to descendants, have {len(input_curies)} input curies, "
                      f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
+        logging.info(f"Derived predicates are: {qedge_predicates_expanded}")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -602,7 +635,7 @@ class PloverDB:
                 final_output_qnode_answers.add(output_curie)
 
         # Form final TRAPI response
-        logging.info(f"Transforming answers to TRAPI response format")
+        logging.info(f"Transforming answers ({len(final_qedge_answers)} edges) to TRAPI response format")
         trapi_response = self._create_response_from_answer_ids(final_input_qnode_answers,
                                                                final_output_qnode_answers,
                                                                final_qedge_answers,
@@ -652,7 +685,7 @@ class PloverDB:
     def _convert_node_to_trapi_format(self, node_biolink: dict) -> dict:
         trapi_node = {
             "name": node_biolink.get("name"),
-            "categories": node_biolink["all_categories"],
+            "categories": self._convert_to_list(node_biolink[self.categories_property]),
             "attributes": [self._get_trapi_node_attribute(property_name, value)
                            for property_name, value in node_biolink.items()
                            if property_name not in self.core_node_properties]
@@ -666,7 +699,7 @@ class PloverDB:
             "resource_role": "primary_knowledge_source"
         }
         source_aggregator = {
-            "resource_id": self.kg2_infores_curie,
+            "resource_id": self.kp_infores_curie,
             "resource_role": "aggregator_knowledge_source",
             "upstream_resource_ids": [primary_ks]
         }
@@ -703,16 +736,20 @@ class PloverDB:
         return trapi_edge
 
     def _get_trapi_node_attribute(self, property_name: str, value: any) -> dict:
-        attribute = self.trapi_attribute_map[property_name]
+        attribute = self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name})
         attribute["value"] = value
         return attribute
 
     def _get_trapi_edge_attribute(self, property_name: str, value: any, primary_ks: str) -> dict:
-        attribute = self.trapi_attribute_map[property_name]
+        # Just use a default attribute for any properties not yet defined in kg_config.json
+        # TODO: Technically this may be invalid TRAPI? (to not use a 'biolink' property here?)
+        attribute = self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name})
         attribute["value"] = value
         # Add the source to certain edge attributes (like publications)
         if property_name in self.properties_to_include_source_on:
             attribute["attribute_source"] = primary_ks
+        else:
+            attribute["attribute_source"] = self.kp_infores_curie
         return attribute
 
     def _get_trapi_results(self, final_input_qnode_answers: Set[str],
@@ -764,10 +801,10 @@ class PloverDB:
                             "edge_bindings": {
                                 qedge_key: [{"id": edge_id} for edge_id in edge_groups[result_hash_key]]
                             },
-                            "resource_id": self.kg2_infores_curie
+                            "resource_id": self.kp_infores_curie
                         }
                     ],
-                    "resource_id": self.kg2_infores_curie
+                    "resource_id": self.kp_infores_curie
                 }
                 results.append(result)
         else:
@@ -781,7 +818,7 @@ class PloverDB:
                             for node_id in final_input_qnode_answers],
                     },
                     "analyses": [],
-                    "resource_id": self.kg2_infores_curie
+                    "resource_id": self.kp_infores_curie
                 }
             ]
         return results
@@ -999,8 +1036,21 @@ class PloverDB:
             return {input_item}
         elif isinstance(input_item, list):
             return set(input_item)
+        elif isinstance(input_item, set):
+            return input_item
         else:
             return set()
+
+    @staticmethod
+    def _convert_to_list(input_item: any) -> List[str]:
+        if isinstance(input_item, str):
+            return [input_item]
+        elif isinstance(input_item, list):
+            return input_item
+        elif isinstance(input_item, set):
+            return list(input_item)
+        else:
+            return []
 
     @staticmethod
     def serialize_with_sets(obj: any) -> any:
