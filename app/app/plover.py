@@ -1011,18 +1011,19 @@ class PloverDB:
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
     def _get_file_names_to_use_unzipped(self) -> Tuple[Optional[str], Optional[str]]:
-        remote_edges_file_name = self.kg_config.get("remote_edges_file_path").split("/")[-1]
-        remote_nodes_file_name = self.kg_config.get("remote_nodes_file_path").split("/")[-1]
         local_edges_file_name = self.kg_config.get("local_edges_file_name")
         local_nodes_file_name = self.kg_config.get("local_nodes_file_name")
         if local_edges_file_name and local_nodes_file_name:
             return local_nodes_file_name.strip(".gz"), local_edges_file_name.strip(".gz")
-        elif remote_edges_file_name and remote_nodes_file_name:
-            return remote_nodes_file_name.strip(".gz"), remote_edges_file_name.strip(".gz")
         else:
-            logging.error("In kg_config.json, you must specify what edge/node files to use - either remote or local "
-                          "files")
-            return None, None
+            remote_edges_file_name = self.kg_config.get("remote_edges_file_path").split("/")[-1]
+            remote_nodes_file_name = self.kg_config.get("remote_nodes_file_path").split("/")[-1]
+            if remote_edges_file_name and remote_nodes_file_name:
+                return remote_nodes_file_name.strip(".gz"), remote_edges_file_name.strip(".gz")
+            else:
+                logging.error("In kg_config.json, you must specify what edge/node files to use - either remote or local "
+                              "files")
+                return None, None
 
     @staticmethod
     def _convert_to_set(input_item: any) -> Set[str]:
