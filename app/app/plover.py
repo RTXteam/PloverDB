@@ -113,7 +113,7 @@ class PloverDB:
             with jsonlines.open(self.edges_path) as reader:
                 edges = [edge_obj for edge_obj in reader]
         # TODO: Ask Gwenlyn about adding this to edges? This is a patch for now..
-        if self.kp_infores_curie == "infores:ctkp":
+        if self.kp_infores_curie == "infores:clinicaltrials":
             for edge in edges:
                 edge["primary_knowledge_source"] = edge.get("primary_knowledge_source", "infores:ctgov")
         logging.info(f"Have loaded edges into memory.")

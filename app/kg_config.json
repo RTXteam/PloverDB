@@ -5,7 +5,7 @@
   "remote_edges_file_name": null,
   "is_test": false,
   "biolink_version": "4.2.1",
-  "kp_infores_curie": "infores:ctkp",
+  "kp_infores_curie": "infores:clinicaltrials",
   "biolink_helper_branch": "master",
   "labels": {
     "edges": "predicate",
@@ -52,11 +52,11 @@
     },
     "knowledge_level": {
       "attribute_type_id": "biolink:knowledge_level",
-      "value_type_id": "metatype:String"
+      "value_type_id": "biolink:KnowledgeLevelEnum"
     },
     "agent_type": {
       "attribute_type_id": "biolink:agent_type",
-      "value_type_id": "metatype:String"
+      "value_type_id": "biolink:AgentTypeEnum"
     }
   }
 }
