@@ -5,6 +5,9 @@ import pygit2
 import datetime
 import logging
 import flask
+
+from flask_cors import CORS, cross_origin
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import plover
 
@@ -12,12 +15,16 @@ import plover
 # Thank you https://towardsdatascience.com/creating-restful-apis-using-flask-and-python-655bad51b24
 
 app = flask.Flask(__name__)
+cors = CORS(app)  # Thanks https://stackoverflow.com/questions/25594893/how-to-enable-cors-in-flask
+app.config['CORS_HEADERS'] = 'Content-Type'
+
 start = time.time()
 plover_obj = plover.PloverDB()
 plover_obj.load_indexes()
 
 
 @app.route('/query', methods=['POST'])
+@cross_origin()
 def run_query():
     query = flask.request.json
     answer = plover_obj.answer_query(query)
