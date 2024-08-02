@@ -39,7 +39,6 @@ class PloverDB:
             self.kg_config = json.load(config_file)
 
         self.is_test = self.kg_config["is_test"]
-        self.biolink_version = self.kg_config["biolink_version"]
         self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
         self.local_edges_file_name = self.kg_config["local_edges_file_name"]
@@ -75,7 +74,8 @@ class PloverDB:
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
-    def build_indexes(self, nodes_file_url: Optional[str] = None, edges_file_url: Optional[str] = None):
+    def build_indexes(self, nodes_file_url: Optional[str] = None, edges_file_url: Optional[str] = None,
+                      biolink_version: Optional[str] = None):
         logging.info("Starting to build indexes..")
         start = time.time()
 
@@ -129,7 +129,8 @@ class PloverDB:
         remote_path = f"https://github.com/RTXteam/RTX/blob/{self.bh_branch}/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
         subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
         from biolink_helper import BiolinkHelper
-        self.bh = BiolinkHelper(biolink_version=self.biolink_version)
+        logging.info(f"Biolink version to use is: {biolink_version}")
+        self.bh = BiolinkHelper(biolink_version=biolink_version)
 
         # Create basic node/edge lookup maps
         logging.info(f"Building basic node/edge lookup maps")
@@ -256,7 +257,7 @@ class PloverDB:
                        "category_map": self.category_map,
                        "category_map_reversed": self.category_map_reversed,
                        "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
-                       "biolink_version": self.biolink_version}
+                       "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
 

@@ -2,7 +2,6 @@
   "local_nodes_file_name": null,
   "local_edges_file_name": null,
   "is_test": false,
-  "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:clinicaltrials",
   "biolink_helper_branch": "master",
   "labels": {
