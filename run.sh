@@ -1,9 +1,23 @@
 #!/bin/bash
-# Usage: bash -x run.sh [image name] [container name] [docker command e.g., "docker" or "sudo docker"]
+# Usage: bash -x run.sh [-n public web url to nodes file] [-e public web url to edges file] [-i image name] [-c container name] [-d docker command e.g., "docker" or "sudo docker"]
+# Example1: bash -x run.sh -n https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_nodes_v2.2.9.tsv -e https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_edges_v2.2.9.tsv
+# Example2: bash -x run.sh -i myimage -c mycontainer -d docker
+# If URLS to remote nodes/edges files are not provided, nodes/edges files must be present locally in PloverDB/app/
 
-image_name="${1:-ploverimage}"
-container_name="${2:-plovercontainer}"
-docker_command="${3:-sudo docker}"
+# Specify default image name, container name, and docker command to use (can be overridden by flag params)
+image_name=ploverimage
+container_name=plovercontainer
+docker_command="sudo docker"
+
+while getopts "n:e:i:c:d:" flag; do
+case "$flag" in
+    n) nodes_file_url=$OPTARG;;
+    e) edges_file_url=$OPTARG;;
+    i) image_name=$OPTARG;;
+    c) container_name=$OPTARG;;
+    d) docker_command=$OPTARG;;
+esac
+done
 
 set +e  # Don't stop on error
 ${docker_command} stop ${container_name}
@@ -11,7 +25,7 @@ ${docker_command} rm ${container_name}
 ${docker_command} image rm ${image_name}
 set -e  # Stop on error
 
-${docker_command} build -t ${image_name} .
+${docker_command} build --build-arg nodes_url=${nodes_file_url} --build-arg edges_url=${edges_file_url} -t ${image_name} .
 
 # Run the docker container; NOTE: the '--preload' flag makes Gunicorn workers *share* (vs. copy) the central index (yay)
 if [ ${image_name} == "myimage" ]

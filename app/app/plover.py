@@ -42,13 +42,8 @@ class PloverDB:
         self.biolink_version = self.kg_config["biolink_version"]
         self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
-        self.remote_edges_file_path = self.kg_config["remote_edges_file_path"]
-        self.remote_nodes_file_path = self.kg_config["remote_nodes_file_path"]
         self.local_edges_file_name = self.kg_config["local_edges_file_name"]
         self.local_nodes_file_name = self.kg_config["local_nodes_file_name"]
-        self.nodes_file_name_unzipped, self.edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
-        self.nodes_path = f"{SCRIPT_DIR}/../{self.nodes_file_name_unzipped}"
-        self.edges_path = f"{SCRIPT_DIR}/../{self.edges_file_name_unzipped}"
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
@@ -80,36 +75,44 @@ class PloverDB:
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
-    def build_indexes(self):
+    def build_indexes(self, nodes_file_url: Optional[str] = None, edges_file_url: Optional[str] = None):
         logging.info("Starting to build indexes..")
         start = time.time()
 
-        # Use local KG files if given, otherwise download remote files
-        if self.local_edges_file_name and self.local_nodes_file_name:
+        nodes_file_name_unzipped, edges_file_name_unzipped = self._get_file_names_to_use_unzipped(nodes_file_url,
+                                                                                                  edges_file_url)
+        nodes_path = f"{SCRIPT_DIR}/../{nodes_file_name_unzipped}"
+        edges_path = f"{SCRIPT_DIR}/../{edges_file_name_unzipped}"
+
+        # Download remote KG files if specified, otherwise use local files
+        if nodes_file_url and edges_file_url:
+            self._download_and_unzip_remote_file(edges_file_url, edges_path)
+            self._download_and_unzip_remote_file(nodes_file_url, nodes_path)
+        elif self.local_edges_file_name and self.local_nodes_file_name:
             logging.info(f"Will use local KG files {self.local_edges_file_name} and {self.local_nodes_file_name}")
             if self.local_edges_file_name.endswith(".gz"):
                 logging.info(f"Unzipping local edges file")
-                subprocess.check_call(["gunzip", "-f", f"{self.edges_path}.gz"])
+                subprocess.check_call(["gunzip", "-f", f"{edges_path}.gz"])
             if self.local_nodes_file_name.endswith(".gz"):
                 logging.info(f"Unzipping local nodes file")
-                subprocess.check_call(["gunzip", "-f", f"{self.nodes_path}.gz"])
+                subprocess.check_call(["gunzip", "-f", f"{nodes_path}.gz"])
         else:
-            self._download_and_unzip_remote_file(self.remote_edges_file_path, self.edges_path)
-            self._download_and_unzip_remote_file(self.remote_nodes_file_path, self.nodes_path)
+            logging.error(f"You must either provide urls to remote KG files or specify local KG files to use in "
+                          f"kg_config.json!")
 
         # Load the files into a KG, depending on file type
-        logging.info(f"Loading KG files into memory as a biolink KG.. ({self.nodes_path}, {self.edges_path})")
-        if self.nodes_path.endswith(".tsv"):
-            nodes = self._load_tsv(self.nodes_path)
+        logging.info(f"Loading KG files into memory as a biolink KG.. ({nodes_path}, {edges_path})")
+        if nodes_path.endswith(".tsv"):
+            nodes = self._load_tsv(nodes_path)
         else:
-            with jsonlines.open(self.nodes_path) as reader:
+            with jsonlines.open(nodes_path) as reader:
                 nodes = [node_obj for node_obj in reader]
         logging.info(f"Have loaded nodes into memory.. now will load edges..")
 
-        if self.edges_path.endswith(".tsv"):
-            edges = self._load_tsv(self.edges_path)
+        if edges_path.endswith(".tsv"):
+            edges = self._load_tsv(edges_path)
         else:
-            with jsonlines.open(self.edges_path) as reader:
+            with jsonlines.open(edges_path) as reader:
                 edges = [edge_obj for edge_obj in reader]
         # TODO: Ask Gwenlyn about adding this to edges? This is a patch for now..
         if self.kp_infores_curie == "infores:clinicaltrials":
@@ -259,8 +262,8 @@ class PloverDB:
 
         if not self.is_test:
             logging.info(f"Removing local unzipped nodes/edges files from the image now that index building is done")
-            subprocess.call(["rm", "-f", self.nodes_path])
-            subprocess.call(["rm", "-f", self.edges_path])
+            subprocess.call(["rm", "-f", nodes_path])
+            subprocess.call(["rm", "-f", edges_path])
 
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
@@ -1105,16 +1108,18 @@ class PloverDB:
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
 
-    def _get_file_names_to_use_unzipped(self) -> Tuple[Optional[str], Optional[str]]:
-        local_edges_file_name = self.kg_config.get("local_edges_file_name")
-        local_nodes_file_name = self.kg_config.get("local_nodes_file_name")
-        if local_edges_file_name and local_nodes_file_name:
-            return local_nodes_file_name.strip(".gz"), local_edges_file_name.strip(".gz")
-        else:
-            remote_edges_file_name = self.kg_config.get("remote_edges_file_path").split("/")[-1]
-            remote_nodes_file_name = self.kg_config.get("remote_nodes_file_path").split("/")[-1]
+    def _get_file_names_to_use_unzipped(self, remote_nodes_url: Optional[str] = None,
+                                        remote_edges_url: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
+        if remote_nodes_url and remote_edges_url:
+            remote_edges_file_name = remote_edges_url.split("/")[-1]
+            remote_nodes_file_name = remote_nodes_url.split("/")[-1]
             if remote_edges_file_name and remote_nodes_file_name:
                 return remote_nodes_file_name.strip(".gz"), remote_edges_file_name.strip(".gz")
+        else:
+            local_edges_file_name = self.kg_config.get("local_edges_file_name")
+            local_nodes_file_name = self.kg_config.get("local_nodes_file_name")
+            if local_edges_file_name and local_nodes_file_name:
+                return local_nodes_file_name.strip(".gz"), local_edges_file_name.strip(".gz")
             else:
                 logging.error("In kg_config.json, you must specify what edge/node files to use - either remote or local "
                               "files")
