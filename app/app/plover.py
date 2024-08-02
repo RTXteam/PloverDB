@@ -668,6 +668,8 @@ class PloverDB:
                                          qedge_key: str,
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
+        logging.info(f"At beginning, have {len(final_input_qnode_answers)} input node answers and {len(final_output_qnode_answers)} output node answers")
+
         # Handle any attribute constraints on the query edge
         edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
                  for edge_id in final_qedge_answers}
@@ -675,13 +677,17 @@ class PloverDB:
         if qedge_attribute_constraints:
             logging.info(f"Found {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}")
             edges = self._filter_edges_by_attribute_constraints(edges, qedge_attribute_constraints)
+            final_qedge_answers = set(edges)
 
             # Remove any nodes orphaned by attribute constraint handling
             node_ids_used_by_edges = {edge["subject"] for edge in edges.values()}.union({edge["object"] for edge in edges.values()})
+            logging.info(f"Filtered edges use distinct {len(node_ids_used_by_edges)} nodes IDs")
             final_input_qnode_answers = final_input_qnode_answers.intersection(node_ids_used_by_edges)
             final_output_qnode_answers = final_output_qnode_answers.intersection(node_ids_used_by_edges)
 
         # Then form the final TRAPI response
+        logging.info(f"After constraint handling, have {len(final_input_qnode_answers)} input node answers and "
+                     f"{len(final_output_qnode_answers)} output node answers")
         response = {
             "message": {
                 "query_graph": trapi_qg,
