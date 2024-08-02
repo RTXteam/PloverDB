@@ -508,11 +508,26 @@ class PloverDB:
             header_row = next(reader)  # Grabs first row of TSV
             logging.info(f"Header row in {tsv_file_path} is: {header_row}")
             for row in reader:
-                item = {header_row[index]: value.split(",") if header_row[index] in self.kg_config["array_properties"] else value
+                item = {header_row[index]: self._load_column_value(value, header_row[index])
                         for index, value in enumerate(row)}
                 items.append(item)
         logging.info(f"Loaded {len(items)} rows from {tsv_file_path}")
         return items
+
+    def _load_column_value(self, col_value: any, col_name: str) -> any:
+        if col_name in self.kg_config["array_properties"]:  # Load lists as actual lists, instead of strings
+            return [self._convert_string_to_number(val) for val in col_value.split(",")]
+        else:
+            return self._convert_string_to_number(col_value)
+
+    @staticmethod
+    def _convert_string_to_number(some_string: str) -> any:
+        if some_string.isdigit():
+            return int(some_string)
+        elif some_string.replace(".", "").isdigit():
+            return float(some_string)
+        else:
+            return some_string
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
@@ -578,7 +593,6 @@ class PloverDB:
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
         logging.info(f"After expansion to descendants, have {len(input_curies)} input curies, "
                      f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
-        logging.info(f"Derived predicates are: {qedge_predicates_expanded}")
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
@@ -654,14 +668,27 @@ class PloverDB:
                                          qedge_key: str,
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
+        # Handle any attribute constraints on the query edge
+        edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
+                 for edge_id in final_qedge_answers}
+        qedge_attribute_constraints = trapi_qg["edges"][qedge_key].get("attribute_constraints")
+        if qedge_attribute_constraints:
+            logging.info(f"Found {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}")
+            edges = self._filter_edges_by_attribute_constraints(edges, qedge_attribute_constraints)
+
+            # Remove any nodes orphaned by attribute constraint handling
+            node_ids_used_by_edges = {edge["subject"] for edge in edges.values()}.union({edge["object"] for edge in edges.values()})
+            final_input_qnode_answers = final_input_qnode_answers.intersection(node_ids_used_by_edges)
+            final_output_qnode_answers = final_output_qnode_answers.intersection(node_ids_used_by_edges)
+
+        # Then form the final TRAPI response
         response = {
             "message": {
                 "query_graph": trapi_qg,
                 "knowledge_graph": {
                     "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
                               for node_id in final_input_qnode_answers.union(final_output_qnode_answers)},
-                    "edges": {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
-                              for edge_id in final_qedge_answers}
+                    "edges": edges
                 },
                 "results": self._get_trapi_results(final_input_qnode_answers,
                                                    final_output_qnode_answers,
@@ -825,6 +852,68 @@ class PloverDB:
             if node_id != query_id:
                 node_binding["query_id"] = query_id
         return node_binding
+
+    def _filter_edges_by_attribute_constraints(self, trapi_edges: Dict[str, dict],
+                                               qedge_attribute_constraints: List[dict]) -> Dict[str, dict]:
+        # Figure out which edges we need to filter out
+        edge_keys_to_delete = set()
+        # Edges must meet ALL attribute constraints on this qedge to be retained
+        for attribute_constraint in qedge_attribute_constraints:
+            logging.info(f"Processing attribute constraint with ID: {attribute_constraint['id']}")
+            for edge_key, edge in trapi_edges.items():
+                matching_attributes = [attribute for attribute in edge["attributes"]
+                                       if attribute["attribute_type_id"] == attribute_constraint["id"]]
+                if not any(self._meets_constraint(attribute, attribute_constraint)
+                           for attribute in matching_attributes):
+                    edge_keys_to_delete.add(edge_key)
+
+        # Then actually delete the edges
+        if edge_keys_to_delete:
+            logging.info(f"Deleting {len(edge_keys_to_delete)} edges that do not meet qedge attribute constraints")
+            for edge_key in edge_keys_to_delete:
+                del trapi_edges[edge_key]
+        return trapi_edges
+
+    @staticmethod
+    def _meets_constraint(edge_attribute: dict, attribute_constraint: dict) -> bool:
+        attribute_value = edge_attribute["value"]
+        constraint_value = attribute_constraint["value"]
+        operator = attribute_constraint["operator"]
+        attribute_val_is_list = isinstance(attribute_value, list)
+        constraint_val_is_list = isinstance(constraint_value, list)
+        meets_constraint = True
+        # TODO: Add 'matches'? throw error if unrecognized?
+        # First figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
+        if operator == "==":
+            if attribute_val_is_list and constraint_val_is_list:
+                meets_constraint = set(attribute_value).intersection(set(constraint_value)) != set()
+            elif attribute_val_is_list:
+                meets_constraint = constraint_value in attribute_value
+            elif constraint_val_is_list:
+                meets_constraint = attribute_value in constraint_value
+        elif operator == "<":
+            if attribute_val_is_list and constraint_val_is_list:
+                meets_constraint = any(attribute_val < constraint_val for attribute_val in attribute_value
+                                       for constraint_val in constraint_value)
+            elif attribute_val_is_list:
+                meets_constraint = any(attribute_val < constraint_value for attribute_val in attribute_value)
+            elif constraint_val_is_list:
+                meets_constraint = any(attribute_value < constraint_val for constraint_val in constraint_value)
+        elif operator == ">":
+            if attribute_val_is_list and constraint_val_is_list:
+                meets_constraint = any(attribute_val > constraint_val for attribute_val in attribute_value
+                                       for constraint_val in constraint_value)
+            elif attribute_val_is_list:
+                meets_constraint = any(attribute_val > constraint_value for attribute_val in attribute_value)
+            elif constraint_val_is_list:
+                meets_constraint = any(attribute_value > constraint_val for constraint_val in constraint_value)
+        elif operator == "===":
+            meets_constraint = attribute_value == constraint_value
+        else:
+            logging.error(f"Encountered unsupported operator: {operator}. Don't know how to handle.")
+
+        # Now factor in the 'not' property on the constraint
+        return not meets_constraint if attribute_constraint.get("not") else meets_constraint
 
     def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
         node_ids = self._convert_to_set(node_ids)
