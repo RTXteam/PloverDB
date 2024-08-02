@@ -143,3 +143,5 @@ biolink_lookup*
 *.jsonl
 *.jsonl.gz
 *.pkl
+test*.json
+config_secrets.json

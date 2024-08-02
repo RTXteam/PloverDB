@@ -5,3 +5,5 @@ requests
 treelib
 pygit2
 jsonlines
+fastapi
+fastapi[standard]
