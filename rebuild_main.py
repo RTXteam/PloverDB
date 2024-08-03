@@ -14,6 +14,7 @@ curl -X 'POST' \
 """
 import json
 import os
+import time
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
@@ -50,8 +51,9 @@ def rebuild_app(body: dict, authenticated: bool = Depends(auth_request)):
         nodes_file_url = body['nodes_file_url']
         edges_file_url = body['edges_file_url']
         biolink_version = body['biolink_version']
+        start = time.time()
         os.system(f"bash -x {SCRIPT_DIR}/run.sh -n {nodes_file_url} -e {edges_file_url} -b {biolink_version}")
-        return {"message": "Rebuild done."}
+        return {"message": f"Rebuild done. Took {round(time.time() - start)} seconds."}
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Not authenticated")

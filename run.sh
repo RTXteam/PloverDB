@@ -32,9 +32,9 @@ cd ${SCRIPT_DIR}
 ${docker_command} build --build-arg nodes_url=${nodes_file_url} --build-arg edges_url=${edges_file_url} --build-arg biolink_version=${biolink_version} -t ${image_name} .
 
 # Run the docker container; NOTE: the '--preload' flag makes Gunicorn workers *share* (vs. copy) the central index (yay)
-if [ ${image_name} == "myimage" ]
+if [ ${docker_command} == "docker" ]  # TODO: this is hacky, use a dedicated 'test' build flag or something..
 then
-  # Skip configuring SSL cert if this is a test build  (TODO: use a dedicated 'test' build flag..)
+  # Skip configuring SSL cert if this is a test build
   ${docker_command} run -d --name ${container_name} -p 9990:80 -e GUNICORN_CMD_ARGS="--preload" ${image_name}
 else
   # Ensure our SSL cert is current and load it into the container (on run)

@@ -720,7 +720,7 @@ class PloverDB:
 
             # Remove any nodes orphaned by attribute constraint handling
             node_ids_used_by_edges = {edge["subject"] for edge in edges.values()}.union({edge["object"] for edge in edges.values()})
-            logging.info(f"Filtered edges use distinct {len(node_ids_used_by_edges)} nodes IDs")
+            logging.info(f"Retained edges use {len(node_ids_used_by_edges)} distinct nodes IDs")
             final_input_qnode_answers = final_input_qnode_answers.intersection(node_ids_used_by_edges)
             final_output_qnode_answers = final_output_qnode_answers.intersection(node_ids_used_by_edges)
 
