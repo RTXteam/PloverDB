@@ -14,6 +14,7 @@ from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional, Tuple
 
 import psutil
+import requests
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILENAME = "/var/log/ploverdb.log"
@@ -65,6 +66,7 @@ class PloverDB:
         self.subclass_index = dict()
         self.conglomerate_predicate_descendant_index = defaultdict(set)
         self.meta_kg = dict()
+        self.preferred_id_map = dict()
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
         self.core_node_properties = {"name", self.categories_property}
@@ -133,28 +135,47 @@ class PloverDB:
         logging.info(f"Biolink version to use is: {biolink_version}")
         self.bh = BiolinkHelper(biolink_version=biolink_version)
 
-        # Create basic node/edge lookup maps
+        # Create basic node lookup map
         logging.info(f"Building basic node/edge lookup maps")
         logging.info(f"Loading node lookup map..")
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
         # Undo the 'category' property change that Plater requires (has pre-expanded ancestors; we do that on the fly)
-        for node in self.node_lookup_map.values():
+        for node_key, node in self.node_lookup_map.items():
+            # TODO: Revisit this after refine KG2 json lines files..
             if self.categories_property == "all_categories":  # Only KG2 needs to delete properties to save space..
                 del node["category"]  # KG2 uses all_categories for everything..
                 del node["preferred_category"]
+            # Record equivalent identifiers (if provided) for each node so we can 'canonicalize' incoming queries
+            equivalent_ids = node.get("equivalent_curies")
+            if equivalent_ids:
+                for equiv_id in equivalent_ids:
+                    self.preferred_id_map[equiv_id] = node_key
+                del node["equivalent_curies"]
             del node["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
-        logging.info(f"Done loading node lookup map. Memory usage is currently "
-                     f"{memory_usage_percent}% ({memory_usage_gb}G)..")
+        logging.info(f"Done loading node lookup map; there are {len(self.node_lookup_map)} nodes. "
+                     f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
+
+        # Use the SRI NodeNormalizer to determine equivalent identifiers if none were provided in the nodes file
+        if not self.preferred_id_map:
+            logging.info(f"Looking up equivalent identifiers in SRI NodeNormalizer (will cache for later use)")
+            all_node_ids = list(self.node_lookup_map)
+            batch_size = 1000  # This is the suggested max batch size from Chris Bizon (in Translator slack..)
+            node_id_batches = [all_node_ids[batch_start:batch_start + batch_size]
+                               for batch_start in range(0, len(all_node_ids), batch_size)]
+            for node_id_batch in node_id_batches:
+                equiv_id_map_for_batch = self._get_equiv_id_map_from_sri(node_id_batch)
+                self.preferred_id_map.update(equiv_id_map_for_batch)
+        logging.info(f"Preferred ID map includes {len(self.preferred_id_map)} equivalent identifiers.")
+
+        # Create basic edge lookup map
         logging.info(f"Loading edge lookup map..")
         self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
-        logging.info(f"Done loading edge lookup map. Memory usage is currently "
-                     f"{memory_usage_percent}% ({memory_usage_gb}G)..")
-        logging.info(f"node_lookup_map contains {len(self.node_lookup_map)} nodes, "
-                     f"edge_lookup_map contains {len(self.edge_lookup_map)} edges")
+        logging.info(f"Done loading edge lookup map; there are {len(self.edge_lookup_map)} edges. "
+                     f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
 
         # Convert all edges to their canonical predicate form; correct missing biolink prefixes
         logging.info(f"Converting edges to their canonical form")
@@ -291,6 +312,7 @@ class PloverDB:
                        "category_map_reversed": self.category_map_reversed,
                        "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
                        "meta_kg": self.meta_kg,
+                       "preferred_id_map": self.preferred_id_map,
                        "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
@@ -324,6 +346,7 @@ class PloverDB:
             self.category_map_reversed = all_indexes["category_map_reversed"]
             self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
             self.meta_kg = all_indexes["meta_kg"]
+            self.preferred_id_map = all_indexes["preferred_id_map"]
             biolink_version = all_indexes["biolink_version"]
 
         # Set up BiolinkHelper
@@ -568,11 +591,41 @@ class PloverDB:
         else:
             return some_string
 
+    @staticmethod
+    def _get_equiv_id_map_from_sri(node_ids: List[str]) -> Dict[str, str]:
+        response = requests.post("https://nodenormalization-sri.renci.org/get_normalized_nodes",
+                                 json={"curies": node_ids,
+                                       "conflate": True,
+                                       "drug_chemical_conflate": True})
+
+        equiv_id_map = {node_id: node_id for node_id in node_ids}  # Preferred IDs for nodes are themselves
+        if response.status_code == 200:
+            for node_id, normalized_info in response.json().items():
+                if normalized_info:  # This means the SRI NN recognized the node ID we asked for
+                    equiv_nodes = normalized_info["equivalent_identifiers"]
+                    for equiv_node in equiv_nodes:
+                        equiv_id = equiv_node["identifier"]
+                        equiv_id_map[equiv_id] = node_id
+        else:
+            logging.warning(f"Request for batch of node IDs sent to SRI NodeNormalizer failed "
+                            f"(status: {response.status_code}). Input identifier synonymization may not work properly.")
+
+        return equiv_id_map
+
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> any:
         logging.info(f"TRAPI query is: {trapi_query}")
         trapi_qg = trapi_query["message"]["query_graph"]
+        # Before doing anything else, convert any node ids to equivalents we recognize
+        for qnode_key, qnode in trapi_qg["nodes"].items():
+            qnode_ids = qnode.get("ids")
+            if qnode_ids:
+                logging.info(f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
+                logging.info(f"Before, its ids are {qnode_ids}")
+                qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
+                logging.info(f"After, its ids are: {qnode['ids']}")
+
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
             return self._answer_single_node_query(trapi_qg)
