@@ -39,6 +39,11 @@ def run_query(query: dict):
     #     return flask.jsonify(answer)
 
 
+@app.get('/meta_knowledge_graph')
+def get_meta_knowledge_graph():
+    return plover_obj.meta_kg
+
+
 @app.get('/healthcheck')
 def run_health_check():
     return ''

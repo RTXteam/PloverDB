@@ -64,6 +64,7 @@ class PloverDB:
         self.main_index = dict()
         self.subclass_index = dict()
         self.conglomerate_predicate_descendant_index = defaultdict(set)
+        self.meta_kg = dict()
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
         self.core_node_properties = {"name", self.categories_property}
@@ -179,8 +180,8 @@ class PloverDB:
                 edge["object"] = original_subject
 
         if self.is_test:
-            # Narrow down our test JSON file to exclude orphan edges
-            logging.info(f"Narrowing down test JSON file to make sure node IDs used by edges appear in nodes dict")
+            # Narrow down our test file to exclude orphan edges
+            logging.info(f"Narrowing down test edges file to make sure node IDs used by edges appear in nodes dict")
             edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
                                        edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
             self.edge_lookup_map = edge_lookup_map_trimmed
@@ -246,6 +247,38 @@ class PloverDB:
         self.category_map_reversed = self._reverse_dictionary(self.category_map)
         self.predicate_map_reversed = self._reverse_dictionary(self.predicate_map)
 
+        # Build the meta knowledge graph
+        logging.info(f"Starting to build meta knowledge graph..")
+        # First identify unique meta edges
+        meta_triples_map = defaultdict(set)
+        for edge in self.edge_lookup_map.values():
+            subj_categories = node_to_category_labels_map[edge["subject"]]
+            obj_categories = node_to_category_labels_map[edge["object"]]
+            edge_attribute_names = set(edge.keys()).difference(self.core_edge_properties)
+            for subj_category in subj_categories:
+                for obj_category in obj_categories:
+                    meta_triple = (subj_category, edge["predicate"], obj_category)
+                    meta_triples_map[meta_triple] = meta_triples_map[meta_triple].union(edge_attribute_names)
+        meta_edges = [{"subject": self.category_map_reversed[triple[0]],
+                       "predicate": triple[1],
+                       "object": self.category_map_reversed[triple[2]],
+                       "attributes": [{"attribute_type_id": self._get_trapi_edge_attribute(attribute_name, None, "")["attribute_type_id"],
+                                       "constraint_use": True,
+                                       "constraint_name": attribute_name.replace("_", " ")}  # TODO: Do this for real..
+                                      for attribute_name in attribute_names]}
+                      for triple, attribute_names in meta_triples_map.items()]
+        logging.info(f"Identified {len(meta_edges)} different meta edges")
+        # Then construct meta nodes
+        category_to_prefixes_map = defaultdict(set)
+        for node_key, categories in node_to_category_labels_map.items():
+            prefix = node_key.split(":")[0]
+            for category in categories:
+                category_to_prefixes_map[category].add(prefix)
+        meta_nodes = [{self.category_map_reversed[category]: list(prefixes)
+                       for category, prefixes in category_to_prefixes_map.items()}]
+        logging.info(f"Identified {len(meta_nodes)} different meta nodes")
+        self.meta_kg = {"nodes": meta_nodes, "edges": meta_edges}
+
         # Save all indexes in a big pickle
         logging.info(f"Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
@@ -257,6 +290,7 @@ class PloverDB:
                        "category_map": self.category_map,
                        "category_map_reversed": self.category_map_reversed,
                        "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
+                       "meta_kg": self.meta_kg,
                        "biolink_version": biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
@@ -289,6 +323,7 @@ class PloverDB:
             self.category_map = all_indexes["category_map"]
             self.category_map_reversed = all_indexes["category_map_reversed"]
             self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
+            self.meta_kg = all_indexes["meta_kg"]
             biolink_version = all_indexes["biolink_version"]
 
         # Set up BiolinkHelper

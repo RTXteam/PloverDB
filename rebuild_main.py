@@ -38,7 +38,7 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
-    return ("This is the server for triggering rebuilds of Plover. Submit an "
+    return ("This is the app for triggering rebuilds of Plover. Submit an "
             "authenticated request to the /rebuild endpoint.")
 
 
@@ -50,7 +50,6 @@ def rebuild_app(body: dict, authenticated: bool = Depends(auth_request)):
         nodes_file_url = body['nodes_file_url']
         edges_file_url = body['edges_file_url']
         biolink_version = body['biolink_version']
-        # TODO: figure out way of automatically using 'docker' command when applicable...
         os.system(f"bash -x {SCRIPT_DIR}/run.sh -n {nodes_file_url} -e {edges_file_url} -b {biolink_version}")
         return {"message": "Rebuild done."}
     else:
