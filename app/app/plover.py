@@ -260,7 +260,19 @@ class PloverDB:
 
         # Build the subclass_of index as needed
         if self.kg_config.get("subclass_sources"):
-            self._build_subclass_index(set(self.kg_config["subclass_sources"]))
+            # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
+            subclass_sources = set(self.kg_config["subclass_sources"])
+            subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
+            subclass_edges = [edge for edge in self.edge_lookup_map.values()
+                              if edge[self.edge_predicate_property] in subclass_predicates and
+                              edge.get("primary_knowledge_source") in subclass_sources]
+            if subclass_edges:
+                logging.info(f"Found {len(subclass_edges)} subclass_of edges in the graph to use.")
+            else:
+                logging.info(f"No subclass_of edges detected in the graph. Will download some from KG2.")
+                # TODO: Add this..
+                subclass_edges = []
+            self._build_subclass_index(subclass_edges)
         else:
             logging.info(f"Not building subclass_of index since no subclass sources were specified in kg_config.json")
 
@@ -429,8 +441,8 @@ class PloverDB:
                         self.conglomerate_predicate_descendant_index[ancestor].add(conglomerate_predicate)
                 conglomerate_predicates_already_seen.add(conglomerate_predicate)
 
-    def _build_subclass_index(self, subclass_sources: Set[str]):
-        logging.info(f"Building subclass_of index using {subclass_sources} edges..")
+    def _build_subclass_index(self, subclass_edges: List[dict]):
+        logging.info(f"Building subclass_of index using {len(subclass_edges)} subclass_of edges..")
         start = time.time()
 
         def _get_descendants(node_id: str, parent_to_child_map: Dict[str, Set[str]],
@@ -448,21 +460,13 @@ class PloverDB:
                         parent_to_descendants_map[node_id] = parent_to_descendants_map[node_id].union({child_id}, child_descendants)
             return parent_to_descendants_map.get(node_id, set())
 
-        # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
-        subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
-        subclass_edge_ids = {edge_id for edge_id, edge in self.edge_lookup_map.items()
-                             if edge[self.edge_predicate_property] in subclass_predicates and
-                             edge.get("primary_knowledge_source") in subclass_sources}
-        logging.info(f"    Found {len(subclass_edge_ids)} subclass_of edges to consider (from specified sources)")
-
         # Build a map of nodes to their direct 'subclass_of' children
         parent_to_child_dict = defaultdict(set)
-        for edge_id in subclass_edge_ids:
-            edge = self.edge_lookup_map[edge_id]
+        for edge in subclass_edges:
             parent_node_id = edge["object"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["subject"]
             child_node_id = edge["subject"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["object"]
             parent_to_child_dict[parent_node_id].add(child_node_id)
-        logging.info(f"    A total of {len(parent_to_child_dict)} nodes have child subclasses")
+        logging.info(f"A total of {len(parent_to_child_dict)} nodes have child subclasses")
 
         # Then recursively derive all 'subclass_of' descendants for each node
         if parent_to_child_dict:
@@ -493,7 +497,7 @@ class PloverDB:
             sorted_prefix_counts = dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
             with open("subclass_report.json", "w+") as report_file:
                 report = {"total_edges_in_kg": len(self.edge_lookup_map),
-                          "num_subclass_of_edges_from_approved_sources": len(subclass_edge_ids),
+                          "num_subclass_of_edges_from_approved_sources": len(subclass_edges),
                           "num_nodes_with_descendants": {
                               "total": len(parent_to_descendants_dict),
                               "by_prefix": sorted_prefix_counts
