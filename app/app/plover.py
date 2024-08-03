@@ -274,8 +274,8 @@ class PloverDB:
             prefix = node_key.split(":")[0]
             for category in categories:
                 category_to_prefixes_map[category].add(prefix)
-        meta_nodes = [{self.category_map_reversed[category]: list(prefixes)
-                       for category, prefixes in category_to_prefixes_map.items()}]
+        meta_nodes = {self.category_map_reversed[category]: {"id_prefixes": list(prefixes)}
+                      for category, prefixes in category_to_prefixes_map.items()}
         logging.info(f"Identified {len(meta_nodes)} different meta nodes")
         self.meta_kg = {"nodes": meta_nodes, "edges": meta_edges}
 
