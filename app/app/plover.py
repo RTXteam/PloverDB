@@ -1005,6 +1005,22 @@ class PloverDB:
                 meets_constraint = any(attribute_val > constraint_value for attribute_val in attribute_value)
             elif constraint_val_is_list:
                 meets_constraint = any(attribute_value > constraint_val for constraint_val in constraint_value)
+        elif operator == "<=":
+            if attribute_val_is_list and constraint_val_is_list:
+                meets_constraint = any(attribute_val <= constraint_val for attribute_val in attribute_value
+                                       for constraint_val in constraint_value)
+            elif attribute_val_is_list:
+                meets_constraint = any(attribute_val <= constraint_value for attribute_val in attribute_value)
+            elif constraint_val_is_list:
+                meets_constraint = any(attribute_value <= constraint_val for constraint_val in constraint_value)
+        elif operator == ">=":
+            if attribute_val_is_list and constraint_val_is_list:
+                meets_constraint = any(attribute_val >= constraint_val for attribute_val in attribute_value
+                                       for constraint_val in constraint_value)
+            elif attribute_val_is_list:
+                meets_constraint = any(attribute_val >= constraint_value for attribute_val in attribute_value)
+            elif constraint_val_is_list:
+                meets_constraint = any(attribute_value >= constraint_val for constraint_val in constraint_value)
         elif operator == "===":
             meets_constraint = attribute_value == constraint_value
         else:
