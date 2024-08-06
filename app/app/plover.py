@@ -117,10 +117,12 @@ class PloverDB:
         else:
             with jsonlines.open(edges_path) as reader:
                 edges = [edge_obj for edge_obj in reader]
-        # TODO: Ask Gwenlyn about adding this to edges? This is a patch for now..
-        if self.kp_infores_curie == "infores:clinicaltrials":
+        # TODO: Should this info be added to edges TSV? This works for now..
+        if self.kp_infores_curie == "infores:multiomics-clinicaltrials":
             for edge in edges:
-                edge["primary_knowledge_source"] = edge.get("primary_knowledge_source", "infores:ctgov")
+                edge["primary_knowledge_source"] = edge.get("primary_knowledge_source", "infores:clinicaltrials")
+                edge["secondary_knowledge_source"] = edge.get("secondary_knowledge_source", "infores:aact")
+                edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
@@ -820,16 +822,30 @@ class PloverDB:
             "resource_id": primary_ks,
             "resource_role": "primary_knowledge_source"
         }
-        source_aggregator = {
+        # Handle secondary source if present
+        if edge_biolink.get("secondary_knowledge_source"):
+            source_secondary = {
+                "resource_id": edge_biolink["secondary_knowledge_source"],
+                "resource_role": "aggregator_knowledge_source",
+                "upstream_resource_ids": [primary_ks]
+            }
+            sources = [source_primary, source_secondary]
+        else:
+            sources = [source_primary]
+        # Create a source for this KP
+        source_kp = {
             "resource_id": self.kp_infores_curie,
             "resource_role": "aggregator_knowledge_source",
-            "upstream_resource_ids": [primary_ks]
+            "upstream_resource_ids": [sources[-1]["resource_id"]]
         }
+        if edge_biolink.get("source_record_urls"):
+            source_kp["source_record_urls"] = edge_biolink["source_record_urls"]
+
         trapi_edge = {
             "subject": edge_biolink["subject"],
             "object": edge_biolink["object"],
             "predicate": edge_biolink["predicate"],
-            "sources": [source_primary, source_aggregator],
+            "sources": sources + [source_kp],
             "attributes": [self._get_trapi_edge_attribute(property_name, value, primary_ks)
                            for property_name, value in edge_biolink.items()
                            if property_name not in self.core_edge_properties]
