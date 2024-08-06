@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import copy
 import csv
 import itertools
 import json
@@ -47,6 +48,7 @@ class PloverDB:
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
+        self.array_properties = set(self.kg_config["array_properties"])
         self.kg2_qualified_predicate_property = "qualified_predicate"
         self.kg2_object_direction_property = "qualified_object_direction"  # Later this might use same as qedge?
         self.kg2_object_aspect_property = "qualified_object_aspect"  # Later this might use same as qedge?
@@ -124,6 +126,14 @@ class PloverDB:
                 edge["primary_knowledge_source"] = edge.get("primary_knowledge_source", "infores:clinicaltrials")
                 edge["secondary_knowledge_source"] = edge.get("secondary_knowledge_source", "infores:aact")
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
+                zip_cols = [edge[property_name]
+                            for property_name in self.kg_config["zip"]["supporting_studies"]["properties"]]
+                study_tuples = list(zip(*zip_cols))
+                edge["supporting_studies"] = [dict(zip(self.kg_config["zip"]["supporting_studies"]["properties"],
+                                                       study_tuple))
+                                              for study_tuple in study_tuples]
+                for nested_property_name in self.kg_config["zip"]["supporting_studies"]["properties"]:
+                    del edge[nested_property_name]
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
@@ -298,7 +308,7 @@ class PloverDB:
         meta_edges = [{"subject": self.category_map_reversed[triple[0]],
                        "predicate": triple[1],
                        "object": self.category_map_reversed[triple[2]],
-                       "attributes": [{"attribute_type_id": self._get_trapi_edge_attribute(attribute_name, None, "")["attribute_type_id"],
+                       "attributes": [{"attribute_type_id": self._get_trapi_edge_attribute(attribute_name, None, dict())["attribute_type_id"],
                                        "constraint_use": True,
                                        "constraint_name": attribute_name.replace("_", " ")}  # TODO: Do this for real..
                                       for attribute_name in attribute_names]}
@@ -584,7 +594,8 @@ class PloverDB:
         return items
 
     def _load_column_value(self, col_value: any, col_name: str) -> any:
-        if col_name in self.kg_config["array_properties"]:  # Load lists as actual lists, instead of strings
+        # Load lists as actual lists, instead of strings
+        if col_name in self.array_properties:
             return [self._convert_string_to_number(val) for val in col_value.split(",")]
         else:
             return self._convert_string_to_number(col_value)
@@ -847,9 +858,7 @@ class PloverDB:
             "object": edge_biolink["object"],
             "predicate": edge_biolink["predicate"],
             "sources": sources + [source_kp],
-            "attributes": [self._get_trapi_edge_attribute(property_name, value, primary_ks)
-                           for property_name, value in edge_biolink.items()
-                           if property_name not in self.core_edge_properties]
+            "attributes": self._get_trapi_edge_attributes(edge_biolink)
         }
 
         # Add any qualifier info
@@ -879,16 +888,44 @@ class PloverDB:
         attribute["value"] = value
         return attribute
 
-    def _get_trapi_edge_attribute(self, property_name: str, value: any, primary_ks: str) -> dict:
-        # Just use a default attribute for any properties not yet defined in kg_config.json
-        # TODO: Technically this may be invalid TRAPI? (to not use a 'biolink' property here?)
-        attribute = self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name})
+    def _get_trapi_edge_attributes(self, edge_biolink: dict) -> List[dict]:
+        attributes = []
+        non_core_edge_properties = set(edge_biolink.keys()).difference(self.core_edge_properties)
+        for property_name in non_core_edge_properties:
+            value = edge_biolink[property_name]
+            if property_name in self.kg_config["zip"]:
+                # Handle special 'zipped' properties (e.g., supporting_studies)
+                # Create an attribute for each item in this zipped up list, giving it subattributes as appropriate
+                leader_property_name = self.kg_config["zip"][property_name]["leader"]
+                for zipped_item in value:
+                    leader_attribute = self._get_trapi_edge_attribute(leader_property_name,
+                                                                      zipped_item[leader_property_name],
+                                                                      edge_biolink)
+                    leader_attribute["attributes"] = []
+                    for zipped_property_name in self.kg_config["zip"][property_name]["properties"]:
+                        if zipped_property_name != leader_property_name:
+                            subattribute = self._get_trapi_edge_attribute(zipped_property_name,
+                                                                          zipped_item[zipped_property_name],
+                                                                          edge_biolink)
+                            leader_attribute["attributes"].append(subattribute)
+                    attributes.append(leader_attribute)
+            else:
+                # Otherwise this is just a regular attribute (no subattributes)
+                attributes.append(self._get_trapi_edge_attribute(property_name, value, edge_biolink))
+        return attributes
+
+    def _get_trapi_edge_attribute(self, property_name: str, value: any, edge_biolink: dict) -> dict:
+        # Just use a default attribute for any properties/attributes not yet defined in kg_config.json
+        attribute = copy.deepcopy(self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name}))
         attribute["value"] = value
-        # Add the source to certain edge attributes (like publications)
-        if property_name in self.properties_to_include_source_on:
-            attribute["attribute_source"] = primary_ks
-        else:
-            attribute["attribute_source"] = self.kp_infores_curie
+        if attribute.get("attribute_source"):
+            source_property_name = attribute["attribute_source"]
+            if source_property_name == "kp_infores_curie":
+                attribute["attribute_source"] = self.kp_infores_curie
+            else:
+                attribute["attribute_source"] = edge_biolink.get(source_property_name)
+        if attribute.get("value_url"):
+            attribute["value_url"] = attribute["value_url"].replace("{****}", value)
         return attribute
 
     def _get_trapi_results(self, final_input_qnode_answers: Set[str],
@@ -980,10 +1017,14 @@ class PloverDB:
         for attribute_constraint in qedge_attribute_constraints:
             logging.info(f"Processing attribute constraint with ID: {attribute_constraint['id']}")
             for edge_key, edge in trapi_edges.items():
-                matching_attributes = [attribute for attribute in edge["attributes"]
-                                       if attribute["attribute_type_id"] == attribute_constraint["id"]]
+                matching_attributes_top_level = [attribute for attribute in edge["attributes"]
+                                                 if attribute["attribute_type_id"] == attribute_constraint["id"]]
+                matching_attributes_nested = [subattribute for attribute in edge["attributes"]
+                                              for subattribute in attribute.get("attributes", [])
+                                              if subattribute["attribute_type_id"] == attribute_constraint["id"]]
+                attributes_to_examine = matching_attributes_top_level + matching_attributes_nested
                 if not any(self._meets_constraint(attribute, attribute_constraint)
-                           for attribute in matching_attributes):
+                           for attribute in attributes_to_examine):
                     edge_keys_to_delete.add(edge_key)
 
         # Then actually delete the edges
@@ -1010,6 +1051,8 @@ class PloverDB:
                 meets_constraint = constraint_value in attribute_value
             elif constraint_val_is_list:
                 meets_constraint = attribute_value in constraint_value
+            else:
+                meets_constraint = attribute_value == constraint_value
         elif operator == "<":
             if attribute_val_is_list and constraint_val_is_list:
                 meets_constraint = any(attribute_val < constraint_val for attribute_val in attribute_value
@@ -1018,6 +1061,8 @@ class PloverDB:
                 meets_constraint = any(attribute_val < constraint_value for attribute_val in attribute_value)
             elif constraint_val_is_list:
                 meets_constraint = any(attribute_value < constraint_val for constraint_val in constraint_value)
+            else:
+                meets_constraint = attribute_value < constraint_value
         elif operator == ">":
             if attribute_val_is_list and constraint_val_is_list:
                 meets_constraint = any(attribute_val > constraint_val for attribute_val in attribute_value
@@ -1026,6 +1071,8 @@ class PloverDB:
                 meets_constraint = any(attribute_val > constraint_value for attribute_val in attribute_value)
             elif constraint_val_is_list:
                 meets_constraint = any(attribute_value > constraint_val for constraint_val in constraint_value)
+            else:
+                meets_constraint = attribute_value > constraint_value
         elif operator == "<=":
             if attribute_val_is_list and constraint_val_is_list:
                 meets_constraint = any(attribute_val <= constraint_val for attribute_val in attribute_value
@@ -1034,6 +1081,8 @@ class PloverDB:
                 meets_constraint = any(attribute_val <= constraint_value for attribute_val in attribute_value)
             elif constraint_val_is_list:
                 meets_constraint = any(attribute_value <= constraint_val for constraint_val in constraint_value)
+            else:
+                meets_constraint = attribute_value <= constraint_value
         elif operator == ">=":
             if attribute_val_is_list and constraint_val_is_list:
                 meets_constraint = any(attribute_val >= constraint_val for attribute_val in attribute_value
@@ -1042,6 +1091,8 @@ class PloverDB:
                 meets_constraint = any(attribute_val >= constraint_value for attribute_val in attribute_value)
             elif constraint_val_is_list:
                 meets_constraint = any(attribute_value >= constraint_val for constraint_val in constraint_value)
+            else:
+                meets_constraint = attribute_value >= constraint_value
         elif operator == "===":
             meets_constraint = attribute_value == constraint_value
         else:
