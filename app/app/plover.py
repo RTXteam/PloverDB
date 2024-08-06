@@ -141,14 +141,20 @@ class PloverDB:
                 zip_cols = [edge[property_name]
                             for property_name in self.kg_config["zip"]["supporting_studies"]["properties"]]
                 study_tuples = list(zip(*zip_cols))
-                edge["supporting_studies"] = [dict(zip(self.kg_config["zip"]["supporting_studies"]["properties"],
-                                                       study_tuple))
-                                              for study_tuple in study_tuples]
+                study_objs = [dict(zip(self.kg_config["zip"]["supporting_studies"]["properties"],
+                                       study_tuple))
+                              for study_tuple in study_tuples]
+                edge["supporting_studies"] = study_objs
+                # Clean up empty subattributes and delete subattributes from top level
                 for nested_property_name in self.kg_config["zip"]["supporting_studies"]["properties"]:
+                    for study_obj in edge["supporting_studies"]:
+                        if study_obj[nested_property_name] == "" or study_obj[nested_property_name] is None:
+                            del study_obj[nested_property_name]
                     del edge[nested_property_name]
-                # Add in one virtual property to each study
+                # Add in a virtual property to each study indicating whether the study tested an intervention
+                tested_intervention = "unsure" if edge["predicate"] == "biolink:mentioned_in_trials_for" else "yes"
                 for study_obj in edge["supporting_studies"]:
-                    study_obj["tested_intervention"] = "unsure" if edge["predicate"] == "biolink:mentioned_in_trials_for" else "yes"
+                    study_obj["tested_intervention"] = tested_intervention
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
