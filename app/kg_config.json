@@ -69,7 +69,7 @@
     "phase": {
       "attribute_type_id": "biolink:clinical_trial_phase"
     },
-    "status": {
+    "overall_status": {
       "attribute_type_id": "biolink:clinical_trial_status"
     },
     "enrollment": {
