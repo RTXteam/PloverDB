@@ -40,7 +40,7 @@ class PloverDB:
         with open(self.config_file_path) as config_file:
             self.kg_config = json.load(config_file)
 
-        self.is_test = self.kg_config["is_test"]
+        self.is_test = self.kg_config.get("is_test")
         self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
         self.local_edges_file_name = self.kg_config["local_edges_file_name"]
@@ -121,12 +121,23 @@ class PloverDB:
         else:
             with jsonlines.open(edges_path) as reader:
                 edges = [edge_obj for edge_obj in reader]
+
+        # Remove edge properties we don't care about (according to config file)
+        edge_properties_to_ignore = self.kg_config.get("ignore_edge_properties")
+        if edge_properties_to_ignore:
+            for edge in edges:
+                for ignore_property in edge_properties_to_ignore:
+                    if ignore_property in edge:
+                        del edge[ignore_property]
+
         # TODO: Should this info be added to edges TSV? This works for now..
         if self.kp_infores_curie == "infores:multiomics-clinicaltrials":
             for edge in edges:
                 edge["primary_knowledge_source"] = edge.get("primary_knowledge_source", "infores:clinicaltrials")
                 edge["secondary_knowledge_source"] = edge.get("secondary_knowledge_source", "infores:aact")
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
+                edge["max_research_phase"] = max(edge["phase"])
+                # Zip up supporting study columns to form an object per study
                 zip_cols = [edge[property_name]
                             for property_name in self.kg_config["zip"]["supporting_studies"]["properties"]]
                 study_tuples = list(zip(*zip_cols))
