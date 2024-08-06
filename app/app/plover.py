@@ -48,7 +48,8 @@ class PloverDB:
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
-        self.array_properties = set(self.kg_config["array_properties"])
+        self.array_properties = {property_name for zip_info in self.kg_config["zip"].values()
+                                 for property_name in zip_info["properties"]}
         self.kg2_qualified_predicate_property = "qualified_predicate"
         self.kg2_object_direction_property = "qualified_object_direction"  # Later this might use same as qedge?
         self.kg2_object_aspect_property = "qualified_object_aspect"  # Later this might use same as qedge?

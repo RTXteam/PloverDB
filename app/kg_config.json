@@ -10,8 +10,6 @@
   },
   "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hp"],
   "num_edges_per_answer_cutoff": 1000000,
-  "array_properties": ["nctid", "phase", "primary_purpose", "intervention_model", "time_perspective", "overall_status",
-                        "start_date", "enrollment", "enrollment_type", "age_range", "child", "adult", "older_adult"],
   "zip": {
     "supporting_studies": {
       "properties": ["nctid", "phase", "primary_purpose", "intervention_model", "time_perspective", "overall_status",
