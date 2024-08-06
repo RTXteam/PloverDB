@@ -40,6 +40,9 @@
     },
     "enrollment": {
       "attribute_type_id": "biolink:clinical_trial_study_size"
+    },
+    "tested_intervention": {
+      "attribute_type_id": "biolink:clinical_trial_tested_intervention"
     }
   }
 }

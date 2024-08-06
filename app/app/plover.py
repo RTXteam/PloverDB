@@ -146,6 +146,9 @@ class PloverDB:
                                               for study_tuple in study_tuples]
                 for nested_property_name in self.kg_config["zip"]["supporting_studies"]["properties"]:
                     del edge[nested_property_name]
+                # Add in one virtual property to each study
+                for study_obj in edge["supporting_studies"]:
+                    study_obj["tested_intervention"] = "unsure" if edge["predicate"] == "biolink:mentioned_in_trials_for" else "yes"
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
@@ -909,15 +912,15 @@ class PloverDB:
                 # Handle special 'zipped' properties (e.g., supporting_studies)
                 # Create an attribute for each item in this zipped up list, giving it subattributes as appropriate
                 leader_property_name = self.kg_config["zip"][property_name]["leader"]
-                for zipped_item in value:
+                for zipped_obj in value:
                     leader_attribute = self._get_trapi_edge_attribute(leader_property_name,
-                                                                      zipped_item[leader_property_name],
+                                                                      zipped_obj[leader_property_name],
                                                                       edge_biolink)
                     leader_attribute["attributes"] = []
-                    for zipped_property_name in self.kg_config["zip"][property_name]["properties"]:
+                    for zipped_property_name, zipped_value in zipped_obj.items():
                         if zipped_property_name != leader_property_name:
                             subattribute = self._get_trapi_edge_attribute(zipped_property_name,
-                                                                          zipped_item[zipped_property_name],
+                                                                          zipped_value,
                                                                           edge_biolink)
                             leader_attribute["attributes"].append(subattribute)
                     attributes.append(leader_attribute)
