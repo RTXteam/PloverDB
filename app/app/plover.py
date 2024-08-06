@@ -70,7 +70,8 @@ class PloverDB:
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
         self.core_node_properties = {"name", self.categories_property}
-        self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source",
+        self.core_edge_properties = {"subject", "object", "predicate",
+                                     "primary_knowledge_source", "secondary_knowledge_source", "source_record_urls",
                                      "qualified_object_aspect", "qualified_object_direction", "qualified_predicate"}
         self.properties_to_include_source_on = {"publications", "publications_info"}
         self.kp_infores_curie = self.kg_config["kp_infores_curie"]
