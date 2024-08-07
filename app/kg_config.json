@@ -38,6 +38,11 @@
       "attribute_source": "{kp_infores_curie}",
       "value_type_id": "metatype:Boolean"
     },
+    "subject_boxed_warning": {
+      "attribute_type_id": "subject_boxed_warning",
+      "attribute_source": "{kp_infores_curie}",
+      "value_type_id": "metatype:Boolean"
+    },
     "nctid": {
       "attribute_type_id": "biolink:supporting_study",
       "value_url": "https://clinicaltrials.gov/study/{****}?tab=table"
