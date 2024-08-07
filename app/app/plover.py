@@ -141,6 +141,7 @@ class PloverDB:
                 # Add in some edge properties that aren't in the TSVs
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
                 edge["max_research_phase"] = max(edge["phase"])
+                edge["elevate_to_prediction"] = False  # Won't always be false once integrate with CQS
                 if edge["predicate"] == "biolink:treats":
                     edge["clinical_approval_status"] = "approved_for_condition"
                 # Zip up supporting study columns to form an object per study
@@ -623,16 +624,20 @@ class PloverDB:
     def _load_column_value(self, col_value: any, col_name: str) -> any:
         # Load lists as actual lists, instead of strings
         if col_name in self.array_properties:
-            return [self._convert_string_to_number(val) for val in col_value.split(",")]
+            return [self._load_string_value(val) for val in col_value.split(",")]
         else:
-            return self._convert_string_to_number(col_value)
+            return self._load_string_value(col_value)
 
     @staticmethod
-    def _convert_string_to_number(some_string: str) -> any:
+    def _load_string_value(some_string: str) -> any:
         if some_string.isdigit():
             return int(some_string)
         elif some_string.replace(".", "").isdigit():
             return float(some_string)
+        elif some_string.lower() in {"t", "true"}:
+            return True
+        elif some_string.lower() in {"f", "false"}:
+            return False
         else:
             return some_string
 
@@ -960,7 +965,7 @@ class PloverDB:
         attribute = copy.deepcopy(self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name}))
         attribute["value"] = value
         if attribute.get("attribute_source"):
-            source_property_name = attribute["attribute_source"]
+            source_property_name = attribute["attribute_source"].strip("{").strip("}")
             if source_property_name == "kp_infores_curie":
                 attribute["attribute_source"] = self.kp_infores_curie
             else:

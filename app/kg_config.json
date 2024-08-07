@@ -19,17 +19,26 @@
   "trapi_attribute_map": {
     "knowledge_level": {
       "attribute_type_id": "biolink:knowledge_level",
-      "attribute_source": "kp_infores_curie"
+      "attribute_source": "{kp_infores_curie}"
     },
     "agent_type": {
       "attribute_type_id": "biolink:agent_type",
-      "attribute_source": "kp_infores_curie"
+      "attribute_source": "{kp_infores_curie}"
     },
     "max_research_phase": {
-      "attribute_type_id": "biolink:max_research_phase"
+      "attribute_type_id": "biolink:max_research_phase",
+      "attribute_source": "{kp_infores_curie}",
+      "value_type_id": "biolink:MaxResearchPhaseEnum"
     },
     "clinical_approval_status": {
-      "attribute_type_id": "biolink:clinical_approval_status"
+      "attribute_type_id": "biolink:clinical_approval_status",
+      "attribute_source": "{kp_infores_curie}",
+      "value_type_id": "biolink:ClinicalApprovalStatusEnum"
+    },
+    "elevate_to_prediction": {
+      "attribute_type_id": "elevate_to_prediction",
+      "attribute_source": "{kp_infores_curie}",
+      "value_type_id": "metatype:Boolean"
     },
     "nctid": {
       "attribute_type_id": "biolink:supporting_study",
