@@ -28,6 +28,9 @@
     "max_research_phase": {
       "attribute_type_id": "biolink:max_research_phase"
     },
+    "clinical_approval_status": {
+      "attribute_type_id": "biolink:clinical_approval_status"
+    },
     "nctid": {
       "attribute_type_id": "biolink:supporting_study",
       "value_url": "https://clinicaltrials.gov/study/{****}?tab=table"
@@ -44,5 +47,34 @@
     "tested_intervention": {
       "attribute_type_id": "biolink:clinical_trial_tested_intervention"
     }
+  },
+    "sources_template": {
+    "biolink:treats": [
+      {
+        "resource_id":  "infores:clinicaltrials",
+        "resource_role":  "supporting_data_source"
+      },
+      {
+        "resource_id":  "{kp_infores_curie}",
+        "resource_role":  "primary_knowledge_source",
+        "upstream_resource_ids":  ["infores:clinicaltrials"]
+      }
+    ],
+    "default": [
+      {
+        "resource_id":  "infores:clinicaltrials",
+        "resource_role":  "primary_knowledge_source"
+      },
+      {
+        "resource_id":  "infores:aact",
+        "resource_role":  "aggregator_knowledge_source",
+        "upstream_resource_ids":  ["infores:clinicaltrials"]
+      },
+      {
+        "resource_id":  "{kp_infores_curie}",
+        "resource_role":  "aggregator_knowledge_source",
+        "upstream_resource_ids":  ["infores:aact"]
+      }
+    ]
   }
 }

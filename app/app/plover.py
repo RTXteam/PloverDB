@@ -73,11 +73,16 @@ class PloverDB:
         self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
                                      self.qedge_object_aspect_property}
         self.core_node_properties = {"name", self.categories_property}
-        self.core_edge_properties = {"subject", "object", "predicate",
-                                     "primary_knowledge_source", "secondary_knowledge_source", "source_record_urls",
+        self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source", "source_record_urls",
                                      "qualified_object_aspect", "qualified_object_direction", "qualified_predicate"}
+        self.trial_phases_map = {0: "not_provided", 0.5: "pre_clinical_research_phase",
+                            1: "clinical_trial_phase_1", 2: "clinical_trial_phase_2",
+                            3: "clinical_trial_phase_3", 4: "clinical_trial_phase_4",
+                            1.5: "clinical_trial_phase_1_to_2", 2.5: "clinical_trial_phase_2_to_3"}
+        self.trial_phases_map_reversed = self._reverse_dictionary(self.trial_phases_map)
         self.properties_to_include_source_on = {"publications", "publications_info"}
         self.kp_infores_curie = self.kg_config["kp_infores_curie"]
+        self.edge_sources = self._load_edge_sources(self.kg_config)
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -133,10 +138,11 @@ class PloverDB:
         # TODO: Should this info be added to edges TSV? This works for now..
         if self.kp_infores_curie == "infores:multiomics-clinicaltrials":
             for edge in edges:
-                edge["primary_knowledge_source"] = edge.get("primary_knowledge_source", "infores:clinicaltrials")
-                edge["secondary_knowledge_source"] = edge.get("secondary_knowledge_source", "infores:aact")
+                # Add in some edge properties that aren't in the TSVs
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
                 edge["max_research_phase"] = max(edge["phase"])
+                if edge["predicate"] == "biolink:treats":
+                    edge["clinical_approval_status"] = "approved_for_condition"
                 # Zip up supporting study columns to form an object per study
                 zip_cols = [edge[property_name]
                             for property_name in self.kg_config["zip"]["supporting_studies"]["properties"]]
@@ -651,6 +657,20 @@ class PloverDB:
 
         return equiv_id_map
 
+    def _load_edge_sources(self, kg_config: dict):
+        sources_template = kg_config.get("sources_template")
+        if sources_template:
+            for predicate, sources_shell in sources_template.items():
+                for source_shell in sources_shell:
+                    source_shell["resource_id"] = source_shell["resource_id"].replace("{kp_infores_curie}",
+                                                                                      self.kp_infores_curie)
+                    if source_shell.get("upstream_resource_ids"):
+                        edited_upstream_ids = [resource_id.replace("{kp_infores_curie}", self.kp_infores_curie)
+                                               for resource_id in source_shell["upstream_resource_ids"]]
+                        source_shell["upstream_resource_ids"] = edited_upstream_ids
+            logging.info(f"After loading, sources template is: {sources_template}")
+        return sources_template
+
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> any:
@@ -850,35 +870,35 @@ class PloverDB:
         return trapi_node
 
     def _convert_edge_to_trapi_format(self, edge_biolink: dict) -> dict:
-        primary_ks = edge_biolink["primary_knowledge_source"]
-        source_primary = {
-            "resource_id": primary_ks,
-            "resource_role": "primary_knowledge_source"
-        }
-        # Handle secondary source if present
-        if edge_biolink.get("secondary_knowledge_source"):
-            source_secondary = {
-                "resource_id": edge_biolink["secondary_knowledge_source"],
-                "resource_role": "aggregator_knowledge_source",
-                "upstream_resource_ids": [primary_ks]
-            }
-            sources = [source_primary, source_secondary]
+        if self.kg_config.get("sources_template"):
+            sources_template = self.kg_config["sources_template"]
+            if edge_biolink["predicate"] in sources_template:
+                sources = sources_template[edge_biolink["predicate"]]
+            else:
+                sources = sources_template["default"]
         else:
-            sources = [source_primary]
-        # Create a source for this KP
-        source_kp = {
-            "resource_id": self.kp_infores_curie,
-            "resource_role": "aggregator_knowledge_source",
-            "upstream_resource_ids": [sources[-1]["resource_id"]]
-        }
+            # Craft sources based on primary knowledge source on edges
+            primary_ks = edge_biolink["primary_knowledge_source"]
+            source_primary = {
+                "resource_id": primary_ks,
+                "resource_role": "primary_knowledge_source"
+            }
+            source_kp = {
+                "resource_id": self.kp_infores_curie,
+                "resource_role": "aggregator_knowledge_source",
+                "upstream_resource_ids": [primary_ks["resource_id"]]
+            }
+            sources = [source_primary, source_kp]
+
         if edge_biolink.get("source_record_urls"):
+            source_kp = next(source for source in sources if source["resource_id"] == self.kp_infores_curie)
             source_kp["source_record_urls"] = edge_biolink["source_record_urls"]
 
         trapi_edge = {
             "subject": edge_biolink["subject"],
             "object": edge_biolink["object"],
             "predicate": edge_biolink["predicate"],
-            "sources": sources + [source_kp],
+            "sources": sources,
             "attributes": self._get_trapi_edge_attributes(edge_biolink)
         }
 
