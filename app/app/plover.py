@@ -76,9 +76,9 @@ class PloverDB:
         self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source", "source_record_urls",
                                      "qualified_object_aspect", "qualified_object_direction", "qualified_predicate"}
         self.trial_phases_map = {0: "not_provided", 0.5: "pre_clinical_research_phase",
-                            1: "clinical_trial_phase_1", 2: "clinical_trial_phase_2",
-                            3: "clinical_trial_phase_3", 4: "clinical_trial_phase_4",
-                            1.5: "clinical_trial_phase_1_to_2", 2.5: "clinical_trial_phase_2_to_3"}
+                                 1: "clinical_trial_phase_1", 2: "clinical_trial_phase_2",
+                                 3: "clinical_trial_phase_3", 4: "clinical_trial_phase_4",
+                                 1.5: "clinical_trial_phase_1_to_2", 2.5: "clinical_trial_phase_2_to_3"}
         self.trial_phases_map_reversed = self._reverse_dictionary(self.trial_phases_map)
         self.properties_to_include_source_on = {"publications", "publications_info"}
         self.kp_infores_curie = self.kg_config["kp_infores_curie"]
@@ -140,7 +140,7 @@ class PloverDB:
             for edge in edges:
                 # Add in some edge properties that aren't in the TSVs
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
-                edge["max_research_phase"] = max(edge["phase"])
+                edge["max_research_phase"] = self.trial_phases_map[max(edge["phase"])]
                 edge["elevate_to_prediction"] = False  # Won't always be false once integrate with CQS
                 if edge["predicate"] == "biolink:treats":
                     edge["clinical_approval_status"] = "approved_for_condition"
@@ -158,10 +158,11 @@ class PloverDB:
                         if study_obj[nested_property_name] == "" or study_obj[nested_property_name] is None:
                             del study_obj[nested_property_name]
                     del edge[nested_property_name]
-                # Add in a virtual property to each study indicating whether the study tested an intervention
+                # Add/adjust a couple properties on each supporting study
                 tested_intervention = "unsure" if edge["predicate"] == "biolink:mentioned_in_trials_for" else "yes"
                 for study_obj in edge["supporting_studies"]:
                     study_obj["tested_intervention"] = tested_intervention
+                    study_obj["phase"] = self.trial_phases_map[study_obj["phase"]]
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
@@ -1080,16 +1081,25 @@ class PloverDB:
                 del trapi_edges[edge_key]
         return trapi_edges
 
-    @staticmethod
-    def _meets_constraint(edge_attribute: dict, attribute_constraint: dict) -> bool:
+    def _meets_constraint(self, edge_attribute: dict, attribute_constraint: dict) -> bool:
         attribute_value = edge_attribute["value"]
         constraint_value = attribute_constraint["value"]
         operator = attribute_constraint["operator"]
         attribute_val_is_list = isinstance(attribute_value, list)
         constraint_val_is_list = isinstance(constraint_value, list)
+        # Convert clinical trial phase enum to numbers (internally) for easier comparison
+        if attribute_val_is_list:
+            attribute_value = [self.trial_phases_map_reversed.get(val, val) for val in attribute_value]
+        else:
+            attribute_value = self.trial_phases_map_reversed.get(attribute_value, attribute_value)
+        if constraint_val_is_list:
+            constraint_value = [self.trial_phases_map_reversed.get(val, val) for val in constraint_value]
+        else:
+            constraint_value = self.trial_phases_map_reversed.get(constraint_value, constraint_value)
+        logging.info(f"After editing for trial phase enums, attr value is {attribute_value} and constraint value is {constraint_value}")
         meets_constraint = True
         # TODO: Add 'matches'? throw error if unrecognized?
-        # First figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
+        # Now figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
         if operator == "==":
             if attribute_val_is_list and constraint_val_is_list:
                 meets_constraint = set(attribute_value).intersection(set(constraint_value)) != set()
