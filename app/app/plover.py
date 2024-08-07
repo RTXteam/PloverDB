@@ -877,7 +877,7 @@ class PloverDB:
 
     def _convert_edge_to_trapi_format(self, edge_biolink: dict) -> dict:
         if self.kg_config.get("sources_template"):
-            sources_template = self.kg_config["sources_template"]
+            sources_template = copy.deepcopy(self.edge_sources)  # Need to copy because source urls change per edge
             if edge_biolink["predicate"] in sources_template:
                 sources = sources_template[edge_biolink["predicate"]]
             else:
@@ -1096,7 +1096,6 @@ class PloverDB:
             constraint_value = [self.trial_phases_map_reversed.get(val, val) for val in constraint_value]
         else:
             constraint_value = self.trial_phases_map_reversed.get(constraint_value, constraint_value)
-        logging.info(f"After editing for trial phase enums, attr value is {attribute_value} and constraint value is {constraint_value}")
         meets_constraint = True
         # TODO: Add 'matches'? throw error if unrecognized?
         # Now figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
