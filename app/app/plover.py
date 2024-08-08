@@ -141,7 +141,7 @@ class PloverDB:
                 # Add in some edge properties that aren't in the TSVs
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
                 edge["max_research_phase"] = self.trial_phases_map[max(edge["phase"])]
-                edge["elevate_to_prediction"] = False  # Won't always be false once integrate with CQS
+                edge["elevate_to_prediction"] = edge.get("elevate_to_prediction", False)
                 if edge["predicate"] == "biolink:treats":
                     edge["clinical_approval_status"] = "approved_for_condition"
                 # Zip up supporting study columns to form an object per study
