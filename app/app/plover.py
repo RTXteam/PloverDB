@@ -477,23 +477,27 @@ class PloverDB:
             logging.info(f"Found {len(subclass_edges)} subclass_of edges in the graph. Will use these for concept "
                          f"subclass reasoning.")
         else:
-            logging.info(f"No subclass_of edges detected in the graph. Will download some based on kg_config.")
-            subclass_edges_remote_file_url = self.kg_config["remote_subclass_edges_file_url"]
-            subclass_edges_file_name_unzipped = subclass_edges_remote_file_url.split("/")[-1].strip(".gz")
-            subclass_edges_path = f"{SCRIPT_DIR}/../{subclass_edges_file_name_unzipped}"
-            self._download_and_unzip_remote_file(subclass_edges_remote_file_url, subclass_edges_path)
-            logging.info(f"Loading subclass edges and filtering out those not involving our nodes..")
-            with jsonlines.open(subclass_edges_path) as reader:
-                # TODO: Make smarter... need to be connected, not necessarily directly? and add to preferred id map?
-                subclass_edges = [edge_obj for edge_obj in reader
-                                  if edge_obj["subject"] in self.preferred_id_map
-                                  and edge_obj["object"] in self.preferred_id_map]
-            logging.info(f"Identified {len(subclass_edges)} subclass edges linking to equivalent IDs of our nodes")
-            logging.info(f"Remapping those edges to use our preferred identifiers..")
-            for edge in subclass_edges:
-                edge["subject"] = self.preferred_id_map[edge["subject"]]
-                edge["object"] = self.preferred_id_map[edge["object"]]
-            subprocess.call(["rm", "-f", subclass_edges_path])
+            if self.kg_config.get("remote_subclass_edges_file_url"):
+                logging.info(f"No subclass_of edges detected in the graph. Will download some based on kg_config.")
+                subclass_edges_remote_file_url = self.kg_config["remote_subclass_edges_file_url"]
+                subclass_edges_file_name_unzipped = subclass_edges_remote_file_url.split("/")[-1].strip(".gz")
+                subclass_edges_path = f"{SCRIPT_DIR}/../{subclass_edges_file_name_unzipped}"
+                self._download_and_unzip_remote_file(subclass_edges_remote_file_url, subclass_edges_path)
+                logging.info(f"Loading subclass edges and filtering out those not involving our nodes..")
+                with jsonlines.open(subclass_edges_path) as reader:
+                    # TODO: Make smarter... need to be connected, not necessarily directly? and add to preferred id map?
+                    subclass_edges = [edge_obj for edge_obj in reader
+                                      if edge_obj["subject"] in self.preferred_id_map
+                                      and edge_obj["object"] in self.preferred_id_map]
+                logging.info(f"Identified {len(subclass_edges)} subclass edges linking to equivalent IDs of our nodes")
+                logging.info(f"Remapping those edges to use our preferred identifiers..")
+                for edge in subclass_edges:
+                    edge["subject"] = self.preferred_id_map[edge["subject"]]
+                    edge["object"] = self.preferred_id_map[edge["object"]]
+                subprocess.call(["rm", "-f", subclass_edges_path])
+            else:
+                logging.warning(f"No url to a subclass edges file provided in kg_config. Will proceed without subclass "
+                                f"concept reasoning.")
 
         if self.kg_config.get("subclass_sources"):
             subclass_sources = set(self.kg_config["subclass_sources"])
