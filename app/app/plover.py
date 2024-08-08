@@ -499,7 +499,7 @@ class PloverDB:
             subclass_sources = set(self.kg_config["subclass_sources"])
             logging.info(f"Filtering subclass edges to only those from sources specified in kg config: "
                          f"{subclass_sources}")
-            subclass_edges = [edge for edge in self.edge_lookup_map.values()
+            subclass_edges = [edge for edge in subclass_edges
                               if edge.get("primary_knowledge_source") in subclass_sources]
 
         # Deduplicate subclass edges (now primary source doesn't matter since we've already filtered on that)
