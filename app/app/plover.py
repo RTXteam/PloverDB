@@ -300,23 +300,9 @@ class PloverDB:
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
 
-        # Build the subclass_of index as needed
-        if self.kg_config.get("subclass_sources"):
-            # First narrow down the subclass edges we'll use (to reduce inaccuracies/cycles)
-            subclass_sources = set(self.kg_config["subclass_sources"])
-            subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
-            subclass_edges = [edge for edge in self.edge_lookup_map.values()
-                              if edge[self.edge_predicate_property] in subclass_predicates and
-                              edge.get("primary_knowledge_source") in subclass_sources]
-            if subclass_edges:
-                logging.info(f"Found {len(subclass_edges)} subclass_of edges in the graph to use.")
-            else:
-                logging.info(f"No subclass_of edges detected in the graph. Will download some from KG2.")
-                # TODO: Add this..
-                subclass_edges = []
-            self._build_subclass_index(subclass_edges)
-        else:
-            logging.info(f"Not building subclass_of index since no subclass sources were specified in kg_config.json")
+        # Build the subclass_of index
+        subclass_edges = self._get_subclass_edges()
+        self._build_subclass_index(subclass_edges)
 
         # Create reversed category/predicate maps now that we're done building those maps
         self.category_map_reversed = self._reverse_dictionary(self.category_map)
@@ -483,6 +469,48 @@ class PloverDB:
                         self.conglomerate_predicate_descendant_index[ancestor].add(conglomerate_predicate)
                 conglomerate_predicates_already_seen.add(conglomerate_predicate)
 
+    def _get_subclass_edges(self) -> List[dict]:
+        subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
+        subclass_edges = [edge for edge in self.edge_lookup_map.values()
+                          if edge[self.edge_predicate_property] in subclass_predicates]
+        if subclass_edges:
+            logging.info(f"Found {len(subclass_edges)} subclass_of edges in the graph. Will use these for concept "
+                         f"subclass reasoning.")
+        else:
+            logging.info(f"No subclass_of edges detected in the graph. Will download some based on kg_config.")
+            subclass_edges_remote_file_url = self.kg_config["remote_subclass_edges_file_url"]
+            subclass_edges_file_name_unzipped = subclass_edges_remote_file_url.split("/")[-1].strip(".gz")
+            subclass_edges_path = f"{SCRIPT_DIR}/../{subclass_edges_file_name_unzipped}"
+            self._download_and_unzip_remote_file(subclass_edges_remote_file_url, subclass_edges_path)
+            logging.info(f"Loading subclass edges and filtering out those not involving our nodes..")
+            with jsonlines.open(subclass_edges_path) as reader:
+                # TODO: Make smarter... need to be connected, not necessarily directly? and add to preferred id map?
+                subclass_edges = [edge_obj for edge_obj in reader
+                                  if edge_obj["subject"] in self.preferred_id_map
+                                  and edge_obj["object"] in self.preferred_id_map]
+            logging.info(f"Identified {len(subclass_edges)} subclass edges linking to equivalent IDs of our nodes")
+            logging.info(f"Remapping those edges to use our preferred identifiers..")
+            for edge in subclass_edges:
+                edge["subject"] = self.preferred_id_map[edge["subject"]]
+                edge["object"] = self.preferred_id_map[edge["object"]]
+            subprocess.call(["rm", "-f", subclass_edges_path])
+
+        if self.kg_config.get("subclass_sources"):
+            subclass_sources = set(self.kg_config["subclass_sources"])
+            logging.info(f"Filtering subclass edges to only those from sources specified in kg config: "
+                         f"{subclass_sources}")
+            subclass_edges = [edge for edge in self.edge_lookup_map.values()
+                              if edge.get("primary_knowledge_source") in subclass_sources]
+
+        # Deduplicate subclass edges (now primary source doesn't matter since we've already filtered on that)
+        logging.info(f"Deduplicating subclass edges based on triples..")
+        deduplicated_subclass_edges_map = {f"{edge['subject']}--{edge['predicate']}--{edge['object']}": edge
+                                           for edge in subclass_edges}
+        subclass_edges = list(deduplicated_subclass_edges_map.values())
+        logging.info(f"In the end, have {len(subclass_edges)} subclass triples to base concept subclass reasoning on")
+
+        return subclass_edges
+
     def _build_subclass_index(self, subclass_edges: List[dict]):
         logging.info(f"Building subclass_of index using {len(subclass_edges)} subclass_of edges..")
         start = time.time()
@@ -492,8 +520,6 @@ class PloverDB:
                              problem_nodes: Set[str]):
             if node_id not in parent_to_descendants_map:
                 if recursion_depth > 20:
-                    logging.info(f"Hit recursion depth of 20 for node {node_id}; discarding this "
-                                 f"lineage (will write to problem file)")
                     problem_nodes.add(node_id)
                 else:
                     for child_id in parent_to_child_map.get(node_id, []):
@@ -529,6 +555,7 @@ class PloverDB:
             self.subclass_index = parent_to_descendants_dict
 
             # Print out/save some useful stats
+            logging.info(f"Hit recursion depth for {len(problem_nodes)} nodes. Truncated their lineages.")
             parent_to_num_descendants = {node_id: len(descendants) for node_id, descendants in parent_to_descendants_dict.items()}
             descendant_counts = list(parent_to_num_descendants.values())
             prefix_counts = defaultdict(int)
