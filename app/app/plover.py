@@ -712,7 +712,7 @@ class PloverDB:
 
     def answer_query(self, trapi_query: dict) -> any:
         logging.info(f"TRAPI query is: {trapi_query}")
-        trapi_qg = trapi_query["message"]["query_graph"]
+        trapi_qg = copy.deepcopy(trapi_query["message"]["query_graph"])
         # Before doing anything else, convert any node ids to equivalents we recognize
         for qnode_key, qnode in trapi_qg["nodes"].items():
             qnode_ids = qnode.get("ids")
@@ -843,7 +843,7 @@ class PloverDB:
                                                                input_qnode_key,
                                                                output_qnode_key,
                                                                qedge_key,
-                                                               trapi_qg,
+                                                               trapi_query["message"]["query_graph"],
                                                                descendant_to_query_id_map)
         logging.info(f"Done with query")
         return trapi_response
