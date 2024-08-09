@@ -219,6 +219,14 @@ class PloverDB:
         logging.info(f"Done loading edge lookup map; there are {len(self.edge_lookup_map)} edges. "
                      f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
 
+        if self.kg_config.get("normalize"):
+            # Normalize the graph to eliminate redundant nodes # TODO: redundant edges??
+            self.node_lookup_map = {self.preferred_id_map[node_id]: node
+                                    for node_id, node in self.node_lookup_map.items()}
+            for edge in self.edge_lookup_map.values():
+                edge["subject"] = self.preferred_id_map[edge["subject"]]
+                edge["object"] = self.preferred_id_map[edge["object"]]
+
         # Convert all edges to their canonical predicate form; correct missing biolink prefixes
         logging.info(f"Converting edges to their canonical form")
         for edge_id, edge in self.edge_lookup_map.items():

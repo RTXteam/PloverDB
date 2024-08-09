@@ -10,6 +10,7 @@
   "remote_subclass_edges_file_url": "https://kg2webhost.rtx.ai/kg2.10.0pre_subclass_edges_manual_agent.jsonl.gz",
   "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:ncit"],
   "num_edges_per_answer_cutoff": 1000000,
+  "normalize": true,
   "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
   "zip": {
     "supporting_studies": {
