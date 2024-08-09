@@ -220,9 +220,8 @@ class PloverDB:
                      f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
 
         if self.kg_config.get("normalize"):
-            # Normalize the graph to eliminate redundant nodes # TODO: redundant edges??
-            self.node_lookup_map = {self.preferred_id_map[node_id]: node
-                                    for node_id, node in self.node_lookup_map.items()}
+            # Normalize the graph so it only uses one node ID per distinct concept # TODO: redundant edges??
+            # Note don't need to remap nodes; all equivalent nodes will still be present there
             for edge in self.edge_lookup_map.values():
                 edge["subject"] = self.preferred_id_map[edge["subject"]]
                 edge["object"] = self.preferred_id_map[edge["object"]]
