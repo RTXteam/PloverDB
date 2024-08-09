@@ -220,11 +220,32 @@ class PloverDB:
                      f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
 
         if self.kg_config.get("normalize"):
-            # Normalize the graph so it only uses one node ID per distinct concept # TODO: redundant edges??
+            # Normalize the graph so it only uses one node ID per distinct concept
             # Note don't need to remap nodes; all equivalent nodes will still be present there
+            deduplicated_edges_map = dict()
             for edge in self.edge_lookup_map.values():
                 edge["subject"] = self.preferred_id_map[edge["subject"]]
                 edge["object"] = self.preferred_id_map[edge["object"]]
+                edge_key = (f'{edge["subject"]}--{edge["predicate"]}--{edge["object"]}--'
+                            f'{edge.get("primary_knowledge_source", "")}')
+                if edge_key in deduplicated_edges_map:
+                    # Add this edge's array properties to the existing merged edge
+                    merged_edge = deduplicated_edges_map[edge_key]
+                    for property_name, value in edge.items():
+                        if property_name in merged_edge:
+                            if isinstance(value, list):
+                                merged_edge[property_name] = merged_edge[property_name] + value
+                        else:
+                            merged_edge[property_name] = value
+                else:
+                    deduplicated_edges_map[edge_key] = edge
+            # Then eliminate any potential redundant study objs
+            for deduplicated_edge in deduplicated_edges_map.values():
+                if deduplicated_edge.get("supporting_studies"):
+                    study_objs_by_nctids = {study_obj["nctid"]: study_obj
+                                            for study_obj in deduplicated_edge["supporting_studies"]}
+                    deduplicated_edge["supporting_studies"] = list(study_objs_by_nctids.values())
+            self.edge_lookup_map = deduplicated_edges_map
 
         # Convert all edges to their canonical predicate form; correct missing biolink prefixes
         logging.info(f"Converting edges to their canonical form")
