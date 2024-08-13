@@ -46,6 +46,7 @@ class PloverDB:
         self.local_edges_file_name = self.kg_config["local_edges_file_name"]
         self.local_nodes_file_name = self.kg_config["local_nodes_file_name"]
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
+        self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples.json"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.array_properties = {property_name for zip_info in self.kg_config["zip"].values()
@@ -340,6 +341,7 @@ class PloverDB:
         logging.info(f"Starting to build meta knowledge graph..")
         # First identify unique meta edges
         meta_triples_map = defaultdict(set)
+        test_triples_map = dict()
         for edge in self.edge_lookup_map.values():
             subj_categories = node_to_category_labels_map[edge["subject"]]
             obj_categories = node_to_category_labels_map[edge["object"]]
@@ -348,6 +350,13 @@ class PloverDB:
                 for obj_category in obj_categories:
                     meta_triple = (subj_category, edge["predicate"], obj_category)
                     meta_triples_map[meta_triple] = meta_triples_map[meta_triple].union(edge_attribute_names)
+                    # Create one test triple for each meta edge (basically an example edge)
+                    if meta_triple not in test_triples_map:
+                        test_triples_map[meta_triple] = {"subject_category": self.category_map_reversed[subj_category],
+                                                         "object_category": self.category_map_reversed[obj_category],
+                                                         "predicate": edge["predicate"],
+                                                         "subject_id": edge["subject"],
+                                                         "object_id": edge["object"]}
         meta_edges = [{"subject": self.category_map_reversed[triple[0]],
                        "predicate": triple[1],
                        "object": self.category_map_reversed[triple[2]],
@@ -367,6 +376,12 @@ class PloverDB:
                       for category, prefixes in category_to_prefixes_map.items()}
         logging.info(f"Identified {len(meta_nodes)} different meta nodes")
         self.meta_kg = {"nodes": meta_nodes, "edges": meta_edges}
+        # Then save test triples file
+        test_triples_dict = {"edges": list(test_triples_map.values())}
+        logging.info(f"Saving test triples file to {self.sri_test_triples_path}; includes "
+                     f"{len(test_triples_dict['edges'])} test triples")
+        with open(self.sri_test_triples_path, "w+") as test_triples_file:
+            json.dump(test_triples_dict, test_triples_file)
 
         # Save all indexes in a big pickle
         logging.info(f"Saving indexes to {self.pickle_index_path}..")

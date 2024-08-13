@@ -28,7 +28,7 @@ info:
     pathfinderquery: false
     operations:
       - lookup
-    test_data_location: ADD-URL-THAT-RESOLVES-TO-SRI-TESTING-HARNESS-DATA
+    test_data_location: https://ctkp.rtx.ai:9990/sri_test_triples
     externalDocs:
       description: >-
         The values for version are restricted according to the regex in

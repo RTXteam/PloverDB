@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import time
@@ -10,6 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import plover
+
+
+SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
 
 app = FastAPI()
@@ -83,3 +87,10 @@ def run_get_logs():
     except Exception as e:
         response = "handle_error(e) - need to fix"  # TODO: fix
     return response
+
+
+@app.get('/sri_test_triples')
+def get_sri_test_triples():
+    with open(plover_obj.sri_test_triples_path, "r") as sri_test_file:
+        sri_test_triples = json.load(sri_test_file)
+    return sri_test_triples
