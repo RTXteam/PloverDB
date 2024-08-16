@@ -1341,9 +1341,11 @@ class PloverDB:
         else:
             qedge_predicates_raw = self._convert_to_set(qedge.get("predicates"))
             qedge_predicates_raw = {self.bh.get_root_predicate()} if not qedge_predicates_raw else qedge_predicates_raw
-            qedge_predicates = self.bh.replace_mixins_with_direct_mappings(qedge_predicates_raw)
+            # Include both proper and mixin predicates, but also map mixins to their proper predicates (if any exist)
+            qedge_predicates_proper = self.bh.replace_mixins_with_direct_mappings(qedge_predicates_raw)
+            qedge_predicates = qedge_predicates_raw.union(qedge_predicates_proper)
             qedge_predicates_expanded = {descendant_predicate for qg_predicate in qedge_predicates
-                                         for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=False)}
+                                         for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=True)}
         # Convert english categories/predicates/conglomerate predicates into integer IDs (helps save space)
         qedge_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
                                         self._consider_bidirectional(predicate, qedge_predicates)

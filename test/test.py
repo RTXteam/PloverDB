@@ -5,9 +5,9 @@ import pytest
 import requests
 from typing import Dict, Union, List
 
-ASPIRIN_CURIE = "PUBCHEM.COMPOUND:2244"
-TICLOPIDINE_CURIE = "PUBCHEM.COMPOUND:5472"
-ACETAMINOPHEN_CURIE = "PUBCHEM.COMPOUND:1983"
+ASPIRIN_CURIE = "CHEBI:15365"
+TICLOPIDINE_CURIE = "CHEBI:9588"
+ACETAMINOPHEN_CURIE = "CHEBI:46195"
 PROC_CURIE = "NCBIGene:5624"
 DIETHYLSTILBESTROL_CURIE = "PUBCHEM.COMPOUND:448537"
 METHYLPREDNISOLONE_CURIE = "PUBCHEM.COMPOUND:23663977"
@@ -351,7 +351,7 @@ def test_12b():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -375,7 +375,7 @@ def test_12c():
             "e00": {
                 "subject": "n01",
                 "object": "n00",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -404,6 +404,84 @@ def test_14():
     }
     kg = _run_query(query_subclass)
     assert len(kg["nodes"]["n00"]) > 1
+    query_no_subclass = {
+        "include_metadata": True,
+        "edges": {
+        },
+        "nodes": {
+            "n00": {
+                "ids": [DIABETES_CURIE]  # Diabetes mellitus
+            }
+        }
+    }
+    kg = _run_query(query_no_subclass)
+    assert len(kg["nodes"]["n00"]) == 1
+
+
+def test_15():
+    # Test predicate symmetry enforcement
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [ACETAMINOPHEN_CURIE]
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        }
+    }
+    kg = _run_query(query)
+    assert kg["nodes"]["n01"]
+
+    query_respecting_symmetry = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [ACETAMINOPHEN_CURIE]
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "respect_predicate_symmetry": True
+    }
+    kg_symmetry = _run_query(query_respecting_symmetry)
+    assert kg_symmetry["nodes"]["n01"]
+
+    query_symmetry_backwards = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [ACETAMINOPHEN_CURIE]
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "respect_predicate_symmetry": True
+    }
+    kg_symmetry_backwards = _run_query(query_symmetry_backwards)
+    assert not kg_symmetry_backwards["nodes"]["n01"]
+    assert len(kg_symmetry["nodes"]["n01"]) == len(kg["nodes"]["n01"])
 
 
 def test_16():
@@ -430,37 +508,17 @@ def test_16():
 
 def test_17():
     # Test canonical predicate handling
-    query_non_canonical = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00",
-                "predicates": ["biolink:treated_by"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        }
-    }
-    kg_non_canonical = _run_query(query_non_canonical)
-    assert kg_non_canonical["nodes"]["n01"]
-
     query_canonical = {
         "edges": {
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
             "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -468,7 +526,27 @@ def test_17():
         }
     }
     kg_canonical = _run_query(query_canonical)
-    assert kg_canonical["nodes"]["n01"]
+    assert len(kg_canonical["nodes"]["n01"])
+
+    query_non_canonical = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:subject_of_treatment_application_or_study_for_treatment_by"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        }
+    }
+    kg_non_canonical = _run_query(query_non_canonical)
+    assert len(kg_non_canonical["nodes"]["n01"])
 
     assert len(kg_canonical["nodes"]["n01"]) == len(kg_non_canonical["nodes"]["n01"])
 
@@ -574,7 +652,7 @@ def test_21():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -605,7 +683,7 @@ def test_22():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["CHEBI:90879"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -781,7 +859,7 @@ def test_28():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -811,7 +889,7 @@ def test_29():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -839,7 +917,7 @@ def test_30():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["CHEBI:90879"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -857,7 +935,7 @@ def test_31():
             "e00": {
                 "subject": "n01",
                 "object": "n00",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
@@ -925,6 +1003,43 @@ def test_32():
 
     assert len(results_issetfalse) > len(results_subjectset) > len(results_objectset) > len(results_issettrue)
 
+def test_undirected_related_to_for_underlying_treats_edge():
+    """
+    Make sure that when a related_to query comes in asking for an edge between two concepts that are connected
+    only by a treats (or treats-ish) edge in the underlying graph, the query is answered in an undirected fashion.
+    """
+    query = {
+        "edges": {
+            "e00_1": {
+                "object": "n00",
+                "subject": "n00_1",
+                "predicates": ["biolink:related_to"]
+            }
+        },
+        "include_metadata": True,
+        "nodes": {
+            "n00": {
+                "ids": [
+                    "UMLS:C2931133"
+                ]
+            },
+            "n00_1": {
+                "ids": [
+                    "UMLS:C0279936"
+                ]
+            }
+        }
+    }
+    kg_1 = _run_query(query)
+    assert kg_1["nodes"]["n00"] and kg_1["nodes"]["n00_1"]
+    # Swap subject/object and make sure we get the same answers
+    query["edges"]["e00_1"]["subject"] = "n00"
+    query["edges"]["e00_1"]["object"] = "n00_1"
+    kg_2 = _run_query(query)
+    assert kg_2["nodes"]["n00"] and kg_2["nodes"]["n00_1"]
+    assert len(kg_1["edges"]["e00_1"]) == len(kg_2["edges"]["e00_1"])
+    assert len(kg_1["nodes"]["n00"]) == len(kg_2["nodes"]["n00_1"])
+    assert len(kg_1["nodes"]["n00_1"]) == len(kg_2["nodes"]["n00"])
 
 def test_version():
     # Print out the version of the KG2c being tested
