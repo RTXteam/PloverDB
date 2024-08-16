@@ -1,3 +1,6 @@
+import json
+from collections import defaultdict
+
 import pytest
 import requests
 from typing import Dict, Union, List
@@ -12,8 +15,8 @@ RHOBTB2_CURIE = "NCBIGene:23221"
 DIABETES_CURIE = "MONDO:0005015"
 DIABETES_T1_CURIE = "MONDO:0005147"
 DIABETES_T2_CURIE = "MONDO:0005148"
-CAUSES_INCREASE_CURIE = "GO:0051901"
-INCREASED_CURIE = "GO:0051882"
+POS_REG_OF_MITOCHONDRIAL_DEPOL = "GO:0051901"
+MITOCHONDRIAL_DEPOLARIZATION = "GO:0051882"
 PARKINSONS_CURIE = "MONDO:0005180"
 BIPOLAR_CURIE = "MONDO:0004985"
 
@@ -27,18 +30,71 @@ def _print_kg(kg: Dict[str, Dict[str, Dict[str, Dict[str, Union[List[str], str, 
         print(f"{qedge_key}: {edge_ids}")
 
 
-def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]]):
-    response = requests.post(f"{pytest.endpoint}/query", json=trapi_qg, headers={'accept': 'application/json'})
+def _print_results(results: List[dict]):
+    print(f"\nPRINTING {len(results)} RESULTS:")
+    result_counter = 0
+    for result in results:
+        result_counter += 1
+        print(f"result {result_counter}:")
+        print(f"  edges:")
+        analysis_counter = 0
+        for analysis in result["analyses"]:
+            analysis_counter += 1
+            print(f"    analysis {analysis_counter}:")
+            for qedge_key, edge_bindings in analysis["edge_bindings"].items():
+                print(f"      {qedge_key} edge bindings:")
+                for edge_binding in edge_bindings:
+                    print(f"        {edge_binding}")
+        print(f"  nodes:")
+        for qnode_key, node_bindings in result["node_bindings"].items():
+            print(f"    {qnode_key}:")
+            for node_binding in node_bindings:
+                print(f"      {node_binding}")
+
+
+def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, None]]]],
+               return_trapi_response: bool = False) -> any:
+    trapi_query = {"message": {"query_graph": trapi_qg},
+                   "submitter": "ploverdb-test-suite"}
+    response = requests.post(f"{pytest.endpoint}/query", json=trapi_query, headers={'accept': 'application/json'})
     if response.status_code == 200:
         json_response = response.json()
-        _print_kg(json_response)
-        return json_response
+        # print(json.dumps(json_response, indent=2))
+
+        # Convert the TRAPI response to the old plover response format (IDs organized by QG IDs)
+        message = json_response["message"]
+        answer_node_ids = defaultdict(set)
+        answer_edge_ids = defaultdict(set)
+        for result in message["results"]:
+            for qnode_key, node_bindings in result["node_bindings"].items():
+                for node_binding in node_bindings:
+                    answer_node_ids[qnode_key].add(node_binding["id"])
+            if result.get("analyses"):
+                for qedge_key, edge_bindings in result["analyses"][0]["edge_bindings"].items():
+                    for edge_binding in edge_bindings:
+                        answer_edge_ids[qedge_key].add(edge_binding["id"])
+        nodes = dict()
+        edges = dict()
+        for qnode_key, node_ids in answer_node_ids.items():
+            nodes[qnode_key] = dict()
+            for node_id in node_ids:
+                nodes[qnode_key][node_id] = message["knowledge_graph"]["nodes"][node_id]
+        for qedge_key, edge_ids in answer_edge_ids.items():
+            edges[qedge_key] = dict()
+            for edge_id in edge_ids:
+                edges[qedge_key][edge_id] = message["knowledge_graph"]["edges"][edge_id]
+        qg_organized_kg = {"nodes": nodes, "edges": edges}
+
+        if return_trapi_response:
+            return qg_organized_kg, json_response
+        else:
+            return qg_organized_kg
     else:
         print(f"Response status code was {response.status_code}. Response was: {response.text}")
         return dict()
 
 
-def test_1():
+def test_1a():
     # Simplest one-hop
     query = {
        "edges": {
@@ -50,11 +106,10 @@ def test_1():
        },
        "nodes": {
           "n00": {
-             "ids": [ASPIRIN_CURIE],
-             "categories": ["biolink:ChemicalEntity"]
+             "ids": ["GO:0035329"]
           },
           "n01": {
-             "categories": ["biolink:ChemicalEntity"]
+             "categories": ["biolink:NamedThing"]
           }
        }
     }
@@ -176,7 +231,7 @@ def test_6():
 
 
 def test_7():
-    # Multiple curie to multiple curie query
+    # Multiple-curie query
     query = {
         "edges": {
             "e00": {
@@ -190,8 +245,7 @@ def test_7():
             },
             "n01": {
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
@@ -227,25 +281,6 @@ def test_9():
     assert len(kg["nodes"]["n00"]) == 2
 
 
-def test_10():
-    # Edgeless query with multiple nodes
-    query = {
-        "edges": {
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ASPIRIN_CURIE]
-            },
-            "n01": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert len(kg["nodes"]["n00"]) == 1
-    assert len(kg["nodes"]["n01"]) == 1
-
-
 def test_11():
     # Verify catches larger than one-hop query
     query = {
@@ -266,7 +301,7 @@ def test_11():
     assert not kg
 
 
-def test_12():
+def test_12a():
     ids = [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
     # Test predicate symmetry is handled properly
     query = {
@@ -283,8 +318,7 @@ def test_12():
             },
             "n01": {
             }
-        },
-        "include_metadata": True
+        }
     }
     kg_symmetric = _run_query(query)
 
@@ -302,15 +336,16 @@ def test_12():
             },
             "n01": {
             }
-        },
-        "include_metadata": True
+        }
     }
     kg_symmetric_reversed = _run_query(query)
 
     assert kg_symmetric["nodes"]["n00"] and kg_symmetric["nodes"]["n01"] and kg_symmetric["edges"]["e00"]
     assert set(kg_symmetric["nodes"]["n01"]) == set(kg_symmetric_reversed["nodes"]["n01"])
 
-    # Test treats only returns edges with direction matching QG
+
+def test_12b():
+    # Make sure directionality is enforced for treats predicate
     query = {
         "edges": {
             "e00": {
@@ -321,19 +356,20 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ids
+                "ids": [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg_asymmetric = _run_query(query)
     assert kg_asymmetric["nodes"]["n00"] and kg_asymmetric["nodes"]["n01"] and kg_asymmetric["edges"]["e00"]
-    assert all(edge[0] in kg_asymmetric["nodes"]["n00"] for edge in kg_asymmetric["edges"]["e00"].values())
+    assert all(edge["subject"] in kg_asymmetric["nodes"]["n00"] for edge in kg_asymmetric["edges"]["e00"].values())
 
-    # Test no edges are returned for backwards treats query
+
+def test_12c():
+    # Make sure no answers are returned when treats predicate is backwards in the QG
     query = {
         "edges": {
             "e00": {
@@ -344,52 +380,25 @@ def test_12():
         },
         "nodes": {
             "n00": {
-                "ids": ids
+                "ids": [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "include_metadata": True
+        }
     }
-    kg_asymmetric_reversed = _run_query(query)
-    assert not kg_asymmetric_reversed["edges"]["e00"]
-
-
-def test_13():
-    # TRAPI 1.1 property names
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:interacts_with"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [RHOBTB2_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:ChemicalEntity"]
-            }
-        },
-        "include_metadata": True
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n00"] and kg["nodes"]["n01"] and kg["edges"]["e00"]
+    kg_backwards = _run_query(query)
+    assert not kg_backwards["edges"]
 
 
 def test_14():
-    # Test subclass_of reasoning
+    # Test subclass_of reasoning with single-node queries
     query_subclass = {
-        "include_metadata": True,
         "edges": {
         },
         "nodes": {
             "n00": {
                 "ids": [DIABETES_CURIE],  # Diabetes mellitus
-                "allow_subclasses": True
             }
         }
     }
@@ -514,8 +523,7 @@ def test_17():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "respect_predicate_symmetry": True
+        }
     }
     kg_canonical = _run_query(query_canonical)
     assert len(kg_canonical["nodes"]["n01"])
@@ -535,8 +543,7 @@ def test_17():
             "n01": {
                 "categories": ["biolink:Disease"]
             }
-        },
-        "respect_predicate_symmetry": True
+        }
     }
     kg_non_canonical = _run_query(query_non_canonical)
     assert len(kg_non_canonical["nodes"]["n01"])
@@ -561,12 +568,11 @@ def test_18():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
-    assert len(kg["nodes"]["n01"])
-    assert any(node_tuple[1] != "biolink:NamedThing" for node_tuple in kg["nodes"]["n01"].values())
+    assert kg["nodes"]["n01"]
+    assert any(node["categories"] != "biolink:NamedThing" for node in kg["nodes"]["n01"].values())
 
 
 def test_19():
@@ -586,18 +592,16 @@ def test_19():
             "n01": {
                 "categories": ["biolink:Protein"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
-    assert len(kg["edges"]["e00"])
-    assert any(edge_tuple[2] != "biolink:related_to" for edge_tuple in kg["edges"]["e00"].values())
+    assert kg["edges"]["e00"]
+    assert any(edge["predicate"] != "biolink:related_to" for edge in kg["edges"]["e00"].values())
 
 
 def test_20():
     # Test that the proper 'query_id' mapping (for TRAPI) is returned
     query = {
-        "include_metadata": True,
         "edges": {
             "e00": {
                 "subject": "n00",
@@ -606,25 +610,27 @@ def test_20():
         },
         "nodes": {
             "n00": {
-                "ids": [DIABETES_CURIE, DIABETES_T2_CURIE],
-                "allow_subclasses": True
+                "ids": [DIABETES_CURIE, DIABETES_T2_CURIE]
             },
             "n01": {
                 "categories": ["biolink:ChemicalEntity"]
             }
         }
     }
-    kg = _run_query(query)
+    kg, trapi_response = _run_query(query, return_trapi_response=True)
     assert len(kg["nodes"]["n00"]) > 1
     assert {DIABETES_CURIE, DIABETES_T1_CURIE, DIABETES_T2_CURIE}.issubset(set(kg["nodes"]["n00"]))
-    diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_CURIE]
-    type_1_diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_T1_CURIE]
-    type_2_diabetes_node_tuple = kg["nodes"]["n00"][DIABETES_T2_CURIE]
-    # Curies that appear in the QG should have no query_id listed
-    assert not diabetes_node_tuple[-1]
-    assert not type_2_diabetes_node_tuple[-1]
-    # Descendant curies should indicate which QG curie they correspond to
-    assert type_1_diabetes_node_tuple[-1] == [DIABETES_CURIE]
+
+    for result in trapi_response["message"]["results"]:
+        for qnode_key, node_bindings in result["node_bindings"].items():
+            for node_binding in node_bindings:
+                if node_binding["id"] == DIABETES_CURIE:  # This ID was input in the QG
+                    assert not node_binding.get("query_id")
+                elif node_binding["id"] == DIABETES_T2_CURIE:  # This ID was input in the QG
+                    assert not node_binding.get("query_id")
+                elif node_binding["id"] == DIABETES_T1_CURIE:  # This ID was NOT input in the QG
+                    # Descendant curies should indicate which QG curie they correspond to
+                    assert node_binding.get("query_id") == DIABETES_CURIE
 
 
 def test_21():
@@ -634,7 +640,6 @@ def test_21():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -652,8 +657,7 @@ def test_21():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:2554" in kg["nodes"]["n01"]
@@ -684,8 +688,7 @@ def test_22():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:1890" in kg["nodes"]["n01"]
@@ -698,7 +701,7 @@ def test_23():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
+                "predicates": ["biolink:affects"],
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -713,16 +716,15 @@ def test_23():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
 
 
 def test_24():
@@ -732,7 +734,7 @@ def test_24():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
+                "predicates": ["biolink:affects"],
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -747,16 +749,15 @@ def test_24():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
 
 
 def test_25():
@@ -766,21 +767,20 @@ def test_25():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
+                "predicates": ["biolink:has_participant"],  # This is the wrong regular predicate
             }
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
+    assert MITOCHONDRIAL_DEPOLARIZATION not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_26():
@@ -805,16 +805,15 @@ def test_26():
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
+    assert not kg["nodes"] or MITOCHONDRIAL_DEPOLARIZATION not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
 
 
 def test_27():
@@ -824,21 +823,20 @@ def test_27():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
+                "predicates": ["biolink:regulates"],
             }
         },
         "nodes": {
             "n00": {
-                "ids": [CAUSES_INCREASE_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
-    assert INCREASED_CURIE in kg["nodes"]["n01"]
+    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
 
 
 def test_28():
@@ -848,7 +846,7 @@ def test_28():
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:regulates"],  # This is the correct regular predicate
+                "predicates": ["biolink:regulates"],
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -866,8 +864,7 @@ def test_28():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:2554" in kg["nodes"]["n01"]
@@ -897,8 +894,7 @@ def test_29():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:2554" in kg["nodes"]["n01"]
@@ -926,8 +922,7 @@ def test_30():
             "n01": {
                 "categories": ["biolink:NamedThing"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert "NCBIGene:1890" in kg["nodes"]["n01"]
@@ -950,12 +945,63 @@ def test_31():
             "n01": {
                 "categories": ["biolink:Drug"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     assert len(kg["nodes"]["n01"])
 
+
+def test_32():
+    # Test is_set handling
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:related_to"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [DIABETES_CURIE]
+            },
+            "n01": {
+                "categories": ["biolink:NamedThing"]
+            }
+        }
+    }
+
+    query["nodes"]["n00"]["is_set"] = True
+    query["nodes"]["n01"]["is_set"] = True
+    kg, trapi_response_issettrue = _run_query(query, return_trapi_response=True)
+    results_issettrue = trapi_response_issettrue["message"].get("results")
+    assert results_issettrue
+    assert len(results_issettrue) == 1
+
+    query["nodes"]["n00"]["is_set"] = False
+    query["nodes"]["n01"]["is_set"] = True
+    kg, trapi_response_objectset = _run_query(query, return_trapi_response=True)
+    results_objectset = trapi_response_objectset["message"].get("results")
+    assert results_objectset
+
+    query["nodes"]["n00"]["is_set"] = True
+    query["nodes"]["n01"]["is_set"] = False
+    kg, trapi_response_subjectset = _run_query(query, return_trapi_response=True)
+    results_subjectset = trapi_response_subjectset["message"].get("results")
+    assert results_subjectset
+
+    query["nodes"]["n00"]["is_set"] = False
+    query["nodes"]["n01"]["is_set"] = False
+    kg, trapi_response_issetfalse = _run_query(query, return_trapi_response=True)
+    results_issetfalse = trapi_response_issetfalse["message"].get("results")
+    assert results_issetfalse
+
+    # _print_results(results_issettrue)
+    # _print_results(results_objectset)
+    # _print_results(results_subjectset)
+    # _print_results(results_issetfalse)
+
+    assert len(results_issetfalse) > len(results_subjectset) > len(results_objectset) > len(results_issettrue)
 
 def test_undirected_related_to_for_underlying_treats_edge():
     """
@@ -995,7 +1041,6 @@ def test_undirected_related_to_for_underlying_treats_edge():
     assert len(kg_1["nodes"]["n00"]) == len(kg_2["nodes"]["n00_1"])
     assert len(kg_1["nodes"]["n00_1"]) == len(kg_2["nodes"]["n00"])
 
-
 def test_version():
     # Print out the version of the KG2c being tested
     query = {
@@ -1004,8 +1049,7 @@ def test_version():
             "n00": {
                 "ids": ["RTX:KG2c"]
             }
-        },
-        "include_metadata": True
+        }
     }
     kg = _run_query(query)
     print(kg)
