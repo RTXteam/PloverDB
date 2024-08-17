@@ -11,14 +11,12 @@ image_name=ploverimage
 container_name=plovercontainer
 docker_command="sudo docker"
 
-while getopts "n:e:i:c:d:b:" flag; do
+while getopts "i:c:d:b:" flag; do
 case "$flag" in
-    n) nodes_file_url=$OPTARG;;
-    e) edges_file_url=$OPTARG;;
-    b) biolink_version=$OPTARG;;
     i) image_name=$OPTARG;;
     c) container_name=$OPTARG;;
     d) docker_command=$OPTARG;;
+    b) branch=$OPTARG;;
 esac
 done
 
@@ -29,7 +27,11 @@ ${docker_command} image rm ${image_name}
 set -e  # Stop on error
 
 cd ${SCRIPT_DIR}
-${docker_command} build --build-arg nodes_url=${nodes_file_url} --build-arg edges_url=${edges_file_url} --build-arg biolink_version=${biolink_version} -t ${image_name} .
+git fetch
+git checkout ${branch}
+git pull origin ${branch}
+
+${docker_command} build -t ${image_name} .
 
 # Run the docker container; NOTE: the '--preload' flag makes Gunicorn workers *share* (vs. copy) the central index (yay)
 if [ ${docker_command} == "docker" ]  # TODO: this is hacky, use a dedicated 'test' build flag or something..

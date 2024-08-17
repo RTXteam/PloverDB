@@ -48,12 +48,13 @@ def rebuild_app(body: dict, authenticated: bool = Depends(auth_request)):
     if authenticated:
         # Do the rebuild
         print(f"Rebuild triggered. {body}")
-        nodes_file_url = body['nodes_file_url']
-        edges_file_url = body['edges_file_url']
-        biolink_version = body['biolink_version']
-        start = time.time()
-        os.system(f"bash -x {SCRIPT_DIR}/run.sh -n {nodes_file_url} -e {edges_file_url} -b {biolink_version}")
-        return {"message": f"Rebuild done. Took {round(time.time() - start)} seconds."}
+        branch_name = body.get("branch")
+        if not branch_name:
+            raise ValueError("Must provide branch name!!")  # TODO: return an http error here..
+        else:
+            start = time.time()
+            os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name}")
+            return {"message": f"Rebuild done. Took {round(time.time() - start)} seconds."}
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Not authenticated")
