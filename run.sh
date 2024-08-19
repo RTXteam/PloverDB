@@ -55,7 +55,7 @@ done
 set -e  # Stop on error
 
 # Run the docker container; NOTE: the '--preload' flag makes Gunicorn workers *share* (vs. copy) the central index (yay)
-if [ ${skip_ssl} ]
+if [ ${docker_command} == "docker" ]  # TODO: fix this to look at use_ssl..
 then
   # Skip configuring SSL certs if that was requested
   ${docker_command} run -d --name ${container_name} -p ${host_port}:80 -e GUNICORN_CMD_ARGS="--preload" ${image_name}
