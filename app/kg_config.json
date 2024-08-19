@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_nodes_v2.3.0.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_edges_v2.3.0.tsv",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_nodes_v2.3.1.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_edges_v2.3.1.tsv",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-clinicaltrials",
   "labels": {

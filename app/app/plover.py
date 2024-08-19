@@ -46,6 +46,10 @@ class PloverDB:
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
         self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
+        # Ensure an attribute shell exists for node descriptions (needed for Plover build node)
+        if "description" not in self.trapi_attribute_map:
+            self.trapi_attribute_map["description"] = {"attribute_type_id": "biolink:description",
+                                                       "value_type_id": "metatype:String"}
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples.json"
