@@ -1124,7 +1124,7 @@ class PloverDB:
                                                             descendant_to_query_id_map[input_qnode_key].get(node_id))
                             for node_id in final_input_qnode_answers],
                     },
-                    "analyses": [],
+                    "analyses": [{"edge_bindings": {}, "attributes": []}],
                     "resource_id": self.kp_infores_curie
                 }
             ]

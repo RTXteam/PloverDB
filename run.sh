@@ -1,7 +1,7 @@
 #!/bin/bash
 # Usage: bash -x run.sh [-b branch name to build from] [-i image name] [-c container name]
 #                       [-d docker command i.e., "docker" or "sudo docker"] [-p host port to run on]
-#                       [-s true, if want to skip ssl cert configuration]
+#                       [-s true, if want to skip ssl cert configuration, otherwise omit this parameter]
 # Example1: bash -x run.sh -b ctkp
 # Example2: bash -x run.sh -i myimage -c mycontainer -d docker -s true -p 9990
 
@@ -55,7 +55,7 @@ done
 set -e  # Stop on error
 
 # Run the docker container; NOTE: the '--preload' flag makes Gunicorn workers *share* (vs. copy) the central index (yay)
-if [ ${docker_command} == "docker" ]  # TODO: fix this to look at use_ssl..
+if [ ${skip_ssl} == "true" ]
 then
   # Skip configuring SSL certs if that was requested
   ${docker_command} run -d --name ${container_name} -p ${host_port}:80 -e GUNICORN_CMD_ARGS="--preload" ${image_name}
