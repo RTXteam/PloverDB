@@ -3,6 +3,7 @@ import copy
 import csv
 import itertools
 import json
+from datetime import datetime
 from urllib.parse import urlparse
 
 import jsonlines
@@ -380,6 +381,14 @@ class PloverDB:
                      f"{len(test_triples_dict['edges'])} test triples")
         with open(self.sri_test_triples_path, "w+") as test_triples_file:
             json.dump(test_triples_dict, test_triples_file)
+
+        # Add a build node for this Plover build (don't want this in the meta KG, so we add it here)
+        plover_build_node = {"name": f"Plover deployment of {self.kp_infores_curie}",
+                             "category": "biolink:InformationContentEntity",
+                             "description": f"This Plover build was done on {datetime.now()} from input files "
+                                            f"'{self.kg_config['nodes_file']}' and '{self.kg_config['edges_file']}'. "
+                                            f"Biolink version used was {self.biolink_version}."}
+        self.node_lookup_map["PloverDB"] = plover_build_node
 
         # Save all indexes in a big pickle
         logging.info(f"Saving indexes to {self.pickle_index_path}..")
@@ -895,12 +904,12 @@ class PloverDB:
                                          qedge_key: str,
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
-        logging.info(f"At beginning, have {len(final_input_qnode_answers)} input node answers and {len(final_output_qnode_answers)} output node answers")
+        logging.info(f"Found {len(final_input_qnode_answers)} input node answers and {len(final_output_qnode_answers)} output node answers")
 
         # Handle any attribute constraints on the query edge
         edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
                  for edge_id in final_qedge_answers}
-        qedge_attribute_constraints = trapi_qg["edges"][qedge_key].get("attribute_constraints")
+        qedge_attribute_constraints = trapi_qg["edges"][qedge_key].get("attribute_constraints") if trapi_qg.get("edges") else []
         if qedge_attribute_constraints:
             logging.info(f"Found {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}")
             edges = self._filter_edges_by_attribute_constraints(edges, qedge_attribute_constraints)

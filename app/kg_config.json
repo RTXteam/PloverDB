@@ -3,7 +3,6 @@
   "edges_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_edges_v2.3.0.tsv",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-clinicaltrials",
-  "biolink_helper_branch": "master",
   "labels": {
     "edges": "predicate",
     "nodes": "category"
@@ -12,6 +11,7 @@
   "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:ncit"],
   "num_edges_per_answer_cutoff": 1000000,
   "normalize": false,
+  "biolink_helper_branch": "master",
   "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
   "zip": {
     "supporting_studies": {
