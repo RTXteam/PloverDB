@@ -57,7 +57,7 @@ def rebuild_app(body: dict, authenticated: bool = Depends(auth_request)):
             docker_command = body.get("docker_command", "sudo docker")
             image_name = f"ploverimage{f'-{branch_name}' if branch_name else ''}"
             container_name = f"plovercontainer{f'-{branch_name}' if branch_name else ''}"
-            os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name} -i {image_name} -c {container_name} -p {host_port} -d {docker_command}")
+            os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name} -i {image_name} -c {container_name} -p {host_port} -d '{docker_command}'")
             return {"message": f"Rebuild done; live at port {host_port}. Took {round((time.time() - start) / 60, 1)} minutes."}
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
