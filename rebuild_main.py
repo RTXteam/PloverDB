@@ -2,14 +2,13 @@
 This is a server/app separate from the main Plover app that simply listens for a post request to trigger a rebuild
 of the main Plover app. It requires authentication using an API key. A request to trigger a rebuild should look like:
 curl -X 'POST' \
-  'https://ctkp.rtx.ai:8000/rebuild' \
+  'http://ctkp.rtx.ai:8000/rebuild' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer MY-API-KEY' \
   -d '{
-   "nodes_file_url":"https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_nodes_v2.2.9.tsv",
-   "edges_file_url":"https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_edges_v2.2.9.tsv",
-   "biolink_version":"4.2.1"
+   "branch": "ctkp",
+   "port": "9990"
 }'
 """
 import json
@@ -46,15 +45,20 @@ async def root():
 @app.post('/rebuild')
 def rebuild_app(body: dict, authenticated: bool = Depends(auth_request)):
     if authenticated:
-        # Do the rebuild
-        print(f"Rebuild triggered. {body}")
         branch_name = body.get("branch")
         if not branch_name:
-            raise ValueError("Must provide branch name!!")  # TODO: return an http error here..
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="422 ERROR: Request is missing 'branch' parameter. You must specify the name of"
+                                       " the branch in the PloverDB Github repo that you want to do this build from. "
+                                       "e.g., 'ctkp'")
         else:
             start = time.time()
-            os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name}")
-            return {"message": f"Rebuild done. Took {round(time.time() - start)} seconds."}
+            host_port = body.get("port", "9990")
+            docker_command = body.get("docker_command", "sudo docker")
+            image_name = f"ploverimage{f'-{branch_name}' if branch_name else ''}"
+            container_name = f"plovercontainer{f'-{branch_name}' if branch_name else ''}"
+            os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name} -i {image_name} -c {container_name} -p {host_port} -d {docker_command}")
+            return {"message": f"Rebuild done; live at port {host_port}. Took {round((time.time() - start) / 60, 1)} minutes."}
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Not authenticated")
+                            detail="401 ERROR: Not authenticated")
