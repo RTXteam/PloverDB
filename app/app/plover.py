@@ -91,6 +91,7 @@ class PloverDB:
         self.properties_to_include_source_on = {"publications", "publications_info"}
         self.kp_infores_curie = self.kg_config["kp_infores_curie"]
         self.edge_sources = self._load_edge_sources(self.kg_config)
+        self.query_log = []
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
@@ -765,15 +766,16 @@ class PloverDB:
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> dict:
-        logging.info(f"Received a TRAPI query: {trapi_query}")
+        self.query_log = []  # Clear query log of any prior entries
+        self.log_trapi("INFO", f"Received a TRAPI query: {trapi_query}")
         trapi_qg = copy.deepcopy(trapi_query["message"]["query_graph"])
         # Before doing anything else, convert any node ids to equivalents we recognize
         for qnode_key, qnode in trapi_qg["nodes"].items():
             qnode_ids = qnode.get("ids")
             if qnode_ids:
-                logging.info(f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize (as applicable)")
+                self.log_trapi("INFO", f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
                 qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
-                logging.info(f"After conversion, {qnode_key}'s 'ids' are: {qnode['ids']}")
+                self.log_trapi("INFO", f"After conversion, {qnode_key}'s 'ids' are: {qnode['ids']}")
 
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
@@ -837,15 +839,16 @@ class PloverDB:
         output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
         output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
-        logging.info(f"After expansion to descendant concepts, have {len(input_curies)} input curies, "
-                     f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
+        log_message = (f"After expansion to descendant concepts, have {len(input_curies)} input curies, "
+                       f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
+        self.log_trapi("INFO", log_message)
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
         final_input_qnode_answers = set()
         final_output_qnode_answers = set()
         main_index = self.main_index
-        logging.info(f"Looking up answers to query..")
+        self.log_trapi("INFO", f"Looking up answers to query..")
         for input_curie in input_curies:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
@@ -903,7 +906,7 @@ class PloverDB:
                                                                qedge_key,
                                                                trapi_query["message"]["query_graph"],
                                                                descendant_to_query_id_map)
-        logging.info(f"Done with query, returning TRAPI response.")
+        self.log_trapi("INFO", f"Done with query, returning TRAPI response.")
         return trapi_response
 
     def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
@@ -914,15 +917,17 @@ class PloverDB:
                                          qedge_key: str,
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
-        logging.info(f"Found {len(final_input_qnode_answers)} input node answers and "
-                     f"{len(final_output_qnode_answers)} output node answers")
+        log_message = (f"Found {len(final_input_qnode_answers)} input node answers and "
+                       f"{len(final_output_qnode_answers)} output node answers")
+        self.log_trapi("INFO", log_message)
 
         # Handle any attribute constraints on the query edge
         edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
                  for edge_id in final_qedge_answers}
         qedge_attribute_constraints = trapi_qg["edges"][qedge_key].get("attribute_constraints") if trapi_qg.get("edges") else []
         if qedge_attribute_constraints:
-            logging.info(f"Detected {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}")
+            log_message = f"Detected {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}"
+            self.log_trapi("INFO", log_message)
             edges = self._filter_edges_by_attribute_constraints(edges, qedge_attribute_constraints)
             final_qedge_answers = set(edges)
 
@@ -932,8 +937,9 @@ class PloverDB:
             final_output_qnode_answers = final_output_qnode_answers.intersection(node_ids_used_by_edges)
 
         # Then form the final TRAPI response
-        logging.info(f"In the end, have {len(final_input_qnode_answers)} input node answers and "
-                     f"{len(final_output_qnode_answers)} output node answers")
+        log_message = (f"In the end, have {len(final_input_qnode_answers)} input node answers and "
+                       f"{len(final_output_qnode_answers)} output node answers")
+        self.log_trapi("INFO", log_message)
         response = {
             "message": {
                 "query_graph": trapi_qg,
@@ -951,6 +957,7 @@ class PloverDB:
                                                    trapi_qg,
                                                    descendant_to_query_id_map)
             },
+            "logs": self.query_log
         }
         return response
 
@@ -1151,7 +1158,7 @@ class PloverDB:
         edge_keys_to_delete = set()
         # Edges must meet ALL attribute constraints on this qedge to be retained
         for attribute_constraint in qedge_attribute_constraints:
-            logging.info(f"Processing attribute constraint with ID: {attribute_constraint['id']}")
+            self.log_trapi("INFO", f"Processing attribute constraint with ID: {attribute_constraint['id']}")
             for edge_key, edge in trapi_edges.items():
                 matching_attributes_top_level = [attribute for attribute in edge["attributes"]
                                                  if attribute["attribute_type_id"] == attribute_constraint["id"]]
@@ -1165,7 +1172,8 @@ class PloverDB:
 
         # Then actually delete the edges
         if edge_keys_to_delete:
-            logging.info(f"Deleting {len(edge_keys_to_delete)} edges that do not meet qedge attribute constraints")
+            log_message = f"Deleting {len(edge_keys_to_delete)} edges that do not meet qedge attribute constraints"
+            self.log_trapi("INFO", log_message)
             for edge_key in edge_keys_to_delete:
                 del trapi_edges[edge_key]
         return trapi_edges
@@ -1240,8 +1248,9 @@ class PloverDB:
         elif operator == "===":
             meets_constraint = attribute_value == constraint_value
         else:
-            logging.warning(f"Encountered unsupported operator: {operator}. Don't know how to handle; "
-                            f"will ignore this constraint.")
+            log_message = (f"Encountered unsupported operator: {operator}. Don't know how to handle; "
+                           f"will ignore this constraint.")
+            self.log_trapi("WARNING", log_message)
 
         # Now factor in the 'not' property on the constraint
         return not meets_constraint if attribute_constraint.get("not") else meets_constraint
@@ -1346,11 +1355,9 @@ class PloverDB:
         # Use 'conglomerate' predicates if the query has any qualifier constraints
         if qedge.get("qualifier_constraints"):
             qedge_conglomerate_predicates = self._get_conglomerate_predicates_from_qedge(qedge)
-            logging.info(f"Qedge conglomerate predicates are: {qedge_conglomerate_predicates}")
             # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
             qedge_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qedge_conglomerate_predicates
                                                       for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
-            logging.info(f"Qedge conglomerate predicates expanded are: {qedge_conglomerate_predicates_expanded}")
             qedge_predicates = qedge_conglomerate_predicates
             qedge_predicates_expanded = qedge_conglomerate_predicates_expanded
         # Otherwise we'll use the regular predicates if no qualified predicates were given
@@ -1408,7 +1415,7 @@ class PloverDB:
             err_message = "Bad Request. For qnode-only queries, the qnode must have 'ids' specified."
             self.raise_http_error(400, err_message)
 
-        logging.info(f"Answering single-node query...")
+        self.log_trapi("INFO", f"Answering single-node query...")
         qnode = trapi_qg["nodes"][qnode_key]
         qnode_ids_set = self._convert_to_set(qnode["ids"])
         input_curies = qnode["ids"].copy()
@@ -1430,6 +1437,7 @@ class PloverDB:
                                                          qedge_key="",
                                                          trapi_qg=trapi_qg,
                                                          descendant_to_query_id_map=descendant_to_query_id_map)
+        self.log_trapi("INFO", f"Done with query, returning TRAPI response.")
         return response
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
@@ -1481,11 +1489,29 @@ class PloverDB:
             return obj
 
     @staticmethod
-    def raise_http_error(status_code: int, err_message: str):
-        detail_message = f"{status_code} ERROR: {err_message}"
+    def raise_http_error(http_code: int, err_message: str):
+        detail_message = f"{http_code} ERROR: {err_message}"
         logging.error(detail_message)
-        raise HTTPException(status_code=status_code,
+        raise HTTPException(status_code=http_code,
                             detail=detail_message)
+
+    def log_trapi(self, level: str, message: str, code: Optional[str] = None):
+        # First log this in our usual log
+        if level == "INFO":
+            logging.info(message)
+        elif level == "WARNING":
+            logging.warning(message)
+        elif level == "ERROR":
+            logging.error(message)
+        else:
+            logging.debug(message)
+        # Then also add it to our TRAPI log
+        log_entry = {"timestamp": datetime.now(),
+                     "level": level,
+                     "message": message}
+        if code:
+            log_entry["code"] = code
+        self.query_log.append(log_entry)
 
 
 def main():
