@@ -764,16 +764,15 @@ class PloverDB:
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> any:
-        logging.info(f"TRAPI query is: {trapi_query}")
+        logging.info(f"Received a TRAPI query: {trapi_query}")
         trapi_qg = copy.deepcopy(trapi_query["message"]["query_graph"])
         # Before doing anything else, convert any node ids to equivalents we recognize
         for qnode_key, qnode in trapi_qg["nodes"].items():
             qnode_ids = qnode.get("ids")
             if qnode_ids:
-                logging.info(f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
-                logging.info(f"Before, its ids are {qnode_ids}")
+                logging.info(f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize (as applicable)")
                 qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
-                logging.info(f"After, its ids are: {qnode['ids']}")
+                logging.info(f"After conversion, {qnode_key}'s 'ids' are: {qnode['ids']}")
 
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
@@ -832,7 +831,7 @@ class PloverDB:
         output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
         output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
-        logging.info(f"After expansion to descendants, have {len(input_curies)} input curies, "
+        logging.info(f"After expansion to descendant concepts, have {len(input_curies)} input curies, "
                      f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
 
         # Use our main index to find results to the query
@@ -840,7 +839,7 @@ class PloverDB:
         final_input_qnode_answers = set()
         final_output_qnode_answers = set()
         main_index = self.main_index
-        logging.info(f"Starting to look up answers to query")
+        logging.info(f"Looking up answers to query..")
         for input_curie in input_curies:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
@@ -889,7 +888,6 @@ class PloverDB:
                 final_output_qnode_answers.add(output_curie)
 
         # Form final TRAPI response
-        logging.info(f"Transforming answers ({len(final_qedge_answers)} edges) to TRAPI response format")
         trapi_response = self._create_response_from_answer_ids(final_input_qnode_answers,
                                                                final_output_qnode_answers,
                                                                final_qedge_answers,
@@ -909,25 +907,25 @@ class PloverDB:
                                          qedge_key: str,
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
-        logging.info(f"Found {len(final_input_qnode_answers)} input node answers and {len(final_output_qnode_answers)} output node answers")
+        logging.info(f"Found {len(final_input_qnode_answers)} input node answers and "
+                     f"{len(final_output_qnode_answers)} output node answers")
 
         # Handle any attribute constraints on the query edge
         edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
                  for edge_id in final_qedge_answers}
         qedge_attribute_constraints = trapi_qg["edges"][qedge_key].get("attribute_constraints") if trapi_qg.get("edges") else []
         if qedge_attribute_constraints:
-            logging.info(f"Found {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}")
+            logging.info(f"Detected {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}")
             edges = self._filter_edges_by_attribute_constraints(edges, qedge_attribute_constraints)
             final_qedge_answers = set(edges)
 
             # Remove any nodes orphaned by attribute constraint handling
             node_ids_used_by_edges = {edge["subject"] for edge in edges.values()}.union({edge["object"] for edge in edges.values()})
-            logging.info(f"Retained edges use {len(node_ids_used_by_edges)} distinct nodes IDs")
             final_input_qnode_answers = final_input_qnode_answers.intersection(node_ids_used_by_edges)
             final_output_qnode_answers = final_output_qnode_answers.intersection(node_ids_used_by_edges)
 
         # Then form the final TRAPI response
-        logging.info(f"After constraint handling, have {len(final_input_qnode_answers)} input node answers and "
+        logging.info(f"In the end, have {len(final_input_qnode_answers)} input node answers and "
                      f"{len(final_output_qnode_answers)} output node answers")
         response = {
             "message": {

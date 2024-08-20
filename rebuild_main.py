@@ -58,9 +58,13 @@ def rebuild_app(body: dict, authenticated: bool = Depends(auth_request)):
             image_name = f"ploverimage{f'-{branch_name}' if branch_name else ''}"
             container_name = f"plovercontainer{f'-{branch_name}' if branch_name else ''}"
             skip_ssl = body.get("skip_ssl", False)
-            os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name} -i {image_name} -c {container_name} "
-                      f"-p {host_port} -d '{docker_command}' -s {skip_ssl}")
-            return {"message": f"Rebuild done; live at port {host_port}. Took {round((time.time() - start) / 60, 1)} minutes."}
+            build_err = os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name} -i {image_name} -c {container_name} "
+                                  f"-p {host_port} -d '{docker_command}' -s {skip_ssl}")
+            if build_err:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                    detail="500 ERROR: Rebuild failed. Check logs on server.")
+            else:
+                return {"message": f"Rebuild done, live at port {host_port}. Took {round((time.time() - start) / 60, 1)} minutes."}
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="401 ERROR: Not authenticated")

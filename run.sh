@@ -5,6 +5,8 @@
 # Example1: bash -x run.sh -b ctkp
 # Example2: bash -x run.sh -i myimage -c mycontainer -d docker -s true -p 9990
 
+set -e  # Stop on error
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # Specify default values for optional parameters

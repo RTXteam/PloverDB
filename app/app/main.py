@@ -33,7 +33,6 @@ plover_obj.load_indexes()
 
 @app.post("/query")
 def run_query(query: dict):
-    logging.info(f"In run query, query body is: {query}")
     answer = plover_obj.answer_query(query)
     return answer
     # TODO: Need to fix for fastapi..

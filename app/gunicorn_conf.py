@@ -1,9 +1,10 @@
 """
 This is the base image default Gunicorn configuration file, from:
 https://github.com/tiangolo/uvicorn-gunicorn-docker/blob/master/docker-images/gunicorn_conf.py
-...slightly edited only to set the 'preload_app' option. Note that on the command line this parameter is
-called --preload, but here in the config file it has to be called preload_app. Using preload_app makes Gunicorn
-workers *share* the central Plover indexes, rather than each create a new copy of them (memory explosion).
+...slightly edited only to set the 'preload_app' option and to specify paths for the Gunicorn logs. Note that on
+the command line the preload parameter is called --preload, but here in the config file it has to be called preload_app.
+ Using preload_app makes workers *share* the central Plover indexes, rather than each create a new copy of
+ them (memory explosion).
 """
 import json
 import multiprocessing
