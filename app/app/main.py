@@ -34,14 +34,7 @@ plover_obj.load_indexes()
 @app.post("/query")
 def run_query(query: dict):
     answer = plover_obj.answer_query(query)
-    if isinstance(answer, tuple):  # If Plover's answer is a tuple, that means it's an error
-        http_code, err_message = answer
-        detail_message = f"{http_code} ERROR: {err_message}"
-        logging.error(detail_message)
-        raise HTTPException(status_code=http_code,
-                            detail=detail_message)
-    else:
-        return answer
+    return answer
 
 
 @app.get("/meta_knowledge_graph")

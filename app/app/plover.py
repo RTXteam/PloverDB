@@ -19,6 +19,7 @@ from typing import List, Dict, Union, Set, Optional, Tuple
 
 import psutil
 import requests
+from fastapi import HTTPException
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILENAME = "/var/log/ploverdb.log"
@@ -763,7 +764,7 @@ class PloverDB:
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
 
-    def answer_query(self, trapi_query: dict) -> any:
+    def answer_query(self, trapi_query: dict) -> dict:
         logging.info(f"Received a TRAPI query: {trapi_query}")
         trapi_qg = copy.deepcopy(trapi_query["message"]["query_graph"])
         # Before doing anything else, convert any node ids to equivalents we recognize
@@ -779,7 +780,9 @@ class PloverDB:
             return self._answer_single_node_query(trapi_qg)
         # Otherwise make sure this is a one-hop query
         if len(trapi_qg["edges"]) > 1:
-            return 400, f"Bad Request. Can only answer single-edge queries. Your QG has {len(trapi_qg['edges'])} edges."
+            err_message = (f"Bad Request. Can only answer single-edge queries. Your QG has "
+                           f"{len(trapi_qg['edges'])} edges.")
+            self.raise_http_error(400, err_message)
         # Make sure at least one qnode has a curie
         qedge_key = next(qedge_key for qedge_key in trapi_qg["edges"])
         qedge = trapi_qg["edges"][qedge_key]
@@ -788,13 +791,16 @@ class PloverDB:
         subject_qnode = trapi_qg["nodes"][subject_qnode_key]
         object_qnode = trapi_qg["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
-            return 400, f"Bad Request. Can only answer queries where at least one QNode has a curie ('ids') specified."
+            err_message = f"Bad Request. Can only answer queries where at least one QNode has 'ids' specified."
+            self.raise_http_error(400, err_message)
         # Make sure there aren't any qualifiers we don't support
         for qualifier_constraint in qedge.get("qualifier_constraints", []):
             for qualifier in qualifier_constraint.get("qualifier_set"):
                 if qualifier["qualifier_type_id"] not in self.supported_qualifiers:
-                    return 403, (f"Forbidden. Unsupported qedge qualifier encountered: {qualifier['qualifier_type_id']}."
-                                 f" Supported qualifiers are: {self.supported_qualifiers}")
+                    err_message = (f"Forbidden. Unsupported qedge qualifier encountered: "
+                                   f"{qualifier['qualifier_type_id']}. Supported qualifiers are: "
+                                   f"{self.supported_qualifiers}")
+                    self.raise_http_error(403, err_message)
 
         # Record which curies specified in the QG any descendant curies correspond to
         descendant_to_query_id_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
@@ -854,16 +860,17 @@ class PloverDB:
                         # Loop through each QG predicate (and their descendants), looking up answers as we go
                         for predicate in predicates_to_inspect:
                             if len(final_qedge_answers) >= self.num_edges_per_answer_cutoff:
-                                return 403, (f"Forbidden. Your query will produce more than "
-                                             f"{self.num_edges_per_answer_cutoff} answer edges. You need to make your "
-                                             f"query smaller by reducing the number of input node IDs and/or using "
-                                             f"more specific categories/predicates.")
+                                err_message = (f"Forbidden. Your query will produce more than "
+                                               f"{self.num_edges_per_answer_cutoff} answer edges. You need to make "
+                                               f"your query smaller by reducing the number of input node IDs and/or "
+                                               f"using more specific categories/predicates.")
+                                self.raise_http_error(403, err_message)
                             else:
                                 consider_bidirectional = qedge_predicates_expanded.get(predicate)
                                 if consider_bidirectional:
                                     directions = {0, 1}
                                 else:
-                                    # 1 means we'll look for edges recorded in the 'forwards' direction, 0 means 'backwards'
+                                    # 1 means we'll look for edges recorded in 'forwards' direction, 0 means 'backwards'
                                     directions = {1} if input_qnode_key == qedge["subject"] else {0}
                                 if output_curies:
                                     # We need to look for the matching output node(s)
@@ -1233,7 +1240,8 @@ class PloverDB:
         elif operator == "===":
             meets_constraint = attribute_value == constraint_value
         else:
-            logging.error(f"Encountered unsupported operator: {operator}. Don't know how to handle.")
+            logging.warning(f"Encountered unsupported operator: {operator}. Don't know how to handle; "
+                            f"will ignore this constraint.")
 
         # Now factor in the 'not' property on the constraint
         return not meets_constraint if attribute_constraint.get("not") else meets_constraint
@@ -1315,11 +1323,11 @@ class PloverDB:
                 # Otherwise just flip all of the regular predicates
                 qedge["predicates"] = list(canonical_predicates)
         elif user_non_canonical_predicates and user_canonical_predicates:
-            # TODO: Change this so that it returns a 400 error...
-            raise ValueError(f"QueryGraph uses both canonical and non-canonical "
-                             f"{'qualified ' if user_qual_predicates else ''}predicates. Canonical: "
-                             f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
-                             f"You must use either all canonical or all non-canonical predicates.")
+            err_message = (f"QueryGraph uses both canonical and non-canonical "
+                           f"{'qualified ' if user_qual_predicates else ''}predicates. Canonical: "
+                           f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
+                           f"You must use either all canonical or all non-canonical predicates.")
+            self.raise_http_error(400, err_message)
 
     def _get_qualified_predicates_from_qedge(self, qedge: dict) -> Set[str]:
         qualified_predicates = set()
@@ -1392,11 +1400,13 @@ class PloverDB:
     def _answer_single_node_query(self, trapi_qg: dict) -> any:
         # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of TRAPI; just handy)
         if len(trapi_qg["nodes"]) > 1:
-            return 400, (f"Bad Request. Edgeless queries can only involve a single query node. "
-                         f"Your QG has {len(trapi_qg['nodes'])} nodes.")
+            err_message = (f"Bad Request. Edgeless queries can only involve a single query node. "
+                           f"Your QG has {len(trapi_qg['nodes'])} nodes.")
+            self.raise_http_error(400, err_message)
         qnode_key = list(trapi_qg["nodes"].keys())[0]
         if not trapi_qg["nodes"][qnode_key].get("ids"):
-            return 400, "For qnode-only queries, the qnode must have 'ids' specified."
+            err_message = "Bad Request. For qnode-only queries, the qnode must have 'ids' specified."
+            self.raise_http_error(400, err_message)
 
         logging.info(f"Answering single-node query...")
         qnode = trapi_qg["nodes"][qnode_key]
@@ -1469,6 +1479,13 @@ class PloverDB:
             return list(obj)
         else:
             return obj
+
+    @staticmethod
+    def raise_http_error(status_code: int, err_message: str):
+        detail_message = f"{status_code} ERROR: {err_message}"
+        logging.error(detail_message)
+        raise HTTPException(status_code=status_code,
+                            detail=detail_message)
 
 
 def main():
