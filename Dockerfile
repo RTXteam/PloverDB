@@ -17,6 +17,6 @@ RUN chown nobody /var/log/ploverdb.log
 RUN chown nobody /var/log/gunicorn_error.log
 RUN chown nobody /var/log/gunicorn_access.log
 
-USER nobody
+# USER nobody
 
 RUN python /app/app/build_indexes.py
