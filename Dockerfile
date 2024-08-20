@@ -8,8 +8,11 @@ ENV HOME=/home/nobody
 COPY ./.git /home/nobody/.git
 COPY ./app /app
 RUN chown -R nobody /home/nobody
+RUN chown -R nobody /app
 
 RUN touch /var/log/ploverdb.log
 RUN chown nobody /var/log/ploverdb.log
+
+USER nobody
 
 RUN python /app/app/build_indexes.py

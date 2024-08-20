@@ -6,7 +6,7 @@ import pygit2
 import datetime
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -53,13 +53,11 @@ def run_health_check():
     return ''
 
 
-# def handle_error(e: Exception) -> flask.Response:
-#     error_msg = str(e)
-#     logging.error(error_msg)
-#     response = flask.jsonify(error_msg)
-#     response.status_code = 500
-#     response.status = 'Internal Server Error'
-#     return response
+def handle_error(e: Exception):
+    error_msg = str(e)
+    logging.error(error_msg)
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"500 ERROR: {error_msg}")
 
 
 @app.get('/code_version')
@@ -70,11 +68,11 @@ def run_code_version():
         repo_head_name = repo.head.name
         timestamp_int = repo.revparse_single('HEAD').commit_time
         date_str = str(datetime.date.fromtimestamp(timestamp_int))
-        ret_str = f"HEAD: {repo_head_name}; Date: {date_str}"
-        response = ret_str
+        response = {"code_info": f"HEAD: {repo_head_name}; Last commit date: {date_str}",
+                    "build_node": plover_obj.node_lookup_map["PloverDB"]}
+        return response
     except Exception as e:
-        response = "handle_error(e) - need to fix"  # TODO: fix
-    return response
+        handle_error(e)
 
 
 @app.get('/get_logs')
@@ -82,11 +80,10 @@ def run_get_logs():
     try:
         with open(plover.LOG_FILENAME, 'r') as f:
             log_data_plover = f.readlines()
-        ret_data = {'plover': log_data_plover}
-        response = ret_data
+        response = {'plover': log_data_plover}
+        return response
     except Exception as e:
-        response = "handle_error(e) - need to fix"  # TODO: fix
-    return response
+        handle_error(e)
 
 
 @app.get('/sri_test_triples')
