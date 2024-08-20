@@ -89,6 +89,8 @@ class PloverDB:
                                  1.5: "clinical_trial_phase_1_to_2", 2.5: "clinical_trial_phase_2_to_3"}
         self.trial_phases_map_reversed = self._reverse_dictionary(self.trial_phases_map)
         self.properties_to_include_source_on = {"publications", "publications_info"}
+        self.knowledge_source_properties = {"knowledge_source", "primary_knowledge_source",
+                                            "aggregator_knowledge_source", "supporting_data_source"}
         self.kp_infores_curie = self.kg_config["kp_infores_curie"]
         self.edge_sources = self._load_edge_sources(self.kg_config)
         self.query_log = []
@@ -1154,20 +1156,31 @@ class PloverDB:
 
     def _filter_edges_by_attribute_constraints(self, trapi_edges: Dict[str, dict],
                                                qedge_attribute_constraints: List[dict]) -> Dict[str, dict]:
-        # Figure out which edges we need to filter out
-        edge_keys_to_delete = set()
         # Edges must meet ALL attribute constraints on this qedge to be retained
+        edge_keys_to_delete = set()
         for attribute_constraint in qedge_attribute_constraints:
             self.log_trapi("INFO", f"Processing attribute constraint with ID: {attribute_constraint['id']}")
+            constraint_id = attribute_constraint["id"]
+            constraint_value = attribute_constraint["value"]
+            operator = attribute_constraint["operator"]
+            is_not = attribute_constraint.get("not")
             for edge_key, edge in trapi_edges.items():
-                matching_attributes_top_level = [attribute for attribute in edge["attributes"]
-                                                 if attribute["attribute_type_id"] == attribute_constraint["id"]]
-                matching_attributes_nested = [subattribute for attribute in edge["attributes"]
+                # First identify attributes that correspond to this constraint
+                matching_attributes_top_level = [attribute["value"] for attribute in edge["attributes"]
+                                                 if attribute["attribute_type_id"] == constraint_id]
+                matching_attributes_nested = [subattribute["value"] for attribute in edge["attributes"]
                                               for subattribute in attribute.get("attributes", [])
-                                              if subattribute["attribute_type_id"] == attribute_constraint["id"]]
+                                              if subattribute["attribute_type_id"] == constraint_id]
                 attributes_to_examine = matching_attributes_top_level + matching_attributes_nested
-                if not any(self._meets_constraint(attribute, attribute_constraint)
-                           for attribute in attributes_to_examine):
+                # Pretend that edge sources are attributes too, to allow filtering based on sources via attr constraints
+                if constraint_id in self.knowledge_source_properties:
+                    source_types = self.knowledge_source_properties if constraint_id == "knowledge_source" else {constraint_id}
+                    sources_to_examine = [source["resource_id"] for source in edge["sources"]
+                                          if source["resource_role"] in source_types]
+                    attributes_to_examine += sources_to_examine
+                # Then determine whether the corresponding attributes fulfill the constraint
+                if not any(self._meets_constraint(attribute_value, constraint_value, operator, is_not)
+                           for attribute_value in attributes_to_examine):
                     edge_keys_to_delete.add(edge_key)
 
         # Then actually delete the edges
@@ -1178,10 +1191,7 @@ class PloverDB:
                 del trapi_edges[edge_key]
         return trapi_edges
 
-    def _meets_constraint(self, edge_attribute: dict, attribute_constraint: dict) -> bool:
-        attribute_value = edge_attribute["value"]
-        constraint_value = attribute_constraint["value"]
-        operator = attribute_constraint["operator"]
+    def _meets_constraint(self, attribute_value: any, constraint_value: any, operator: str, is_not: bool) -> bool:
         attribute_val_is_list = isinstance(attribute_value, list)
         constraint_val_is_list = isinstance(constraint_value, list)
         # Convert clinical trial phase enum to numbers (internally) for easier comparison
@@ -1253,7 +1263,7 @@ class PloverDB:
             self.log_trapi("WARNING", log_message)
 
         # Now factor in the 'not' property on the constraint
-        return not meets_constraint if attribute_constraint.get("not") else meets_constraint
+        return not meets_constraint if is_not else meets_constraint
 
     def _get_descendants(self, node_ids: Union[List[str], str]) -> List[str]:
         node_ids = self._convert_to_set(node_ids)
