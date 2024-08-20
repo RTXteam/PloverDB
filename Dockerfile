@@ -11,7 +11,11 @@ RUN chown -R nobody /home/nobody
 RUN chown -R nobody /app
 
 RUN touch /var/log/ploverdb.log
+RUN touch /var/log/gunicorn_error.log
+RUN touch /var/log/gunicorn_access.log
 RUN chown nobody /var/log/ploverdb.log
+RUN chown nobody /var/log/gunicorn_error.log
+RUN chown nobody /var/log/gunicorn_access.log
 
 USER nobody
 

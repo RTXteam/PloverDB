@@ -35,10 +35,6 @@ else:
     web_concurrency = max(int(default_web_concurrency), 2)
     if use_max_workers:
         web_concurrency = min(web_concurrency, use_max_workers)
-accesslog_var = os.getenv("ACCESS_LOG", "-")
-use_accesslog = accesslog_var or None
-errorlog_var = os.getenv("ERROR_LOG", "-")
-use_errorlog = errorlog_var or None
 graceful_timeout_str = os.getenv("GRACEFUL_TIMEOUT", "120")
 timeout_str = os.getenv("TIMEOUT", "120")
 keepalive_str = os.getenv("KEEP_ALIVE", "5")
@@ -47,9 +43,9 @@ keepalive_str = os.getenv("KEEP_ALIVE", "5")
 loglevel = use_loglevel
 workers = web_concurrency
 bind = use_bind
-errorlog = use_errorlog
+errorlog = "/var/log/gunicorn_error.log"
 worker_tmp_dir = "/dev/shm"
-accesslog = use_accesslog
+accesslog = "/var/log/gunicorn_access.log"
 graceful_timeout = int(graceful_timeout_str)
 timeout = int(timeout_str)
 keepalive = int(keepalive_str)

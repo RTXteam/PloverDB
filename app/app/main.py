@@ -31,7 +31,7 @@ plover_obj = plover.PloverDB()
 plover_obj.load_indexes()
 
 
-@app.post('/query')
+@app.post("/query")
 def run_query(query: dict):
     logging.info(f"In run query, query body is: {query}")
     answer = plover_obj.answer_query(query)
@@ -43,12 +43,12 @@ def run_query(query: dict):
     #     return flask.jsonify(answer)
 
 
-@app.get('/meta_knowledge_graph')
+@app.get("/meta_knowledge_graph")
 def get_meta_knowledge_graph():
     return plover_obj.meta_kg
 
 
-@app.get('/healthcheck')
+@app.get("/healthcheck")
 def run_health_check():
     return ''
 
@@ -60,13 +60,13 @@ def handle_error(e: Exception):
                         detail=f"500 ERROR: {error_msg}")
 
 
-@app.get('/code_version')
+@app.get("/code_version")
 def run_code_version():
     try:
         print(f"HOME: {os.environ['HOME']}", file=sys.stderr)
-        repo = pygit2.Repository(os.environ['HOME'])
+        repo = pygit2.Repository(os.environ["HOME"])
         repo_head_name = repo.head.name
-        timestamp_int = repo.revparse_single('HEAD').commit_time
+        timestamp_int = repo.revparse_single("HEAD").commit_time
         date_str = str(datetime.date.fromtimestamp(timestamp_int))
         response = {"code_info": f"HEAD: {repo_head_name}; Date: {date_str}",
                     "build_node": plover_obj.node_lookup_map["PloverDB"]}
@@ -75,18 +75,26 @@ def run_code_version():
         handle_error(e)
 
 
-@app.get('/get_logs')
-def run_get_logs():
+@app.get("/get_logs")
+def run_get_logs(num_lines: int = 100):
     try:
-        with open(plover.LOG_FILENAME, 'r') as f:
+        with open(plover.LOG_FILENAME, "r") as f:
             log_data_plover = f.readlines()
-        response = {'plover': log_data_plover}
+        with open("/var/log/gunicorn_error.log", "r") as f:
+            log_data_gunicorn_error = f.readlines()
+        with open("/var/log/gunicorn_access.log", "r") as f:
+            log_data_gunicorn_access = f.readlines()
+        response = {"description": f"The last {num_lines} lines from each of three logs (Plover, Gunicorn error, and "
+                                   "Gunicorn access) are included below.",
+                    "plover": log_data_plover[-num_lines:],
+                    "gunicorn_error": log_data_gunicorn_error[-num_lines:],
+                    "gunicorn_access": log_data_gunicorn_access[-num_lines:]}
         return response
     except Exception as e:
         handle_error(e)
 
 
-@app.get('/sri_test_triples')
+@app.get("/sri_test_triples")
 def get_sri_test_triples():
     with open(plover_obj.sri_test_triples_path, "r") as sri_test_file:
         sri_test_triples = json.load(sri_test_file)
