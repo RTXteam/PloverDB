@@ -68,7 +68,7 @@ def run_code_version():
         repo_head_name = repo.head.name
         timestamp_int = repo.revparse_single('HEAD').commit_time
         date_str = str(datetime.date.fromtimestamp(timestamp_int))
-        response = {"code_info": f"HEAD: {repo_head_name}; Last commit date: {date_str}",
+        response = {"code_info": f"HEAD: {repo_head_name}; Date: {date_str}",
                     "build_node": plover_obj.node_lookup_map["PloverDB"]}
         return response
     except Exception as e:

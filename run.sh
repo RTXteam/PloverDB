@@ -54,17 +54,17 @@ do
 done
 set -e  # Stop on error
 
-# Run the docker container; NOTE: the '--preload' flag makes Gunicorn workers *share* (vs. copy) the central index (yay)
+# Run the docker container
 if [ ${skip_ssl} == "true" ]
 then
-  # Skip configuring SSL certs if that was requested
-  ${docker_command} run -d --name ${container_name} -p ${host_port}:80 -e GUNICORN_CMD_ARGS="--preload" ${image_name}
+  # Skip configuring SSL certs if those aren't wanted
+  ${docker_command} run -d --name ${container_name} -p ${host_port}:80 ${image_name}
 else
   # Ensure our SSL cert is current and load it into the container (on run)
   sudo certbot renew
   cert_file_path=/etc/letsencrypt/live/ctkp.rtx.ai/fullchain.pem
   key_file_path=/etc/letsencrypt/live/ctkp.rtx.ai/privkey.pem
-  ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 -e GUNICORN_CMD_ARGS="--preload --keyfile=${key_file_path} --certfile=${cert_file_path}" -e PORT=443 ${image_name}
+  ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 -e GUNICORN_CMD_ARGS="--keyfile=${key_file_path} --certfile=${cert_file_path}" -e PORT=443 ${image_name}
 fi
 
 # Clean up unused/stopped docker items
