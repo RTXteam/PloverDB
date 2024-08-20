@@ -11,6 +11,7 @@
   "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:ncit"],
   "num_edges_per_answer_cutoff": 1000000,
   "normalize": false,
+  "convert_input_ids": true,
   "biolink_helper_branch": "master",
   "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
   "zip": {
@@ -77,7 +78,7 @@
       "value_type_id": "metatype:String"
     }
   },
-    "sources_template": {
+  "sources_template": {
     "biolink:treats": [
       {
         "resource_id":  "infores:clinicaltrials",

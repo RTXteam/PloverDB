@@ -192,18 +192,19 @@ class PloverDB:
                 del node["category"]  # KG2 uses all_categories for everything..
                 del node["preferred_category"]
             # Record equivalent identifiers (if provided) for each node so we can 'canonicalize' incoming queries
-            equivalent_ids = node.get("equivalent_curies")
-            if equivalent_ids:
-                for equiv_id in equivalent_ids:
-                    self.preferred_id_map[equiv_id] = node_key
-                del node["equivalent_curies"]
+            if self.kg_config.get("convert_input_ids"):
+                equivalent_ids = node.get("equivalent_curies")
+                if equivalent_ids:
+                    for equiv_id in equivalent_ids:
+                        self.preferred_id_map[equiv_id] = node_key
+                    del node["equivalent_curies"]
             del node["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading node lookup map; there are {len(self.node_lookup_map)} nodes. "
                      f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
 
         # Use the SRI NodeNormalizer to determine equivalent identifiers if none were provided in the nodes file
-        if not self.preferred_id_map:
+        if self.kg_config.get("convert_input_ids") and not self.preferred_id_map:
             logging.info(f"Looking up equivalent identifiers in SRI NodeNormalizer (will cache for later use)")
             all_node_ids = list(self.node_lookup_map)
             batch_size = 1000  # This is the suggested max batch size from Chris Bizon (in Translator slack..)
