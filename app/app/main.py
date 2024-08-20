@@ -34,12 +34,14 @@ plover_obj.load_indexes()
 @app.post("/query")
 def run_query(query: dict):
     answer = plover_obj.answer_query(query)
-    return answer
-    # TODO: Need to fix for fastapi..
-    # if isinstance(answer, tuple):  # Indicates an error
-    #     return flask.Response(answer[1], status=answer[0])
-    # else:
-    #     return flask.jsonify(answer)
+    if isinstance(answer, tuple):  # If Plover's answer is a tuple, that means it's an error
+        http_code, err_message = answer
+        detail_message = f"{http_code} ERROR: {err_message}"
+        logging.error(detail_message)
+        raise HTTPException(status_code=http_code,
+                            detail=detail_message)
+    else:
+        return answer
 
 
 @app.get("/meta_knowledge_graph")
@@ -52,7 +54,7 @@ def run_health_check():
     return ''
 
 
-def handle_error(e: Exception):
+def handle_internal_error(e: Exception):
     error_msg = str(e)
     logging.error(error_msg)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -71,7 +73,7 @@ def run_code_version():
                     "build_node": plover_obj.node_lookup_map["PloverDB"]}
         return response
     except Exception as e:
-        handle_error(e)
+        handle_internal_error(e)
 
 
 @app.get("/get_logs")
@@ -90,7 +92,7 @@ def run_get_logs(num_lines: int = 100):
                     "gunicorn_access": log_data_gunicorn_access[-num_lines:]}
         return response
     except Exception as e:
-        handle_error(e)
+        handle_internal_error(e)
 
 
 @app.get("/sri_test_triples")

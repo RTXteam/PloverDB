@@ -896,7 +896,7 @@ class PloverDB:
                                                                qedge_key,
                                                                trapi_query["message"]["query_graph"],
                                                                descendant_to_query_id_map)
-        logging.info(f"Done with query")
+        logging.info(f"Done with query, returning TRAPI response.")
         return trapi_response
 
     def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
