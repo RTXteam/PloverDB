@@ -59,66 +59,28 @@ The properties of an edge returned will be in a list with the following entries,
 
 ### How to run
 
-##### To host the latest RTX-KG2c
-
-_Hardware requirements_: A host machine with 128 GiB of memory is recommended for hosting [KG2c](https://github.com/RTXteam/RTX/tree/master/code/kg2c) (we use an `r5a.4xlarge` Amazon EC2 instance). 100 GiB of storage is sufficient.
-
 1. Install Docker (if needed)
-    * For Ubuntu 18, instructions are [here](https://github.com/RTXteam/RTX-KG2/blob/master/install-docker-ubuntu18.sh). For Ubuntu 20.04, try `sudo apt-get install -y docker.io`.
+    * For Ubuntu 20.04, try `sudo apt-get install -y docker.io`
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
-1. Make sure port `9990` (or one of your choosing) on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
+1. Make sure port `9990` on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
 1. Clone this repo
 1. `cd` into `PloverDB/`
 1. Then run the following command (if you are not on Ubuntu, you should ommit the "sudo docker" parameter), subbing in whatever names you would like for 'myimage' and 'mycontainer':
     * `bash -x run.sh myimage mycontainer "sudo docker"`
 
-This will build a Docker image and run a container off of it, publishing it at port 9990. Building the image should take 20-30 minutes for KG2c. 
-The `--no-cache` option is intended to ensure maximum reproducibility from build to build; it can be dropped if you want to speed up the build time.
-Upon starting the container, it will be approximately 15 minutes until the app is fully loaded and ready for use; you can do 
-`docker logs yourcontainer` to check on its progress. After running `docker run`, wait five minutes and then run `docker logs yourcontainer`, 
-and if you see output like this:
-```
-2023-06-29 21:13:56,028 INFO: Indexes are fully loaded! Took 5.52 minutes.
-WSGI app 0 (mountpoint='') ready in 332 seconds on interpreter 0x5629c42d36f0 pid: 10 (default app)
-*** uWSGI is running in multiple interpreter mode ***
-spawned uWSGI master process (pid: 10)
-spawned uWSGI worker 1 (pid: 13, cores: 1)
-spawned uWSGI worker 2 (pid: 14, cores: 1)
-running "unix_signal:15 gracefully_kill_them_all" (master-start)...
-```
-And if you can connect locally (on the PloverDB server, if you have shell access) to port 9990 like this:
-```
-nc -v 0 9990
-```
-if you see
-```
-Connection to 0 9990 port [tcp/*] succeeded!
-```
-then PloverDB is running and ready. Send a `Ctrl-C` to disconnect and you are ready to use or test PloverDB.
-You should now be able to send it POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
-##### To host your own KG file
+This will build a Docker image and run a container off of it, publishing it at port 9990.
 
-Follow the same steps as above, but between steps 3 and 4, do the following within your clone of the repo:
-
-1. Put your JSON KG file (which should be in Biolink format) into `PloverDB/app/`
-1. Update `PloverDB/app/kg_config.json`:
-    1. Specify your JSON KG file name under `local_kg_file_name` (e.g., `"my_kg.json"`)
-    1. Set `remote_kg_file_name` to `null`
-    1. Specify the 'labels' to use for nodes/edges (e.g., `"predicate"` and `"expanded_categories"`)
+You should now be able to send it TRAPI query POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
 ### How to test
-To verify that your new service is working, you can run the pytest suite against it:
-1. If you haven't already done so on the machine you'll be sending the tests from:
-    1. Clone this repo and `cd` into it
-    1. Run `pip install -r requirements.txt`
-1. Run `pytest -v test/test.py --endpoint [your_endpoint_url]`
-    * Example endpoint URL: `http://kg2cplover.rtx.ai:9990`
-    * If no endpoint is specified, the tests will use: `http://localhost:9990`
-
-(Note that these tests are written for KG2c, so may not pass if you've hosted a knowledge graph other than KG2c.)
+To verify that your new service is working, you can check a few endpoints (plug in your domain name instead of localhost):
+   1. Navigate to http://localhost:9990/code_version in your browser; it should display information about the build
+   2. Naviagte to http://localhost:9990/get_logs in your browser; it should display log messages
+   3. Navigate to http://localhost:9990/meta_knowledge_graph in your browser; it should display the meta knowledge graph
+   4. Try sending a TRAPI query to http://localhost:9990/query
 
 ### Debugging
-To see the logs (includes all components - uwsgi, etc.), run:
+To see the logs via the terminal (includes all components - Gunicorn, etc.), run:
  ```
  docker logs mycontainer
 ```
