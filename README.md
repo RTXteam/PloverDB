@@ -72,6 +72,14 @@ This will build a Docker image and run a container off of it, publishing it at p
 
 You should now be able to send it TRAPI query POST requests at the port you opened; the URL for this would look something like: `http://yourinstance.rtx.ai:9990/query/`. Or, if you just want to use it locally: `http://localhost:9990/query/`.
 
+#### For ITRB
+
+Assuming an Ubuntu instance with Docker installed and SSL certificates already handled, simply run:
+```
+sudo docker build -t ploverimage .
+sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
+```
+
 ### How to test
 To verify that your new service is working, you can check a few endpoints (plug in your domain name instead of localhost):
    1. Navigate to http://localhost:9990/code_version in your browser; it should display information about the build
