@@ -74,7 +74,7 @@ You should now be able to send it TRAPI query POST requests at the port you open
 
 #### For ITRB
 
-Assuming an Ubuntu instance with Docker installed and SSL certificates already handled, simply run:
+Assuming an Ubuntu instance with Docker installed and SSL certificates already handled, simply run (from the desired branch):
 ```
 sudo docker build -t ploverimage .
 sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
