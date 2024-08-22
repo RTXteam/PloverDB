@@ -908,7 +908,8 @@ class PloverDB:
                                                                qedge_key,
                                                                trapi_query["message"]["query_graph"],
                                                                descendant_to_query_id_map)
-        self.log_trapi("INFO", f"Done with query, returning TRAPI response.")
+        log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
+        self.log_trapi("INFO", log_message)
         return trapi_response
 
     def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
@@ -919,9 +920,10 @@ class PloverDB:
                                          qedge_key: str,
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
-        log_message = (f"Found {len(final_input_qnode_answers)} input node answers and "
-                       f"{len(final_output_qnode_answers)} output node answers")
+        log_message = (f"Found {len(final_input_qnode_answers)} input node answers, "
+                       f"{len(final_output_qnode_answers)} output node answers, {len(final_qedge_answers)} edges")
         self.log_trapi("INFO", log_message)
+        self.log_trapi("INFO", "Transforming answers to TRAPI format")
 
         # Handle any attribute constraints on the query edge
         edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
@@ -938,10 +940,11 @@ class PloverDB:
             final_input_qnode_answers = final_input_qnode_answers.intersection(node_ids_used_by_edges)
             final_output_qnode_answers = final_output_qnode_answers.intersection(node_ids_used_by_edges)
 
+            log_message = (f"After constraint handling, have {len(final_input_qnode_answers)} input node answers, "
+                           f"{len(final_output_qnode_answers)} output node answers, {len(final_qedge_answers)} edges")
+            self.log_trapi("INFO", log_message)
+
         # Then form the final TRAPI response
-        log_message = (f"In the end, have {len(final_input_qnode_answers)} input node answers and "
-                       f"{len(final_output_qnode_answers)} output node answers")
-        self.log_trapi("INFO", log_message)
         response = {
             "message": {
                 "query_graph": trapi_qg,
@@ -1447,7 +1450,8 @@ class PloverDB:
                                                          qedge_key="",
                                                          trapi_qg=trapi_qg,
                                                          descendant_to_query_id_map=descendant_to_query_id_map)
-        self.log_trapi("INFO", f"Done with query, returning TRAPI response.")
+        log_message = f"Done with query, returning TRAPI response ({len(response['message']['results'])} results)"
+        self.log_trapi("INFO", log_message)
         return response
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
