@@ -16,6 +16,7 @@ branch=""
 host_port="9990"
 image_name=ploverimage
 container_name=plovercontainer
+domain_name=$(head -n 1 ${SCRIPT_DIR}/domain_name.txt)
 
 # Override defaults with values from any optional parameters provided
 while getopts "i:c:d:b:s:p:" flag; do
@@ -64,8 +65,8 @@ then
 else
   # Ensure our SSL cert is current and load it into the container (on run)
   sudo certbot renew
-  cert_file_path=/etc/letsencrypt/live/ctkp.rtx.ai/fullchain.pem
-  key_file_path=/etc/letsencrypt/live/ctkp.rtx.ai/privkey.pem
+  cert_file_path=/etc/letsencrypt/live/${domain_name}/fullchain.pem
+  key_file_path=/etc/letsencrypt/live/${domain_name}/privkey.pem
   ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 -e GUNICORN_CMD_ARGS="--keyfile=${key_file_path} --certfile=${cert_file_path}" -e PORT=443 ${image_name}
 fi
 
