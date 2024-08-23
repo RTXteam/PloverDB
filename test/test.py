@@ -2,9 +2,9 @@ import pytest
 import requests
 from typing import Dict, Union, List
 
-ASPIRIN_CURIE = "PUBCHEM.COMPOUND:2244"
-TICLOPIDINE_CURIE = "PUBCHEM.COMPOUND:5472"
-ACETAMINOPHEN_CURIE = "PUBCHEM.COMPOUND:1983"
+ASPIRIN_CURIE = "CHEBI:15365"
+TICLOPIDINE_CURIE = "CHEBI:9588"
+ACETAMINOPHEN_CURIE = "CHEBI:46195"
 PROC_CURIE = "NCBIGene:5624"
 DIETHYLSTILBESTROL_CURIE = "PUBCHEM.COMPOUND:448537"
 METHYLPREDNISOLONE_CURIE = "PUBCHEM.COMPOUND:23663977"
@@ -499,38 +499,17 @@ def test_16():
 
 def test_17():
     # Test canonical predicate handling
-    query_non_canonical = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00",
-                "predicates": ["biolink:treated_by"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        },
-        "respect_predicate_symmetry": True
-    }
-    kg_non_canonical = _run_query(query_non_canonical)
-    assert len(kg_non_canonical["nodes"]["n01"])
-
     query_canonical = {
         "edges": {
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:treats"]
+                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
             }
         },
         "nodes": {
             "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -540,6 +519,27 @@ def test_17():
     }
     kg_canonical = _run_query(query_canonical)
     assert len(kg_canonical["nodes"]["n01"])
+
+    query_non_canonical = {
+        "edges": {
+            "e00": {
+                "subject": "n01",
+                "object": "n00",
+                "predicates": ["biolink:subject_of_treatment_application_or_study_for_treatment_by"]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
+            },
+            "n01": {
+                "categories": ["biolink:Disease"]
+            }
+        },
+        "respect_predicate_symmetry": True
+    }
+    kg_non_canonical = _run_query(query_non_canonical)
+    assert len(kg_non_canonical["nodes"]["n01"])
 
     assert len(kg_canonical["nodes"]["n01"]) == len(kg_non_canonical["nodes"]["n01"])
 
@@ -647,7 +647,7 @@ def test_21():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -679,7 +679,7 @@ def test_22():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["CHEBI:90879"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -861,7 +861,7 @@ def test_28():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -892,7 +892,7 @@ def test_29():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:9915886"]
+                "ids": ["CHEBI:94557"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
@@ -921,7 +921,7 @@ def test_30():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:6323266"]
+                "ids": ["CHEBI:90879"]
             },
             "n01": {
                 "categories": ["biolink:NamedThing"]
