@@ -84,6 +84,10 @@ class PloverDB:
             biolink_version = kg2c_dict.get("biolink_version")
             if biolink_version:
                 logging.info(f"  Biolink version for this KG is {biolink_version}")
+            if biolink_version == "4.2.0":
+                logging.info(f"  Overriding Biolink version from 4.2.0 to 4.2.1; 4.2.0 contains bugs with "
+                             f"predicate mixin relationships")
+                biolink_version = "4.2.1"
 
         # Set up BiolinkHelper (download from RTX repo)
         bh_file_name = "biolink_helper.py"
