@@ -923,7 +923,7 @@ class PloverDB:
         log_message = (f"Found {len(final_input_qnode_answers)} input node answers, "
                        f"{len(final_output_qnode_answers)} output node answers, {len(final_qedge_answers)} edges")
         self.log_trapi("INFO", log_message)
-        self.log_trapi("INFO", "Transforming answers to TRAPI format")
+        self.log_trapi("INFO", "Beginning to transform answers to TRAPI format..")
 
         # Handle any attribute constraints on the query edge
         edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
@@ -943,6 +943,7 @@ class PloverDB:
             log_message = (f"After constraint handling, have {len(final_input_qnode_answers)} input node answers, "
                            f"{len(final_output_qnode_answers)} output node answers, {len(final_qedge_answers)} edges")
             self.log_trapi("INFO", log_message)
+            self.log_trapi("INFO", "Continuing transformation of answers to TRAPI format..")
 
         # Then form the final TRAPI response
         response = {
