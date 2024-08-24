@@ -713,22 +713,27 @@ class PloverDB:
     def _load_column_value(self, col_value: any, col_name: str) -> any:
         # Load lists as actual lists, instead of strings
         if col_name in self.array_properties:
-            return [self._load_string_value(val) for val in col_value.split(",")]
+            return [self._load_value(val) for val in col_value.split(",")]
         else:
-            return self._load_string_value(col_value)
+            return self._load_value(col_value)
 
     @staticmethod
-    def _load_string_value(some_string: str) -> any:
-        if some_string.isdigit():
-            return int(some_string)
-        elif some_string.replace(".", "").isdigit():
-            return float(some_string)
-        elif some_string.lower() in {"t", "true"}:
-            return True
-        elif some_string.lower() in {"f", "false"}:
-            return False
+    def _load_value(val: str) -> any:
+        if isinstance(val, str):
+            if val.isdigit():
+                return int(val)
+            elif val.replace(".", "").isdigit():
+                return float(val)
+            elif val.lower() in {"t", "true"}:
+                return True
+            elif val.lower() in {"f", "false"}:
+                return False
+            elif val.lower() in {"none", "null"}:
+                return None
+            else:
+                return val
         else:
-            return some_string
+            return val
 
     @staticmethod
     def _get_equiv_id_map_from_sri(node_ids: List[str]) -> Dict[str, str]:
@@ -1160,32 +1165,35 @@ class PloverDB:
 
     def _filter_edges_by_attribute_constraints(self, trapi_edges: Dict[str, dict],
                                                qedge_attribute_constraints: List[dict]) -> Dict[str, dict]:
-        # Edges must meet ALL attribute constraints on this qedge to be retained
+        constraints_dict = {(constraint['id'], constraint['operator'], constraint['value'], constraint.get('not')): constraint
+                            for constraint in qedge_attribute_constraints}
+        constraints_set = set(constraints_dict)
         edge_keys_to_delete = set()
-        for attribute_constraint in qedge_attribute_constraints:
-            self.log_trapi("INFO", f"Processing attribute constraint with ID: {attribute_constraint['id']}")
-            constraint_id = attribute_constraint["id"]
-            constraint_value = attribute_constraint["value"]
-            operator = attribute_constraint["operator"]
-            is_not = attribute_constraint.get("not")
-            for edge_key, edge in trapi_edges.items():
-                # First identify attributes that correspond to this constraint
-                matching_attributes_top_level = [attribute["value"] for attribute in edge["attributes"]
-                                                 if attribute["attribute_type_id"] == constraint_id]
-                matching_attributes_nested = [subattribute["value"] for attribute in edge["attributes"]
-                                              for subattribute in attribute.get("attributes", [])
-                                              if subattribute["attribute_type_id"] == constraint_id]
-                attributes_to_examine = matching_attributes_top_level + matching_attributes_nested
-                # Pretend that edge sources are attributes too, to allow filtering based on sources via attr constraints
-                if constraint_id in self.knowledge_source_properties:
-                    source_types = self.knowledge_source_properties if constraint_id == "knowledge_source" else {constraint_id}
-                    sources_to_examine = [source["resource_id"] for source in edge["sources"]
-                                          if source["resource_role"] in source_types]
-                    attributes_to_examine += sources_to_examine
-                # Then determine whether the corresponding attributes fulfill the constraint
-                if not any(self._meets_constraint(attribute_value, constraint_value, operator, is_not)
-                           for attribute_value in attributes_to_examine):
-                    edge_keys_to_delete.add(edge_key)
+        for edge_key, edge in trapi_edges.items():
+            fulfilled = False
+            # First try to fulfill all constraints via top-level attributes on this edge
+            fulfilled_top = {constraint_tuple for constraint_tuple, constraint in constraints_dict.items()
+                             if any(self._meets_constraint(attribute=attribute,
+                                                           constraint=constraint)
+                                    for attribute in edge["attributes"])}
+
+            # If any constraints remain unfulfilled, see if we can fulfill them using subattributes
+            remaining_constraints = constraints_set.difference(fulfilled_top)
+            if remaining_constraints:
+                # NOTE: All remaining constraints must be fulfilled by subattributes on the *same* attribute to count
+                for attribute in edge["attributes"]:
+                    fulfilled_nested = {constraint_tuple for constraint_tuple in remaining_constraints
+                                        if any(self._meets_constraint(attribute=subattribute,
+                                                                      constraint=constraints_dict[constraint_tuple])
+                                               for subattribute in attribute.get("attributes", []))}
+                    if fulfilled_nested == remaining_constraints:
+                        fulfilled = True
+                        break  # Don't need to check remaining attributes on this edge
+            else:
+                fulfilled = True
+
+            if not fulfilled:
+                edge_keys_to_delete.add(edge_key)
 
         # Then actually delete the edges
         if edge_keys_to_delete:
@@ -1195,7 +1203,15 @@ class PloverDB:
                 del trapi_edges[edge_key]
         return trapi_edges
 
-    def _meets_constraint(self, attribute_value: any, constraint_value: any, operator: str, is_not: bool) -> bool:
+    def _meets_constraint(self, attribute: dict, constraint: dict) -> bool:
+        if attribute["attribute_type_id"] != constraint["id"]:
+            return False
+        attribute_value = attribute["value"]
+        constraint_value = constraint["value"]
+        operator = constraint["operator"]
+        is_not = constraint.get("not")
+
+        # Do some data type conversions, as needed
         attribute_val_is_list = isinstance(attribute_value, list)
         constraint_val_is_list = isinstance(constraint_value, list)
         # Convert clinical trial phase enum to numbers (internally) for easier comparison
@@ -1205,10 +1221,15 @@ class PloverDB:
             attribute_value = self.trial_phases_map_reversed.get(attribute_value, attribute_value)
         if constraint_val_is_list:
             constraint_value = [self.trial_phases_map_reversed.get(val, val) for val in constraint_value]
+            constraint_value = [self._load_value(val) for val in constraint_value]
         else:
             constraint_value = self.trial_phases_map_reversed.get(constraint_value, constraint_value)
-        meets_constraint = True
+            constraint_value = self._load_value(constraint_value)
+        if type(attribute_value) is not type(constraint_value):
+            return False
+
         # TODO: Add 'matches'? throw error if unrecognized?
+        meets_constraint = True
         # Now figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
         if operator == "==":
             if attribute_val_is_list and constraint_val_is_list:
