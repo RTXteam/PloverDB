@@ -1233,67 +1233,68 @@ class PloverDB:
         else:
             constraint_value = self.trial_phases_map_reversed.get(constraint_value, constraint_value)
             constraint_value = self._load_value(constraint_value)
-        if type(attribute_value) is not type(constraint_value):
-            return False
 
-        # TODO: Add 'matches'? throw error if unrecognized?
-        meets_constraint = True
-        # Now figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
-        if operator == "==":
-            if attribute_val_is_list and constraint_val_is_list:
-                meets_constraint = set(attribute_value).intersection(set(constraint_value)) != set()
-            elif attribute_val_is_list:
-                meets_constraint = constraint_value in attribute_value
-            elif constraint_val_is_list:
-                meets_constraint = attribute_value in constraint_value
-            else:
+        try:
+            # TODO: Add 'matches'?
+            meets_constraint = True
+            # Now figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
+            if operator == "==":
+                if attribute_val_is_list and constraint_val_is_list:
+                    meets_constraint = set(attribute_value).intersection(set(constraint_value)) != set()
+                elif attribute_val_is_list:
+                    meets_constraint = constraint_value in attribute_value
+                elif constraint_val_is_list:
+                    meets_constraint = attribute_value in constraint_value
+                else:
+                    meets_constraint = attribute_value == constraint_value
+            elif operator == "<":
+                if attribute_val_is_list and constraint_val_is_list:
+                    meets_constraint = any(attribute_val < constraint_val for attribute_val in attribute_value
+                                           for constraint_val in constraint_value)
+                elif attribute_val_is_list:
+                    meets_constraint = any(attribute_val < constraint_value for attribute_val in attribute_value)
+                elif constraint_val_is_list:
+                    meets_constraint = any(attribute_value < constraint_val for constraint_val in constraint_value)
+                else:
+                    meets_constraint = attribute_value < constraint_value
+            elif operator == ">":
+                if attribute_val_is_list and constraint_val_is_list:
+                    meets_constraint = any(attribute_val > constraint_val for attribute_val in attribute_value
+                                           for constraint_val in constraint_value)
+                elif attribute_val_is_list:
+                    meets_constraint = any(attribute_val > constraint_value for attribute_val in attribute_value)
+                elif constraint_val_is_list:
+                    meets_constraint = any(attribute_value > constraint_val for constraint_val in constraint_value)
+                else:
+                    meets_constraint = attribute_value > constraint_value
+            elif operator == "<=":
+                if attribute_val_is_list and constraint_val_is_list:
+                    meets_constraint = any(attribute_val <= constraint_val for attribute_val in attribute_value
+                                           for constraint_val in constraint_value)
+                elif attribute_val_is_list:
+                    meets_constraint = any(attribute_val <= constraint_value for attribute_val in attribute_value)
+                elif constraint_val_is_list:
+                    meets_constraint = any(attribute_value <= constraint_val for constraint_val in constraint_value)
+                else:
+                    meets_constraint = attribute_value <= constraint_value
+            elif operator == ">=":
+                if attribute_val_is_list and constraint_val_is_list:
+                    meets_constraint = any(attribute_val >= constraint_val for attribute_val in attribute_value
+                                           for constraint_val in constraint_value)
+                elif attribute_val_is_list:
+                    meets_constraint = any(attribute_val >= constraint_value for attribute_val in attribute_value)
+                elif constraint_val_is_list:
+                    meets_constraint = any(attribute_value >= constraint_val for constraint_val in constraint_value)
+                else:
+                    meets_constraint = attribute_value >= constraint_value
+            elif operator == "===":
                 meets_constraint = attribute_value == constraint_value
-        elif operator == "<":
-            if attribute_val_is_list and constraint_val_is_list:
-                meets_constraint = any(attribute_val < constraint_val for attribute_val in attribute_value
-                                       for constraint_val in constraint_value)
-            elif attribute_val_is_list:
-                meets_constraint = any(attribute_val < constraint_value for attribute_val in attribute_value)
-            elif constraint_val_is_list:
-                meets_constraint = any(attribute_value < constraint_val for constraint_val in constraint_value)
             else:
-                meets_constraint = attribute_value < constraint_value
-        elif operator == ">":
-            if attribute_val_is_list and constraint_val_is_list:
-                meets_constraint = any(attribute_val > constraint_val for attribute_val in attribute_value
-                                       for constraint_val in constraint_value)
-            elif attribute_val_is_list:
-                meets_constraint = any(attribute_val > constraint_value for attribute_val in attribute_value)
-            elif constraint_val_is_list:
-                meets_constraint = any(attribute_value > constraint_val for constraint_val in constraint_value)
-            else:
-                meets_constraint = attribute_value > constraint_value
-        elif operator == "<=":
-            if attribute_val_is_list and constraint_val_is_list:
-                meets_constraint = any(attribute_val <= constraint_val for attribute_val in attribute_value
-                                       for constraint_val in constraint_value)
-            elif attribute_val_is_list:
-                meets_constraint = any(attribute_val <= constraint_value for attribute_val in attribute_value)
-            elif constraint_val_is_list:
-                meets_constraint = any(attribute_value <= constraint_val for constraint_val in constraint_value)
-            else:
-                meets_constraint = attribute_value <= constraint_value
-        elif operator == ">=":
-            if attribute_val_is_list and constraint_val_is_list:
-                meets_constraint = any(attribute_val >= constraint_val for attribute_val in attribute_value
-                                       for constraint_val in constraint_value)
-            elif attribute_val_is_list:
-                meets_constraint = any(attribute_val >= constraint_value for attribute_val in attribute_value)
-            elif constraint_val_is_list:
-                meets_constraint = any(attribute_value >= constraint_val for constraint_val in constraint_value)
-            else:
-                meets_constraint = attribute_value >= constraint_value
-        elif operator == "===":
-            meets_constraint = attribute_value == constraint_value
-        else:
-            log_message = (f"Encountered unsupported operator: {operator}. Don't know how to handle; "
-                           f"will ignore this constraint.")
-            self.log_trapi("WARNING", log_message)
+                log_message = (f"Encountered unsupported operator: {operator}. Don't know how to handle; "
+                               f"will ignore this constraint.")
+                self.log_trapi("WARNING", log_message)
+        except Exception:
+            return False
 
         # Now factor in the 'not' property on the constraint
         return not meets_constraint if is_not else meets_constraint
