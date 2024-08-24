@@ -1172,10 +1172,13 @@ class PloverDB:
         for edge_key, edge in trapi_edges.items():
             fulfilled = False
             # First try to fulfill all constraints via top-level attributes on this edge
+            # Pretend that edge sources are attributes too, to allow filtering based on sources via attr constraints
+            sources_attrs = [{"attribute_type_id": source["resource_role"],
+                              "value": source["resource_id"]} for source in edge["sources"]]
             fulfilled_top = {constraint_tuple for constraint_tuple, constraint in constraints_dict.items()
                              if any(self._meets_constraint(attribute=attribute,
                                                            constraint=constraint)
-                                    for attribute in edge["attributes"])}
+                                    for attribute in edge["attributes"] + sources_attrs)}
 
             # If any constraints remain unfulfilled, see if we can fulfill them using subattributes
             remaining_constraints = constraints_set.difference(fulfilled_top)
@@ -1204,8 +1207,14 @@ class PloverDB:
         return trapi_edges
 
     def _meets_constraint(self, attribute: dict, constraint: dict) -> bool:
-        if attribute["attribute_type_id"] != constraint["id"]:
+        # Make sure we have compatible attribute/constraint IDs
+        constraint_id = constraint["id"]
+        attribute_id = attribute["attribute_type_id"]
+        if constraint_id == "knowledge_source" and attribute_id in self.knowledge_source_properties:
+            attribute_id = "knowledge_source"  # Allow sub-source types to fulfill higher level 'knowledge_source'
+        if attribute_id != constraint_id:
             return False
+
         attribute_value = attribute["value"]
         constraint_value = constraint["value"]
         operator = constraint["operator"]
