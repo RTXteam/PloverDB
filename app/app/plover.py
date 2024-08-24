@@ -735,12 +735,11 @@ class PloverDB:
         else:
             return val
 
-    @staticmethod
-    def _get_equiv_id_map_from_sri(node_ids: List[str]) -> Dict[str, str]:
+    def _get_equiv_id_map_from_sri(self, node_ids: List[str]) -> Dict[str, str]:
         response = requests.post("https://nodenormalization-sri.renci.org/get_normalized_nodes",
                                  json={"curies": node_ids,
                                        "conflate": True,
-                                       "drug_chemical_conflate": True})
+                                       "drug_chemical_conflate": self.kg_config.get("drug_chemical_conflation", False)})
 
         equiv_id_map = {node_id: node_id for node_id in node_ids}  # Preferred IDs for nodes are themselves
         if response.status_code == 200:
