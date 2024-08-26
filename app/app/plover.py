@@ -148,10 +148,12 @@ class PloverDB:
             for edge in edges:
                 # Add in some edge properties that aren't in the TSVs
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
-                edge["max_research_phase"] = self.trial_phases_map[max(edge["phase"])]
-                edge["elevate_to_prediction"] = edge.get("elevate_to_prediction", False)
+                max_phase_num = max(edge["phase"])
+                edge["max_research_phase"] = self.trial_phases_map[max_phase_num]
                 if edge["predicate"] == "biolink:treats":
                     edge["clinical_approval_status"] = "approved_for_condition"
+                elif edge["predicate"] == "biolink:in_clinical_trials_for":
+                    edge["elevate_to_prediction"] = True if 1 <= max_phase_num < 4 else False
                 # Zip up supporting study columns to form an object per study
                 zip_cols = [edge[property_name]
                             for property_name in self.kg_config["zip"]["supporting_studies"]["properties"]]
