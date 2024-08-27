@@ -1174,7 +1174,7 @@ class PloverDB:
 
     def _filter_edges_by_attribute_constraints(self, trapi_edges: Dict[str, dict],
                                                qedge_attribute_constraints: List[dict]) -> Dict[str, dict]:
-        constraints_dict = {(constraint['id'], constraint['operator'], constraint['value'], constraint.get('not')): constraint
+        constraints_dict = {f"{constraint['id']}--{constraint['operator']}--{constraint['value']}--{constraint.get('not')}": constraint
                             for constraint in qedge_attribute_constraints}
         constraints_set = set(constraints_dict)
         edge_keys_to_delete = set()
@@ -1184,7 +1184,7 @@ class PloverDB:
             # Pretend that edge sources are attributes too, to allow filtering based on sources via attr constraints
             sources_attrs = [{"attribute_type_id": source["resource_role"],
                               "value": source["resource_id"]} for source in edge["sources"]]
-            fulfilled_top = {constraint_tuple for constraint_tuple, constraint in constraints_dict.items()
+            fulfilled_top = {constraint_key for constraint_key, constraint in constraints_dict.items()
                              if any(self._meets_constraint(attribute=attribute,
                                                            constraint=constraint)
                                     for attribute in edge["attributes"] + sources_attrs)}
@@ -1194,9 +1194,9 @@ class PloverDB:
             if remaining_constraints:
                 # NOTE: All remaining constraints must be fulfilled by subattributes on the *same* attribute to count
                 for attribute in edge["attributes"]:
-                    fulfilled_nested = {constraint_tuple for constraint_tuple in remaining_constraints
+                    fulfilled_nested = {constraint_key for constraint_key in remaining_constraints
                                         if any(self._meets_constraint(attribute=subattribute,
-                                                                      constraint=constraints_dict[constraint_tuple])
+                                                                      constraint=constraints_dict[constraint_key])
                                                for subattribute in attribute.get("attributes", []))}
                     if fulfilled_nested == remaining_constraints:
                         fulfilled = True
