@@ -1,6 +1,6 @@
 {
-  "nodes_file": "drug_approvals_kg_nodes_v0.2.tsv",
-  "edges_file": "drug_approvals_kg_edges_v0.2.tsv",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_nodes_v0.2.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_edges_v0.2.tsv",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-drugapprovals",
   "endpoint_name": "dakp",
@@ -8,11 +8,11 @@
     "edges": "predicate",
     "nodes": "category"
   },
-  "remote_subclass_edges_file_url": null,
+  "remote_subclass_edges_file_url": "https://kg2webhost.rtx.ai/kg2.10.0pre_subclass_edges_manual_agent.jsonl.gz",
   "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:ncit"],
   "num_edges_per_answer_cutoff": 100000,
   "normalize": false,
-  "convert_input_ids": false,
+  "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
   "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
