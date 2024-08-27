@@ -22,28 +22,30 @@ import requests
 from fastapi import HTTPException
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
+LOG_FILE_PATH = "/var/log/ploverdb.log"
 
 
 class PloverDB:
 
     def __init__(self, config_file_name: str):
-        with open(f"{SCRIPT_DIR}/../{config_file_name}") as config_file:
-            self.kg_config = json.load(config_file)
-        self.endpoint_name = self.kg_config["endpoint_name"]
-        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}.pkl"
-        self.log_path = f"/var/log/ploverdb_{self.endpoint_name}.log"
-
         # Set up logging (when run outside of docker, can't write to /var/log - handle that situation)
         try:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
-                                          logging.FileHandler(self.log_path)])
+                                          logging.FileHandler(LOG_FILE_PATH)])
         except Exception:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
                                           logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
+
+        self.config_file_name = config_file_name
+        with open(f"{SCRIPT_DIR}/../{self.config_file_name}") as config_file:
+            self.kg_config = json.load(config_file)
+        self.endpoint_name = self.kg_config["endpoint_name"]
+        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}.pkl"
+        self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
@@ -53,10 +55,9 @@ class PloverDB:
             self.trapi_attribute_map["description"] = {"attribute_type_id": "biolink:description",
                                                        "value_type_id": "metatype:String"}
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
-        self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples.json"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
-        self.array_properties = {property_name for zip_info in self.kg_config["zip"].values()
+        self.array_properties = {property_name for zip_info in self.kg_config.get("zip", dict()).values()
                                  for property_name in zip_info["properties"]}.union(set(self.kg_config.get("other_array_properties", [])))
         self.kg2_qualified_predicate_property = "qualified_predicate"
         self.kg2_object_direction_property = "qualified_object_direction"  # Later this might use same as qedge?
@@ -98,7 +99,7 @@ class PloverDB:
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
 
     def build_indexes(self):
-        logging.info("Starting to build indexes..")
+        logging.info(f"Starting to build indexes for endpoint {self.endpoint_name}..")
         start = time.time()
 
         nodes_file_name_unzipped, edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
@@ -425,6 +426,7 @@ class PloverDB:
         logging.info(f"Done building indexes! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def load_indexes(self):
+        logging.info(f"Starting to load indexes for endpoint {self.endpoint_name}..")
         logging.info(f"Checking whether pickle of indexes ({self.pickle_index_path}) already exists..")
         pickle_index_file = pathlib.Path(self.pickle_index_path)
         if not pickle_index_file.exists():
@@ -555,8 +557,8 @@ class PloverDB:
                     edge["object"] = self.preferred_id_map[edge["object"]]
                 subprocess.call(["rm", "-f", subclass_edges_path])
             else:
-                logging.warning(f"No url to a subclass edges file provided in kg_config. Will proceed without subclass "
-                                f"concept reasoning.")
+                logging.warning(f"No url to a subclass edges file provided in {self.config_file_name}. Will proceed "
+                                f"without subclass concept reasoning.")
 
         if self.kg_config.get("subclass_sources"):
             subclass_sources = set(self.kg_config["subclass_sources"])
@@ -716,6 +718,9 @@ class PloverDB:
         # Load lists as actual lists, instead of strings
         if col_name in self.array_properties:
             return [self._load_value(val) for val in col_value.split(",")]
+        elif col_name == "predicate" and not col_value.startswith("biolink:"):
+            # TODO: Remove this patch after DAKP edges file is fixed..
+            return f"biolink:{col_value}"
         else:
             return self._load_value(col_value)
 
@@ -768,7 +773,6 @@ class PloverDB:
                         edited_upstream_ids = [resource_id.replace("{kp_infores_curie}", self.kp_infores_curie)
                                                for resource_id in source_shell["upstream_resource_ids"]]
                         source_shell["upstream_resource_ids"] = edited_upstream_ids
-            logging.info(f"After loading, sources template is: {sources_template}")
         return sources_template
 
     # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
@@ -1543,6 +1547,7 @@ class PloverDB:
                             detail=detail_message)
 
     def log_trapi(self, level: str, message: str, code: Optional[str] = None):
+        message = f"{self.endpoint_name}: {message}"
         # First log this in our usual log
         if level == "INFO":
             logging.info(message)
@@ -1562,7 +1567,8 @@ class PloverDB:
 
 
 def main():
-    plover = PloverDB()
+    # TODO: Update to pass in config file name as arg...
+    plover = PloverDB(config_file_name="config.json")
     plover.build_indexes()
     plover.load_indexes()
 

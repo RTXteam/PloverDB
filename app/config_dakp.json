@@ -16,7 +16,7 @@
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
   "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
-  "zip": null,
+  "zip": {},
   "other_array_properties": ["approval", "supporting_spls"],
   "trapi_attribute_map": {
     "knowledge_level": {

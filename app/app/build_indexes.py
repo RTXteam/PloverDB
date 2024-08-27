@@ -12,7 +12,7 @@ arg_parser = argparse.ArgumentParser()
 args = arg_parser.parse_args()
 
 # Build a Plover per KP endpoint (each represented by a separate config file)
-config_files = {file_name for file_name in os.listdir(SCRIPT_DIR)
+config_files = {file_name for file_name in os.listdir(f"{SCRIPT_DIR}/../")
                 if file_name.startswith("config") and file_name.endswith(".json")}
 for config_file in config_files:
     print(f"Building indexes for {config_file} Plover..")
