@@ -22,27 +22,28 @@ import requests
 from fastapi import HTTPException
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
-LOG_FILENAME = "/var/log/ploverdb.log"
 
 
 class PloverDB:
 
-    def __init__(self):
+    def __init__(self, config_file_name: str):
+        with open(f"{SCRIPT_DIR}/../{config_file_name}") as config_file:
+            self.kg_config = json.load(config_file)
+        self.endpoint_name = self.kg_config["endpoint_name"]
+        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}.pkl"
+        self.log_path = f"/var/log/ploverdb_{self.endpoint_name}.log"
+
         # Set up logging (when run outside of docker, can't write to /var/log - handle that situation)
         try:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
-                                          logging.FileHandler(LOG_FILENAME)])
+                                          logging.FileHandler(self.log_path)])
         except Exception:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
                                           logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
-
-        self.config_file_path = f"{SCRIPT_DIR}/../kg_config.json"
-        with open(self.config_file_path) as config_file:
-            self.kg_config = json.load(config_file)
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
@@ -52,12 +53,11 @@ class PloverDB:
             self.trapi_attribute_map["description"] = {"attribute_type_id": "biolink:description",
                                                        "value_type_id": "metatype:String"}
         self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
-        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes.pkl"
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples.json"
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.array_properties = {property_name for zip_info in self.kg_config["zip"].values()
-                                 for property_name in zip_info["properties"]}
+                                 for property_name in zip_info["properties"]}.union(set(self.kg_config.get("other_array_properties", [])))
         self.kg2_qualified_predicate_property = "qualified_predicate"
         self.kg2_object_direction_property = "qualified_object_direction"  # Later this might use same as qedge?
         self.kg2_object_aspect_property = "qualified_object_aspect"  # Later this might use same as qedge?

@@ -26,14 +26,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-start = time.time()
-plover_obj = plover.PloverDB()
-plover_obj.load_indexes()
+plover_objs_map = dict()
+config_files = {file_name for file_name in os.listdir(SCRIPT_DIR)
+                if file_name.startswith("config") and file_name.endswith(".json")}
+for config_file_name in config_files:
+    plover_obj = plover.PloverDB(config_file_name=config_file_name)
+    plover_obj.load_indexes()
+    with open(f"{SCRIPT_DIR}/../{config_file_name}") as config_file:
+        config_info = json.load(config_file)
+    endpoint_name = config_info["endpoint_name"]
+    plover_objs_map[endpoint_name] = plover_obj
+logging.info(f"Plover objs map is: {plover_objs_map}")
+
+
+@app.post("/{kp_endpoint_name}/query")
+def run_query_for_endpoint(kp_endpoint_name: str, query: dict):
+    logging.info(f"KP endpoint name is: {kp_endpoint_name}")
+    logging.info(f"Query is: {query}")
+    # TODO: Throw error if endpoint name isn't in map
+    answer = plover_objs_map[kp_endpoint_name].answer_query(query)
+    return answer
 
 
 @app.post("/query")
-def run_query(query: dict):
-    answer = plover_obj.answer_query(query)
+def run_query_default(query: dict):
+    logging.info(f"Query is: {query}")
+    # Use the alphabetically-first endpoint
+    kp_endpoint_name = sorted(list(plover_objs_map.keys()))[0]
+    answer = plover_objs_map[kp_endpoint_name].answer_query(query)
     return answer
 
 
@@ -69,10 +89,10 @@ def run_code_version():
         handle_internal_error(e)
 
 
-@app.get("/get_logs")
-def run_get_logs(num_lines: int = 100):
+@app.get("/{kp_endpoint_name}/get_logs")
+def run_get_logs(kp_endpoint_name: str, num_lines: int = 100):
     try:
-        with open(plover.LOG_FILENAME, "r") as f:
+        with open(plover_objs_map[kp_endpoint_name].log_path, "r") as f:
             log_data_plover = f.readlines()
         with open("/var/log/gunicorn_error.log", "r") as f:
             log_data_gunicorn_error = f.readlines()
