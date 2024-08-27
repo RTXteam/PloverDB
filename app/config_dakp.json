@@ -15,7 +15,7 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
-  "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
+  "ignore_edge_properties": ["subject_name", "object_name", "unii", "category", "object_modifier", "N_cases", "approval", "supporting_spls"],
   "zip": {},
   "other_array_properties": ["approval", "supporting_spls"],
   "trapi_attribute_map": {
@@ -26,13 +26,41 @@
     "agent_type": {
       "attribute_type_id": "biolink:agent_type",
       "attribute_source": "{kp_infores_curie}"
+    },
+    "clinical_approval_status": {
+      "attribute_type_id": "biolink:clinical_approval_status",
+      "value_type_id": "biolink:ClinicalApprovalStatusEnum"
     }
   },
   "sources_template": {
     "default": [
       {
-        "resource_id":  "infores:multiomics-drugapprovals",
+        "resource_id":  "{kp_infores_curie}",
+        "resource_role":  "aggregator_knowledge_source",
+        "upstream_resource_ids":  ["infores:dailymed", "infores:faers"]
+      },
+      {
+        "resource_id":  "infores:faers",
         "resource_role":  "primary_knowledge_source"
+      },
+      {
+        "resource_id":  "infores:dailymed",
+        "resource_role":  "supporting_data_source"
+      }
+    ],
+    "biolink:treats": [
+      {
+        "resource_id":  "{kp_infores_curie}",
+        "resource_role":  "primary_knowledge_source",
+        "upstream_resource_ids":  ["infores:dailymed", "infores:faers"]
+      },
+      {
+        "resource_id":  "infores:faers",
+        "resource_role":  "supporting_data_source"
+      },
+      {
+        "resource_id":  "infores:dailymed",
+        "resource_role":  "supporting_data_source"
       }
     ]
   }

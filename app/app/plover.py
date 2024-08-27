@@ -174,6 +174,10 @@ class PloverDB:
                 for study_obj in edge["supporting_studies"]:
                     study_obj["tested_intervention"] = tested_intervention
                     study_obj["phase"] = self.trial_phases_map[study_obj["phase"]]
+        elif self.kp_infores_curie == "infores:multiomics-drugapprovals":
+            for edge in edges:
+                edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
+                edge["clinical_approval_status"] = "approved_for_condition" if edge["predicate"] == "biolink:treats" else "not_approved_for_condition"
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
@@ -765,8 +769,8 @@ class PloverDB:
     def _load_edge_sources(self, kg_config: dict):
         sources_template = kg_config.get("sources_template")
         if sources_template:
-            for predicate, sources_shell in sources_template.items():
-                for source_shell in sources_shell:
+            for predicate, sources_shells in sources_template.items():
+                for source_shell in sources_shells:
                     source_shell["resource_id"] = source_shell["resource_id"].replace("{kp_infores_curie}",
                                                                                       self.kp_infores_curie)
                     if source_shell.get("upstream_resource_ids"):

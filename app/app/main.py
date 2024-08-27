@@ -39,14 +39,12 @@ def load_plovers() -> Tuple[dict, str]:
     # Load a Plover for each KP (each KP has its own Plover config file)
     config_files = {file_name for file_name in os.listdir(f"{SCRIPT_DIR}/../")
                     if file_name.startswith("config") and file_name.endswith(".json")}
-    logging.info(f"Config files are {config_files}")
+    logging.info(f"Plover config files are {config_files}")
     plover_endpoints_map = dict()
     for config_file_name in config_files:
         plover_obj = plover.PloverDB(config_file_name=config_file_name)
         plover_obj.load_indexes()
-        with open(f"{SCRIPT_DIR}/../{config_file_name}") as config_file:
-            config_info = json.load(config_file)
-        plover_endpoints_map[config_info["endpoint_name"]] = plover_obj
+        plover_endpoints_map[plover_obj.endpoint_name] = plover_obj
     default_endpoint = sorted(list(plover_endpoints_map.keys()))[0]
     return plover_endpoints_map, default_endpoint
 
