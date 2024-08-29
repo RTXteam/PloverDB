@@ -4,3 +4,4 @@ PyYAML
 requests
 treelib
 pygit2
+networkx
