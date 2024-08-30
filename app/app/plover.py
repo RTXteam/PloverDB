@@ -150,6 +150,9 @@ class PloverDB:
         if self.kg_config.get("zip"):
             for zipped_prop_name, zipped_prop_info in self.kg_config["zip"].items():
                 for edge in edges:
+                    # TODO: Remove this patch after CTKP TSVs are fixed..
+                    if "tested_intervention" in zipped_prop_info["properties"]:
+                        edge["tested_intervention"] = edge["tested_intervention"] * len(edge["nctid"])
                     zip_cols = [edge[property_name] for property_name in zipped_prop_info["properties"]]
                     item_tuples = list(zip(*zip_cols))
                     item_objs = [dict(zip(zipped_prop_info["properties"], item_tuple)) for item_tuple in item_tuples]
