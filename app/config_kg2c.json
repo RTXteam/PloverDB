@@ -1,0 +1,67 @@
+{
+  "nodes_file": "https://kg2webhost.rtx.ai/kg2c-2.10.0-v1.0-nodes.jsonl.gz",
+  "edges_file": "https://kg2webhost.rtx.ai/kg2c-2.10.0-v1.0-edges.jsonl.gz",
+  "biolink_version": "4.2.1",
+  "kp_infores_curie": "infores:rtx-kg2",
+  "endpoint_name": "kg2c",
+  "labels": {
+    "edges": "predicate",
+    "nodes": "all_categories"
+  },
+  "remote_subclass_edges_file_url": null,
+  "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo"],
+  "num_edges_per_answer_cutoff": 1000000,
+  "normalize": false,
+  "convert_input_ids": true,
+  "drug_chemical_conflation": true,
+  "biolink_helper_branch": "master",
+  "ignore_edge_properties": [],
+  "zip": {},
+  "other_array_properties": [],
+  "trapi_attribute_map": {
+    "knowledge_level": {
+      "attribute_type_id": "biolink:knowledge_level",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "agent_type": {
+      "attribute_type_id": "biolink:agent_type",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "iri": {
+      "attribute_type_id": "biolink:IriType",
+      "value_type_id": "metatype:Uri"
+    },
+    "description": {
+      "attribute_type_id": "biolink:description",
+      "value_type_id": "metatype:String"
+    },
+    "all_categories": {
+      "attribute_type_id": "biolink:category",
+      "value_type_id": "metatype:Uriorcurie",
+      "description": "Categories of all nodes in this synonym set in RTX-KG2."
+    },
+    "all_names": {
+      "attribute_type_id": "biolink:synonym",
+      "value_type_id": "metatype:String",
+      "description": "Names of all nodes in this synonym set in RTX-KG2."
+    },
+    "equivalent_curies": {
+      "attribute_type_id": "biolink:xref",
+      "value_type_id": "metatype:Nodeidentifier",
+      "description": "Identifiers of all nodes in this synonym set in RTX-KG2."
+    },
+    "publications": {
+      "attribute_type_id": "biolink:publications",
+      "value_type_id": "biolink:Uriorcurie"
+    },
+    "kg2_ids": {
+      "attribute_type_id": "biolink:original_predicate",
+      "value_type_id": "metatype:String",
+      "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping."
+    },
+    "publications_info": {
+      "attribute_type_id": "bts:sentence"
+    }
+  },
+  "sources_template": {}
+}
