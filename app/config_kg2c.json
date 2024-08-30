@@ -15,7 +15,8 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": true,
   "biolink_helper_branch": "master",
-  "ignore_edge_properties": [],
+  "ignore_edge_properties": ["domain_range_exclusion"],
+  "ignore_node_properties": ["category"],
   "zip": {},
   "other_array_properties": [],
   "trapi_attribute_map": {
