@@ -89,6 +89,8 @@ class PloverDB:
                                  3: "clinical_trial_phase_3", 4: "clinical_trial_phase_4",
                                  1.5: "clinical_trial_phase_1_to_2", 2.5: "clinical_trial_phase_2_to_3"}
         self.trial_phases_map_reversed = self._reverse_dictionary(self.trial_phases_map)
+        self.trial_phase_properties = {property_name for property_name, attribute_shell in self.trapi_attribute_map.items()
+                                       if attribute_shell.get("value_type_id", "") == "biolink:MaxResearchPhaseEnum"}
         self.properties_to_include_source_on = {"publications", "publications_info"}
         self.knowledge_source_properties = {"knowledge_source", "primary_knowledge_source",
                                             "aggregator_knowledge_source", "supporting_data_source"}
@@ -140,44 +142,49 @@ class PloverDB:
         edge_properties_to_ignore = self.kg_config.get("ignore_edge_properties")
         if edge_properties_to_ignore:
             for edge in edges:
-                for ignore_property in edge_properties_to_ignore:
-                    if ignore_property in edge:
-                        del edge[ignore_property]
+                for prop_to_ignore in edge_properties_to_ignore:
+                    if prop_to_ignore in edge:
+                        del edge[prop_to_ignore]
 
-        # TODO: Should this info be added to edges TSV? This works for now..
-        if self.kp_infores_curie == "infores:multiomics-clinicaltrials":
+        # Zip up specified 'zip' columns to form a list of dicts (e.g., list of supporting studies)
+        if self.kg_config.get("zip"):
+            for zipped_prop_name, zipped_prop_info in self.kg_config["zip"].items():
+                for edge in edges:
+                    zip_cols = [edge[property_name] for property_name in zipped_prop_info["properties"]]
+                    item_tuples = list(zip(*zip_cols))
+                    item_objs = [dict(zip(zipped_prop_info["properties"], item_tuple)) for item_tuple in item_tuples]
+                    edge[zipped_prop_name] = item_objs
+                    # Then clean up empty subattributes and delete original attributes from top level
+                    for nested_prop_name in zipped_prop_info["properties"]:
+                        for item_obj in edge[zipped_prop_name]:
+                            # Delete empty subattributes
+                            if self._is_empty(item_obj[nested_prop_name]):
+                                del item_obj[nested_prop_name]
+                            # Convert trial phase integers to Biolink enums
+                            if nested_prop_name in self.trial_phase_properties:
+                                item_obj[nested_prop_name] = self._convert_trial_phase_to_enum(item_obj[nested_prop_name])
+                        del edge[nested_prop_name]  # Delete from top level now that we've moved it to nested level
+
+        # Delete any remaining top-level properties that are empty
+        for edge in edges:
+            empty_properties = {property_name for property_name, property_value in edge.items()
+                                if self._is_empty(property_value)}
+            for empty_property_name in empty_properties:
+                del edge[empty_property_name]
+
+        # Convert any trial phase property values from int to Biolink enum
+        if self.trial_phase_properties:
             for edge in edges:
-                # Add in some edge properties that aren't in the TSVs
-                edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
-                max_phase_num = max(edge["phase"])
-                edge["max_research_phase"] = self.trial_phases_map[max_phase_num]
-                if edge["predicate"] == "biolink:treats":
-                    edge["clinical_approval_status"] = "approved_for_condition"
-                elif edge["predicate"] == "biolink:in_clinical_trials_for":
-                    edge["elevate_to_prediction"] = True if 1 <= max_phase_num < 4 else False
-                # Zip up supporting study columns to form an object per study
-                zip_cols = [edge[property_name]
-                            for property_name in self.kg_config["zip"]["supporting_studies"]["properties"]]
-                study_tuples = list(zip(*zip_cols))
-                study_objs = [dict(zip(self.kg_config["zip"]["supporting_studies"]["properties"],
-                                       study_tuple))
-                              for study_tuple in study_tuples]
-                edge["supporting_studies"] = study_objs
-                # Clean up empty subattributes and delete subattributes from top level
-                for nested_property_name in self.kg_config["zip"]["supporting_studies"]["properties"]:
-                    for study_obj in edge["supporting_studies"]:
-                        if study_obj[nested_property_name] == "" or study_obj[nested_property_name] is None:
-                            del study_obj[nested_property_name]
-                    del edge[nested_property_name]
-                # Add/adjust a couple properties on each supporting study
-                tested_intervention = "unsure" if edge["predicate"] == "biolink:mentioned_in_trials_for" else "yes"
-                for study_obj in edge["supporting_studies"]:
-                    study_obj["tested_intervention"] = tested_intervention
-                    study_obj["phase"] = self.trial_phases_map[study_obj["phase"]]
-        elif self.kp_infores_curie == "infores:multiomics-drugapprovals":
+                for trial_phase_prop in self.trial_phase_properties:
+                    if trial_phase_prop in edge:
+                        edge[trial_phase_prop] = self._convert_trial_phase_to_enum(edge[trial_phase_prop])
+
+        # TODO: Remove after Gwenlyn creates Plover version of TSV?
+        if self.kp_infores_curie == "infores:multiomics-drugapprovals":
             for edge in edges:
                 edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
                 edge["clinical_approval_status"] = "approved_for_condition" if edge["predicate"] == "biolink:treats" else "not_approved_for_condition"
+
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
@@ -746,6 +753,21 @@ class PloverDB:
         else:
             return val
 
+    def _convert_trial_phase_to_enum(self, phase_value: any) -> any:
+        if phase_value in self.trial_phases_map:
+            return self.trial_phases_map[phase_value]
+        elif type(phase_value) is str:
+            return self.trial_phases_map.get(self._load_value(phase_value), phase_value)
+        else:
+            return phase_value
+
+    @staticmethod
+    def _is_empty(value: any) -> bool:
+        if value or isinstance(value, (int, float, complex)):
+            return False
+        else:
+            return True
+
     def _get_equiv_id_map_from_sri(self, node_ids: List[str]) -> Dict[str, str]:
         response = requests.post("https://nodenormalization-sri.renci.org/get_normalized_nodes",
                                  json={"curies": node_ids,
@@ -1087,7 +1109,7 @@ class PloverDB:
             else:
                 attribute["attribute_source"] = edge_biolink.get(source_property_name)
         if attribute.get("value_url"):
-            attribute["value_url"] = attribute["value_url"].replace("{****}", value)
+            attribute["value_url"] = attribute["value_url"].replace("{value}", value)
         return attribute
 
     def _get_trapi_results(self, final_input_qnode_answers: Set[str],
