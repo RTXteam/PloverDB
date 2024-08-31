@@ -725,7 +725,7 @@ class PloverDB:
     def _load_column_value(self, col_value: any, col_name: str) -> any:
         # Load lists as actual lists, instead of strings
         if col_name in self.array_properties:
-            return [self._load_value(val) for val in col_value.split(",") if val]
+            return [self._load_value(val) for val in col_value.split(",")]
         elif col_name == "predicate" and not col_value.startswith("biolink:"):
             # TODO: Remove this patch after DAKP edges file is fixed..
             return f"biolink:{col_value}"
