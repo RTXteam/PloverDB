@@ -23,7 +23,7 @@
                         "tested_intervention"],
       "leader": "nctid"
     }},
-  "other_array_properties": [],
+  "other_array_properties": ["source_record_urls"],
   "trapi_attribute_map": {
     "knowledge_level": {
       "attribute_type_id": "biolink:knowledge_level",

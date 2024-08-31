@@ -17,7 +17,7 @@
   "biolink_helper_branch": "master",
   "ignore_edge_properties": [],
   "zip": {},
-  "other_array_properties": ["approval", "supporting_spls"],
+  "other_array_properties": ["source_record_urls", "approval", "supporting_spls"],
   "trapi_attribute_map": {
     "knowledge_level": {
       "attribute_type_id": "biolink:knowledge_level",
