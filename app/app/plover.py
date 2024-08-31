@@ -232,7 +232,7 @@ class PloverDB:
 
         # Create basic edge lookup map
         logging.info(f"Loading edge lookup map..")
-        self.edge_lookup_map = {edge["id"]: edge for edge in kg2c_dict["edges"]}
+        self.edge_lookup_map = {str(edge["id"]): edge for edge in kg2c_dict["edges"]}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
@@ -726,9 +726,6 @@ class PloverDB:
         # Load lists as actual lists, instead of strings
         if col_name in self.array_properties:
             return [self._load_value(val) for val in col_value.split(",")]
-        elif col_name == "predicate" and not col_value.startswith("biolink:"):
-            # TODO: Remove this patch after DAKP edges file is fixed..
-            return f"biolink:{col_value}"
         else:
             return self._load_value(col_value)
 
