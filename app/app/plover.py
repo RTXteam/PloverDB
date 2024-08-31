@@ -182,12 +182,6 @@ class PloverDB:
                     if trial_phase_prop in edge:
                         edge[trial_phase_prop] = self._convert_trial_phase_to_enum(edge[trial_phase_prop])
 
-        # TODO: Remove after Gwenlyn creates Plover version of TSV?
-        if self.kp_infores_curie == "infores:multiomics-drugapprovals":
-            for edge in edges:
-                edge["source_record_urls"] = [f"https://db.systemsbiology.net/gestalt/cgi-pub/KGinfo.pl?id={edge['id']}"]
-                edge["clinical_approval_status"] = "approved_for_condition" if edge["predicate"] == "biolink:treats" else "not_approved_for_condition"
-
         logging.info(f"Have loaded edges into memory.")
 
         kg2c_dict = {"nodes": nodes, "edges": edges}
