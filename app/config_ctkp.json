@@ -1,0 +1,114 @@
+{
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_nodes_v2.3.2.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_edges_p2.3.2.tsv.gz",
+  "biolink_version": "4.2.1",
+  "kp_infores_curie": "infores:multiomics-clinicaltrials",
+  "endpoint_name": "ctkp",
+  "labels": {
+    "edges": "predicate",
+    "nodes": "category"
+  },
+  "remote_subclass_edges_file_url": "https://kg2webhost.rtx.ai/kg2.10.0pre_subclass_edges_manual_agent.jsonl.gz",
+  "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:ncit"],
+  "num_edges_per_answer_cutoff": 100000,
+  "normalize": false,
+  "convert_input_ids": true,
+  "drug_chemical_conflation": false,
+  "biolink_helper_branch": "master",
+  "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
+  "zip": {
+    "supporting_studies": {
+      "properties": ["nctid", "phase", "primary_purpose", "intervention_model", "time_perspective", "overall_status",
+                        "start_date", "enrollment", "enrollment_type", "age_range", "child", "adult", "older_adult",
+                        "tested_intervention"],
+      "leader": "nctid"
+    }},
+  "other_array_properties": [],
+  "trapi_attribute_map": {
+    "knowledge_level": {
+      "attribute_type_id": "biolink:knowledge_level",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "agent_type": {
+      "attribute_type_id": "biolink:agent_type",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "max_research_phase": {
+      "attribute_type_id": "biolink:max_research_phase",
+      "value_type_id": "biolink:MaxResearchPhaseEnum"
+    },
+    "clinical_approval_status": {
+      "attribute_type_id": "biolink:clinical_approval_status",
+      "value_type_id": "biolink:ClinicalApprovalStatusEnum"
+    },
+    "elevate_to_prediction": {
+      "attribute_type_id": "elevate_to_prediction",
+      "attribute_source": "{kp_infores_curie}",
+      "value_type_id": "metatype:Boolean"
+    },
+    "subject_boxed_warning": {
+      "attribute_type_id": "subject_boxed_warning",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "nctid": {
+      "attribute_type_id": "biolink:supporting_study",
+      "value_url": "https://clinicaltrials.gov/study/{value}?tab=table"
+    },
+    "phase": {
+      "attribute_type_id": "biolink:clinical_trial_phase",
+      "value_type_id": "biolink:MaxResearchPhaseEnum"
+    },
+    "overall_status": {
+      "attribute_type_id": "biolink:clinical_trial_status"
+    },
+    "enrollment": {
+      "attribute_type_id": "biolink:clinical_trial_study_size",
+      "value_type_id": "metatype:Integer"
+    },
+    "child": {
+      "attribute_type_id": "child",
+      "value_type_id": "metatype:Boolean"
+    },
+    "adult": {
+      "attribute_type_id": "adult",
+      "value_type_id": "metatype:Boolean"
+    },
+    "older_adult": {
+      "attribute_type_id": "older_adult",
+      "value_type_id": "metatype:Boolean"
+    },
+    "tested_intervention": {
+      "attribute_type_id": "biolink:clinical_trial_tested_intervention",
+      "value_type_id": "metatype:String"
+    }
+  },
+  "sources_template": {
+    "default": [
+      {
+        "resource_id":  "infores:clinicaltrials",
+        "resource_role":  "primary_knowledge_source"
+      },
+      {
+        "resource_id":  "infores:aact",
+        "resource_role":  "aggregator_knowledge_source",
+        "upstream_resource_ids":  ["infores:clinicaltrials"]
+      },
+      {
+        "resource_id":  "{kp_infores_curie}",
+        "resource_role":  "aggregator_knowledge_source",
+        "upstream_resource_ids":  ["infores:aact"]
+      }
+    ],
+    "biolink:treats": [
+      {
+        "resource_id":  "infores:clinicaltrials",
+        "resource_role":  "supporting_data_source"
+      },
+      {
+        "resource_id":  "{kp_infores_curie}",
+        "resource_role":  "primary_knowledge_source",
+        "upstream_resource_ids":  ["infores:clinicaltrials"]
+      }
+    ]
+  }
+}
