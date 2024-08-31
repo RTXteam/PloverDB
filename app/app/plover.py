@@ -1024,15 +1024,15 @@ class PloverDB:
                 sources = sources_template["default"]
         else:
             # Craft sources based on primary knowledge source on edges
-            primary_ks = edge_biolink["primary_knowledge_source"]
+            primary_ks_id = edge_biolink["primary_knowledge_source"]
             source_primary = {
-                "resource_id": primary_ks,
+                "resource_id": primary_ks_id,
                 "resource_role": "primary_knowledge_source"
             }
             source_kp = {
                 "resource_id": self.kp_infores_curie,
                 "resource_role": "aggregator_knowledge_source",
-                "upstream_resource_ids": [primary_ks["resource_id"]]
+                "upstream_resource_ids": [primary_ks_id]
             }
             sources = [source_primary, source_kp]
 
