@@ -36,7 +36,7 @@ logging.basicConfig(level=logging.INFO,
 
 
 def load_plovers() -> Tuple[dict, str]:
-    # Load a Plover for each KP (each KP has its own Plover config file)
+    # Load a Plover for each KP (each KP has its own Plover config file - e.g., 'config_kg2c.json')
     config_files = {file_name for file_name in os.listdir(f"{SCRIPT_DIR}/../")
                     if file_name.startswith("config") and file_name.endswith(".json")}
     logging.info(f"Plover config files are {config_files}")

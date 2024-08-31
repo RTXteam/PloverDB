@@ -59,7 +59,8 @@ def _run_query(trapi_qg: Dict[str, Dict[str, Dict[str, Union[List[str], str, Non
     response = requests.post(f"{pytest.endpoint}/query", json=trapi_query, headers={'accept': 'application/json'})
     if response.status_code == 200:
         json_response = response.json()
-        # print(json.dumps(json_response, indent=2))
+        with open(f"test_response.json", "w+") as test_output_file:
+            json.dump(json_response, test_output_file, indent=2)
 
         # Convert the TRAPI response to the old plover response format (IDs organized by QG IDs)
         message = json_response["message"]

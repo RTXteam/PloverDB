@@ -206,12 +206,12 @@ class PloverDB:
         logging.info(f"Building basic node/edge lookup maps")
         logging.info(f"Loading node lookup map..")
         self.node_lookup_map = {node["id"]: node for node in kg2c_dict["nodes"]}
-        # Undo the 'category' property change that Plater requires (has pre-expanded ancestors; we do that on the fly)
+        node_properties_to_ignore = self.kg_config.get("ignore_node_properties", [])
         for node_key, node in self.node_lookup_map.items():
-            # TODO: Revisit this after refine KG2 json lines files..
-            if self.categories_property == "all_categories":  # Only KG2 needs to delete properties to save space..
-                del node["category"]  # KG2 uses all_categories for everything..
-                del node["preferred_category"]
+            # Remove node properties we don't care about (according to config file)
+            for prop_to_ignore in node_properties_to_ignore:
+                if prop_to_ignore in node:
+                    del node[prop_to_ignore]
             # Record equivalent identifiers (if provided) for each node so we can 'canonicalize' incoming queries
             if self.kg_config.get("convert_input_ids"):
                 equivalent_ids = node.get("equivalent_curies")
@@ -1024,15 +1024,15 @@ class PloverDB:
                 sources = sources_template["default"]
         else:
             # Craft sources based on primary knowledge source on edges
-            primary_ks = edge_biolink["primary_knowledge_source"]
+            primary_ks_id = edge_biolink["primary_knowledge_source"]
             source_primary = {
-                "resource_id": primary_ks,
+                "resource_id": primary_ks_id,
                 "resource_role": "primary_knowledge_source"
             }
             source_kp = {
                 "resource_id": self.kp_infores_curie,
                 "resource_role": "aggregator_knowledge_source",
-                "upstream_resource_ids": [primary_ks["resource_id"]]
+                "upstream_resource_ids": [primary_ks_id]
             }
             sources = [source_primary, source_kp]
 
