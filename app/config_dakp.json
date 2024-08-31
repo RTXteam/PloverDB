@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_nodes_v0.2.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_edges_v0.2.tsv",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_nodes_v0.2.0.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_edges_p0.2.0.tsv.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-drugapprovals",
   "endpoint_name": "dakp",
@@ -15,7 +15,7 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
-  "ignore_edge_properties": ["subject_name", "object_name", "unii", "category", "object_modifier", "N_cases", "approval", "supporting_spls"],
+  "ignore_edge_properties": [],
   "zip": {},
   "other_array_properties": ["approval", "supporting_spls"],
   "trapi_attribute_map": {

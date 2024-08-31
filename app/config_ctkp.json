@@ -15,7 +15,7 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
-  "ignore_edge_properties": ["subject_name", "object_name", "unii", "category"],
+  "ignore_edge_properties": [],
   "zip": {
     "supporting_studies": {
       "properties": ["nctid", "phase", "primary_purpose", "intervention_model", "time_perspective", "overall_status",
