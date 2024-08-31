@@ -758,9 +758,10 @@ class PloverDB:
         else:
             return phase_value
 
-    @staticmethod
-    def _is_empty(value: any) -> bool:
-        if value or isinstance(value, (int, float, complex)):
+    def _is_empty(self, value: any) -> bool:
+        if isinstance(value, list):
+            return True if all(self._is_empty(item) for item in value) else False
+        elif value or isinstance(value, (int, float, complex)):
             return False
         else:
             return True
