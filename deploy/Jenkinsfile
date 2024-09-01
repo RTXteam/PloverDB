@@ -15,7 +15,7 @@ pipeline {
         pollSCM('H/5 * * * *')
     }
     environment {
-        DOCKER_REPO_NAME = "853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb"
+        DOCKER_REPO_NAME = "853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-multiomics"
         KUBERNETES_BLUE_CLUSTER_NAME = "translator-eks-ci-blue-cluster"
         KUBERNETES_GREEN_CLUSTER_NAME = "translator-eks-ci-green-cluster"
     }
@@ -59,7 +59,7 @@ pipeline {
             steps {
                 cleanWs()
                 configFileProvider([
-                    configFile(fileId: 'ploverdb-ci-values.yaml', targetLocation: 'values-ncats.yaml'),
+                    configFile(fileId: 'multiomics-ci-values.yaml', targetLocation: 'values-ncats.yaml'),
                     configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
                 ]){
                     sh '''
