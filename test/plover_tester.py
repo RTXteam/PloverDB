@@ -15,15 +15,18 @@ class PloverTester:
         self.diabetes_id = "MONDO:0005015"
         self.t2_diabetes_id = "MONDO:0005148"
         self.t1_diabetes_id = "MONDO:0005147"
-        self.parksinson_id = "MONDO:0005180"
+        self.parkinsons_id = "MONDO:0005180"
         self.parkinsons_id_doid = "DOID:14330"
 
         self.endpoint = endpoint
 
-    def run_query(self, trapi_qg: dict, should_produce_results: bool = True) -> dict:
+    def run_query(self, trapi_qg: dict, should_produce_results: bool = True, should_produce_error: bool = False) -> dict:
         trapi_query = {"message": {"query_graph": trapi_qg}, "submitter": "ploverdb-test-suite"}
         is_edgeless_query = False if len(trapi_qg.get("edges", {})) else True
         response = requests.post(f"{self.endpoint}/query", json=trapi_query, headers={'accept': 'application/json'})
+        if should_produce_error:
+            assert response.status_code != 200
+
         if response.status_code == 200:
             print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
             json_response = response.json()
@@ -124,3 +127,13 @@ class PloverTester:
     def get_supporting_study_attributes(edge: dict) -> List[dict]:
         return [attribute for attribute in edge["attributes"]
                 if attribute["attribute_type_id"] == "biolink:supporting_study"]
+
+    @staticmethod
+    def get_num_distinct_concepts(response: dict, qnode_key: str):
+        distinct_concepts = set()
+        distinct_concepts = {node_binding.get("query_id", node_binding["id"])
+                             for result in response["message"]["results"]
+                             for node_binding in result["node_bindings"][qnode_key]}
+        print(f"Has {len(distinct_concepts)} distinct concepts")
+        return len(distinct_concepts)
+
