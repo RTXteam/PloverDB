@@ -1,6 +1,6 @@
 import json
 import os
-from typing import List
+from typing import List, Set
 
 import pytest
 import requests
@@ -129,11 +129,22 @@ class PloverTester:
                 if attribute["attribute_type_id"] == "biolink:supporting_study"]
 
     @staticmethod
-    def get_num_distinct_concepts(response: dict, qnode_key: str):
-        distinct_concepts = set()
+    def get_num_distinct_concepts(response: dict, qnode_key: str) -> int:
         distinct_concepts = {node_binding.get("query_id", node_binding["id"])
                              for result in response["message"]["results"]
                              for node_binding in result["node_bindings"][qnode_key]}
-        print(f"Has {len(distinct_concepts)} distinct concepts")
         return len(distinct_concepts)
+
+    @staticmethod
+    def get_node_ids(response: dict, qnode_key: str) -> Set[str]:
+        node_ids = {node_binding["id"]
+                    for result in response["message"]["results"]
+                    for node_binding in result["node_bindings"][qnode_key]}
+        return node_ids
+
+    @staticmethod
+    def get_equivalent_curies(response: dict, node_id: str) -> Set[str]:
+        equiv_ids_attr = next(attr for attr in response["message"]["knowledge_graph"]["nodes"][node_id]["attributes"]
+                              if attr["attribute_type_id"] == "biolink:xref")
+        return set(equiv_ids_attr["value"])
 

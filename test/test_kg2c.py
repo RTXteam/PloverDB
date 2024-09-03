@@ -28,8 +28,7 @@ BIPOLAR_CURIE = "MONDO:0004985"
 tester = PloverTester(endpoint=pytest.endpoint)
 
 
-def test_01():
-    # Simplest one-hop
+def test_simple():
     query = {
        "edges": {
           "e00": {
@@ -50,8 +49,7 @@ def test_01():
     response = tester.run_query(query)
 
 
-def test_02():
-    # Output qnode is lacking a category
+def test_unconstrained_output_node():
     query = {
        "edges": {
           "e00": {
@@ -72,8 +70,7 @@ def test_02():
     response = tester.run_query(query)
 
 
-def test_03():
-    # No predicate is specified
+def test_unconstrained_predicate():
     query = {
        "edges": {
           "e00": {
@@ -94,8 +91,7 @@ def test_03():
     response = tester.run_query(query)
 
 
-def test_04():
-    # Multiple output categories
+def test_multiple_output_categories():
     query = {
        "edges": {
           "e00": {
@@ -115,8 +111,7 @@ def test_04():
     response = tester.run_query(query)
 
 
-def test_05():
-    # Multiple predicates
+def test_multiple_predicates():
     query = {
         "edges": {
             "e00": {
@@ -135,10 +130,12 @@ def test_05():
         }
     }
     response = tester.run_query(query)
+    all_predicates = {edge["predicate"] for edge in response["message"]["knowledge_graph"]["edges"].values()}
+    assert len(all_predicates) >= 2
+    assert "biolink:physically_interacts_with" in all_predicates
 
 
-def test_06():
-    # Curie-to-curie query
+def test_doubly_pinned_query():
     query = {
         "edges": {
             "e00": {
@@ -158,8 +155,7 @@ def test_06():
     response = tester.run_query(query)
 
 
-def test_07():
-    # Multiple-curie query
+def test_multiple_input_ids():
     query = {
         "edges": {
             "e00": {
@@ -176,10 +172,10 @@ def test_07():
         }
     }
     response = tester.run_query(query)
+    assert tester.get_num_distinct_concepts(response, "n00") == 2
 
 
-def test_08():
-    # Single-node query
+def test_single_node_query():
     query = {
         "edges": {
         },
@@ -193,8 +189,7 @@ def test_08():
     assert tester.get_num_distinct_concepts(response, "n00") == 1
 
 
-def test_09():
-    # Single-node query with multiple curies
+def test_single_node_query_with_multiple_ids():
     query = {
         "edges": {
         },
@@ -208,8 +203,7 @@ def test_09():
     assert tester.get_num_distinct_concepts(response, "n00") == 2
 
 
-def test_11():
-    # Verify catches larger than one-hop query
+def test_catching_multihop_query():
     query = {
         "edges": {
             "e00": {},
@@ -227,9 +221,9 @@ def test_11():
     response = tester.run_query(query, should_produce_error=True)
 
 
-def test_12a():
+def test_symmetric_predicate():
+    # Make sure that symmetric predicates are answered in both directions (when subj/obj are swapped)
     ids = [ASPIRIN_CURIE, METHYLPREDNISOLONE_CURIE]
-    # Test predicate symmetry is handled properly
     query = {
         "edges": {
             "e00": {
@@ -246,7 +240,8 @@ def test_12a():
             }
         }
     }
-    response_symmetric = tester.run_query(query)
+    response_a = tester.run_query(query)
+    node_ids_a = set(response_a["message"]["knowledge_graph"]["nodes"])
 
     query = {
         "edges": {
@@ -264,14 +259,12 @@ def test_12a():
             }
         }
     }
-    response_symmetric_reversed = tester.run_query(query)
+    response_b = tester.run_query(query)
+    node_ids_b = set(response_b["message"]["knowledge_graph"]["nodes"])
+    assert node_ids_a == node_ids_b
 
-    # assert kg_symmetric["nodes"]["n00"] and kg_symmetric["nodes"]["n01"] and kg_symmetric["edges"]["e00"]
-    # assert set(kg_symmetric["nodes"]["n01"]) == set(kg_symmetric_reversed["nodes"]["n01"])
 
-
-def test_12b():
-    # Make sure directionality is enforced for treats predicate
+def test_asymmetric_predicate_1():
     query = {
         "edges": {
             "e00": {
@@ -289,12 +282,13 @@ def test_12b():
             }
         }
     }
-    kg_asymmetric = _run_query(query)
-    assert kg_asymmetric["nodes"]["n00"] and kg_asymmetric["nodes"]["n01"] and kg_asymmetric["edges"]["e00"]
-    assert all(edge["subject"] in kg_asymmetric["nodes"]["n00"] for edge in kg_asymmetric["edges"]["e00"].values())
+    response = tester.run_query(query)
+    # Make sure this edge wasn't fulfilled in the backwards direction
+    n00_node_ids = tester.get_node_ids(response, "n00")
+    assert all(edge["subject"] in n00_node_ids for edge in response["message"]["knowledge_graph"]["edges"].values())
 
 
-def test_12c():
+def test_asymmetric_predicate_2():
     # Make sure no answers are returned when treats predicate is backwards in the QG
     query = {
         "edges": {
@@ -313,105 +307,24 @@ def test_12c():
             }
         }
     }
-    kg_backwards = _run_query(query)
-    assert not kg_backwards["edges"]
+    response = tester.run_query(query, should_produce_results=False)
 
 
-def test_14():
-    # Test subclass_of reasoning with single-node queries
+def test_concept_subclasses_single_node_query():
     query_subclass = {
         "edges": {
         },
         "nodes": {
             "n00": {
-                "ids": [DIABETES_CURIE],  # Diabetes mellitus
+                "ids": [DIABETES_CURIE],
             }
         }
     }
-    kg = _run_query(query_subclass)
-    assert len(kg["nodes"]["n00"]) > 1
-    query_no_subclass = {
-        "include_metadata": True,
-        "edges": {
-        },
-        "nodes": {
-            "n00": {
-                "ids": [DIABETES_CURIE]  # Diabetes mellitus
-            }
-        }
-    }
-    kg = _run_query(query_no_subclass)
-    assert len(kg["nodes"]["n00"]) == 1
+    response = tester.run_query(query_subclass)
+    assert tester.get_num_distinct_concepts(response, "n00") > 1
 
 
-def test_15():
-    # Test predicate symmetry enforcement
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert kg["nodes"]["n01"]
-
-    query_respecting_symmetry = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        },
-        "respect_predicate_symmetry": True
-    }
-    kg_symmetry = _run_query(query_respecting_symmetry)
-    assert kg_symmetry["nodes"]["n01"]
-
-    query_symmetry_backwards = {
-        "edges": {
-            "e00": {
-                "subject": "n01",
-                "object": "n00",
-                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
-            },
-            "n01": {
-                "categories": ["biolink:Disease"]
-            }
-        },
-        "respect_predicate_symmetry": True
-    }
-    kg_symmetry_backwards = _run_query(query_symmetry_backwards)
-    assert not kg_symmetry_backwards["nodes"]["n01"]
-    assert len(kg_symmetry["nodes"]["n01"]) == len(kg["nodes"]["n01"])
-
-
-def test_16():
-    # Test mixins in the QG
+def test_mixins_in_query():
     query = {
         "edges": {
             "e00": {
@@ -428,12 +341,11 @@ def test_16():
             }
         }
     }
-    kg = _run_query(query)
-    assert len(kg["nodes"]["n01"])
+    response = tester.run_query(query)
 
 
-def test_17():
-    # Test canonical predicate handling
+def test_canonical_predicate_handling():
+    # First run a query using the canonical version of a predicate
     query_canonical = {
         "edges": {
             "e00": {
@@ -451,9 +363,10 @@ def test_17():
             }
         }
     }
-    kg_canonical = _run_query(query_canonical)
-    assert len(kg_canonical["nodes"]["n01"])
+    response_canonical = tester.run_query(query_canonical)
+    node_ids_canonical = set(response_canonical["message"]["knowledge_graph"]["nodes"])
 
+    # Then make sure we get the same answers if we use the non-canonical version of that predicate
     query_non_canonical = {
         "edges": {
             "e00": {
@@ -471,14 +384,13 @@ def test_17():
             }
         }
     }
-    kg_non_canonical = _run_query(query_non_canonical)
-    assert len(kg_non_canonical["nodes"]["n01"])
+    response_non_canonical = tester.run_query(query_non_canonical)
+    node_ids_non_canonical = set(response_non_canonical["message"]["knowledge_graph"]["nodes"])
 
-    assert len(kg_canonical["nodes"]["n01"]) == len(kg_non_canonical["nodes"]["n01"])
+    assert node_ids_canonical == node_ids_non_canonical
 
 
-def test_18():
-    # Test hierarchical category reasoning
+def test_hierarchical_category_reasoning():
     query = {
         "edges": {
             "e00": {
@@ -496,13 +408,13 @@ def test_18():
             }
         }
     }
-    kg = _run_query(query)
-    assert kg["nodes"]["n01"]
-    assert any(node["categories"] != "biolink:NamedThing" for node in kg["nodes"]["n01"].values())
+    response = tester.run_query(query)
+    n01_node_ids = tester.get_node_ids(response, "n01")
+    assert any(node_id for node_id in n01_node_ids
+               if "biolink:NamedThing" not in response["message"]["knowledge_graph"]["nodes"][node_id]["categories"])
 
 
-def test_19():
-    # Test hierarchical predicate reasoning
+def test_hierarchical_predicate_reasoning():
     query = {
         "edges": {
             "e00": {
@@ -520,12 +432,12 @@ def test_19():
             }
         }
     }
-    kg = _run_query(query)
-    assert kg["edges"]["e00"]
-    assert any(edge["predicate"] != "biolink:related_to" for edge in kg["edges"]["e00"].values())
+    response = tester.run_query(query)
+    assert any(edge["predicate"] != "biolink:related_to"
+               for edge in response["message"]["knowledge_graph"]["edges"].values())
 
 
-def test_20():
+def test_query_id_mapping_in_results():
     # Test that the proper 'query_id' mapping (for TRAPI) is returned
     query = {
         "edges": {
@@ -543,11 +455,12 @@ def test_20():
             }
         }
     }
-    kg, trapi_response = _run_query(query, return_trapi_response=True)
-    assert len(kg["nodes"]["n00"]) > 1
-    assert {DIABETES_CURIE, DIABETES_T1_CURIE, DIABETES_T2_CURIE}.issubset(set(kg["nodes"]["n00"]))
+    response = tester.run_query(query)
+    assert tester.get_num_distinct_concepts(response, "n00") == 2
+    assert any(node_id for node_id in response["message"]["knowledge_graph"]["nodes"]
+               if DIABETES_T1_CURIE in tester.get_equivalent_curies(response, node_id))
 
-    for result in trapi_response["message"]["results"]:
+    for result in response["message"]["results"]:
         for qnode_key, node_bindings in result["node_bindings"].items():
             for node_binding in node_bindings:
                 if node_binding["id"] == DIABETES_CURIE:  # This ID was input in the QG
