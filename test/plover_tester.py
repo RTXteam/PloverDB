@@ -1,6 +1,6 @@
 import json
 import os
-from typing import List
+from typing import List, Set
 
 import pytest
 import requests
@@ -15,15 +15,18 @@ class PloverTester:
         self.diabetes_id = "MONDO:0005015"
         self.t2_diabetes_id = "MONDO:0005148"
         self.t1_diabetes_id = "MONDO:0005147"
-        self.parksinson_id = "MONDO:0005180"
+        self.parkinsons_id = "MONDO:0005180"
         self.parkinsons_id_doid = "DOID:14330"
 
         self.endpoint = endpoint
 
-    def run_query(self, trapi_qg: dict, should_produce_results: bool = True) -> dict:
+    def run_query(self, trapi_qg: dict, should_produce_results: bool = True, should_produce_error: bool = False) -> dict:
         trapi_query = {"message": {"query_graph": trapi_qg}, "submitter": "ploverdb-test-suite"}
         is_edgeless_query = False if len(trapi_qg.get("edges", {})) else True
         response = requests.post(f"{self.endpoint}/query", json=trapi_query, headers={'accept': 'application/json'})
+        if should_produce_error:
+            assert response.status_code != 200
+
         if response.status_code == 200:
             print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
             json_response = response.json()
@@ -124,3 +127,24 @@ class PloverTester:
     def get_supporting_study_attributes(edge: dict) -> List[dict]:
         return [attribute for attribute in edge["attributes"]
                 if attribute["attribute_type_id"] == "biolink:supporting_study"]
+
+    @staticmethod
+    def get_num_distinct_concepts(response: dict, qnode_key: str) -> int:
+        distinct_concepts = {node_binding.get("query_id", node_binding["id"])
+                             for result in response["message"]["results"]
+                             for node_binding in result["node_bindings"][qnode_key]}
+        return len(distinct_concepts)
+
+    @staticmethod
+    def get_node_ids(response: dict, qnode_key: str) -> Set[str]:
+        node_ids = {node_binding["id"]
+                    for result in response["message"]["results"]
+                    for node_binding in result["node_bindings"][qnode_key]}
+        return node_ids
+
+    @staticmethod
+    def get_equivalent_curies(response: dict, node_id: str) -> Set[str]:
+        equiv_ids_attr = next(attr for attr in response["message"]["knowledge_graph"]["nodes"][node_id]["attributes"]
+                              if attr["attribute_type_id"] == "biolink:xref")
+        return set(equiv_ids_attr["value"])
+
