@@ -1072,7 +1072,7 @@ class PloverDB:
         non_core_edge_properties = set(edge_biolink.keys()).difference(self.core_edge_properties)
         for property_name in non_core_edge_properties:
             value = edge_biolink[property_name]
-            if property_name in self.kg_config["zip"]:
+            if property_name in self.kg_config.get("zip", {}):
                 # Handle special 'zipped' properties (e.g., supporting_studies)
                 # Create an attribute for each item in this zipped up list, giving it subattributes as appropriate
                 leader_property_name = self.kg_config["zip"][property_name]["leader"]
