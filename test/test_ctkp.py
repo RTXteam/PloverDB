@@ -7,7 +7,7 @@ import pytest
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from plover_tester import PloverTester
 
-tester = PloverTester(pytest.endpoint)
+tester = PloverTester(endpoint=pytest.endpoint, subendpoint="ctkp")
 
 
 def test_1():
