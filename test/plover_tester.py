@@ -1,6 +1,6 @@
 import json
 import os
-from typing import List, Set
+from typing import List, Set, Optional
 
 import pytest
 import requests
@@ -10,7 +10,7 @@ SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
 class PloverTester:
 
-    def __init__(self, endpoint: str):
+    def __init__(self, endpoint: str, subendpoint: Optional[str] = None):
         self.acetaminophen_id = "CHEBI:46195"
         self.diabetes_id = "MONDO:0005015"
         self.t2_diabetes_id = "MONDO:0005148"
@@ -19,11 +19,14 @@ class PloverTester:
         self.parkinsons_id_doid = "DOID:14330"
 
         self.endpoint = endpoint
+        self.subendpoint = subendpoint
+        self.endpoint_url = f"{self.endpoint}/{self.subendpoint}/query" if self.subendpoint else f"{self.endpoint}/query"
+        print(f"endpoint url is {self.endpoint_url}")
 
     def run_query(self, trapi_qg: dict, should_produce_results: bool = True, should_produce_error: bool = False) -> dict:
         trapi_query = {"message": {"query_graph": trapi_qg}, "submitter": "ploverdb-test-suite"}
         is_edgeless_query = False if len(trapi_qg.get("edges", {})) else True
-        response = requests.post(f"{self.endpoint}/query", json=trapi_query, headers={'accept': 'application/json'})
+        response = requests.post(self.endpoint_url, json=trapi_query, headers={'accept': 'application/json'})
         if should_produce_error:
             assert response.status_code != 200
 
