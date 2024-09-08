@@ -52,12 +52,12 @@
   "sources_template": {
     "default": [
       {
-        "resource_id":  "{kp_infores_curie}",
-        "resource_role":  "aggregator_knowledge_source"
+        "resource_id": "{kp_infores_curie}",
+        "resource_role": "aggregator_knowledge_source"
       },
       {
-        "resource_id":  "infores:pubmed-central",
-        "resource_role":  "primary_knowledge_source"
+        "resource_id": "infores:pubmed-central",
+        "resource_role": "primary_knowledge_source"
       }
     ]
   }
