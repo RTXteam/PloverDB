@@ -73,6 +73,10 @@ sudo docker build -t ploverimage .
 sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
 ```
 
+### Provided endpoints
+
+TODO
+
 ### How to test
 
 You should now be able to send your Plover TRAPI query POST requests at port 9990; the URL for this would look something like: `https://yourinstance.rtx.ai:9990/query`. Or, if you are just using Plover locally: `http://localhost:9990/query`.
