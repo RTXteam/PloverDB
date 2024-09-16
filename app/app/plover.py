@@ -718,7 +718,8 @@ class PloverDB:
             for row in reader:
                 item = {header_row[index]: self._load_column_value(value, header_row[index])
                         for index, value in enumerate(row)}
-                items.append(item)
+                if item:  # Skip blank lines
+                    items.append(item)
         logging.info(f"Loaded {len(items)} rows from {tsv_file_path}")
         return items
 
