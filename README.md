@@ -13,19 +13,55 @@ The knowledge graph to be hosted needs to be in a Biolink-compliant format with 
 
 You must provide **URLs** from which the **nodes/edges files** can be downloaded in a **config JSON file** in `PloverDB/app/` (e.g., `config_kg2c.json`). The config file includes a number of settings that can be customized and also defines the way in which node/edge properties should be loaded into **TRAPI attributes**.
 
+#### Nodes and edges files
+
+TODO
+
+#### Config file
+
+TODO
+
+#### Multiple KPs
+
+TODO
+
 ### How to run
 
-1. Install **Docker** (if needed)
+Install Docker.
     * For Ubuntu 20.04, try `sudo apt-get install -y docker.io`
     * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
-1. Make sure port `9990` on your host machine is open if you're deploying the service somewhere (vs. just using it locally)
+
+#### How to run a dev Plover
+
+TODO
+
 1. Clone this repo and `cd` into `PloverDB/`
+1. Edit `PloverDB/config.json` for your particular graph
 1. Run the following command:
-    * `bash -x run.sh`
+    * `bash -x run.sh -s true`
 
-This will build a Plover Docker image and run a container off of it, publishing it at port 9990. Note that by default, this script will use the `sudo docker` command; use the optional `-d` parameter to specify a different docker command (e.g., `-d docker`).
+This will build a Plover Docker image and run a container off of it, publishing it at port 9990. The `-s true` parameter tells Plover to skip configuring SSL certificates.
 
-You should now be able to send your Plover TRAPI query POST requests at the port you opened; the URL for this would look something like: `https://yourinstance.rtx.ai:9990/query`. Or, if you just want to use it locally: `http://localhost:9990/query`.
+Note that by default, this script will use the `sudo docker` command; use the optional `-d` parameter to specify a different docker command (e.g., `bash -x run.sh -s true -d docker`).
+
+#### How to deploy Plover on a new instance
+
+TODO
+
+Use Ubuntu..
+
+1. Make sure port `9990` on your host machine is open
+1. Fork the Plover repo
+1. Edit the config file at `PloverDB/app/config_kg2c.json` to work for your KP
+   1. Most notably, you need to point to nodes/edges files for your graph in TSV or JSON Lines Biolink-style format
+   2. We suggest also changing the name of this file to something like `config_mykp.json`; the default template is for RTX-KG2c
+   1. More info on the config file contents is here (TODO)
+1. Run `bash -x PloverDB/run.sh`
+
+
+#### How to deploy a new KP to an existing Plover
+
+TODO
 
 #### For ITRB
 
@@ -37,7 +73,14 @@ sudo docker build -t ploverimage .
 sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
 ```
 
+### Provided endpoints
+
+TODO
+
 ### How to test
+
+You should now be able to send your Plover TRAPI query POST requests at port 9990; the URL for this would look something like: `https://yourinstance.rtx.ai:9990/query`. Or, if you are just using Plover locally: `http://localhost:9990/query`.
+
 To verify that your new service is working, you can check a few endpoints (**plug in your domain name** in place of 'kg2cplover.rtx.ai'):
    1. Navigate to https://kg2cplover.rtx.ai:9990/code_version in your browser; it should display information about the build
    2. Naviagte to https://kg2cplover.rtx.ai:9990/get_logs in your browser; it should display log messages
