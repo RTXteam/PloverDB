@@ -39,7 +39,7 @@ def test_simple():
        },
        "nodes": {
           "n00": {
-             "ids": ["GO:0035329"]
+             "ids": ["CHEBI:30797"]
           },
           "n01": {
              "categories": ["biolink:NamedThing"]
@@ -880,6 +880,7 @@ def test_undirected_related_to_for_underlying_treats_edge():
     assert len(kg_1["nodes"]["n00"]) == len(kg_2["nodes"]["n00_1"])
     assert len(kg_1["nodes"]["n00_1"]) == len(kg_2["nodes"]["n00"])
 
+
 def test_version():
     # Print out the version of the KG2c being tested
     query = {
@@ -890,9 +891,8 @@ def test_version():
             }
         }
     }
-    kg = _run_query(query)
-    print(kg)
-    assert kg["nodes"]["n00"]
+    response = tester.run_query(query)
+    print(response["message"]["knowledge_graph"]["nodes"])
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ class PloverTester:
             print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
             json_response = response.json()
             if pytest.save:
-                with open(f"test_response.json", "w+") as test_output_file:
+                with open(f"{SCRIPT_DIR}/test_response.json", "w+") as test_output_file:
                     json.dump(json_response, test_output_file, indent=2)
 
             assert json_response["message"]
