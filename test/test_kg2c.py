@@ -703,12 +703,12 @@ def test_undirected_related_to_for_underlying_treats_edge():
         "nodes": {
             "n00": {
                 "ids": [
-                    "UMLS:C2931133"
+                    "HP:0100256"
                 ]
             },
             "n00_1": {
                 "ids": [
-                    "UMLS:C0279936"
+                    "PUBCHEM.COMPOUND:5235"
                 ]
             }
         }
