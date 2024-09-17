@@ -829,6 +829,8 @@ class PloverDB:
 
     def answer_query(self, trapi_query: dict) -> dict:
         self.query_log = []  # Clear query log of any prior entries
+        # Handle case where someone submits only a query graph (not nested in a 'message')
+        trapi_query = {"message": {"query_graph": trapi_query}} if "nodes" in trapi_query else trapi_query
         trapi_qg = copy.deepcopy(trapi_query["message"]["query_graph"])
         # Before doing anything else, convert any node ids to equivalents we recognize
         for qnode_key, qnode in trapi_qg["nodes"].items():
