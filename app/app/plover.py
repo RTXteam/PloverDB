@@ -867,7 +867,7 @@ class PloverDB:
                                    f"{self.supported_qualifiers}")
                     self.raise_http_error(403, err_message)
 
-        # Record which curies specified in the QG any descendant curies correspond to
+        # Expand qnode ids to descendant concepts and record original query IDs
         descendant_to_query_id_map = {subject_qnode_key: defaultdict(set), object_qnode_key: defaultdict(set)}
         if subject_qnode.get("ids"):
             subject_qnode_curies_with_descendants = list()
@@ -892,12 +892,32 @@ class PloverDB:
                 object_qnode_curies_with_descendants += descendants
             object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
 
+        # Actually answer the query
+        input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
+        output_qnode_key = list(set(trapi_qg["nodes"]).difference({input_qnode_key}))[0]
+        input_qnode_answers, output_qnode_answers, qedge_answers = self._lookup_answers(input_qnode_key,
+                                                                                        output_qnode_key,
+                                                                                        trapi_qg)
+
+        # Form final TRAPI response
+        trapi_response = self._create_response_from_answer_ids(input_qnode_answers,
+                                                               output_qnode_answers,
+                                                               qedge_answers,
+                                                               input_qnode_key,
+                                                               output_qnode_key,
+                                                               qedge_key,
+                                                               trapi_query["message"]["query_graph"],
+                                                               descendant_to_query_id_map)
+        log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
+        self.log_trapi("INFO", log_message)
+        return trapi_response
+
+    def _lookup_answers(self, input_qnode_key: str, output_qnode_key: str, trapi_qg: dict) -> Tuple[set, set, set]:
+        qedge = next(qedge for qedge in trapi_qg["edges"].values())
         # Convert to canonical predicates in the QG as needed
         self._force_qedge_to_canonical_predicates(qedge)
 
         # Load the query and do any necessary transformations to categories/predicates
-        input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
-        output_qnode_key = list(set(trapi_qg["nodes"]).difference({input_qnode_key}))[0]
         input_curies = self._convert_to_set(trapi_qg["nodes"][input_qnode_key]["ids"])
         output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
         output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
@@ -960,18 +980,7 @@ class PloverDB:
                 final_input_qnode_answers.add(input_curie)
                 final_output_qnode_answers.add(output_curie)
 
-        # Form final TRAPI response
-        trapi_response = self._create_response_from_answer_ids(final_input_qnode_answers,
-                                                               final_output_qnode_answers,
-                                                               final_qedge_answers,
-                                                               input_qnode_key,
-                                                               output_qnode_key,
-                                                               qedge_key,
-                                                               trapi_query["message"]["query_graph"],
-                                                               descendant_to_query_id_map)
-        log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
-        self.log_trapi("INFO", log_message)
-        return trapi_response
+        return final_input_qnode_answers, final_output_qnode_answers, final_qedge_answers
 
     def _create_response_from_answer_ids(self, final_input_qnode_answers: Set[str],
                                          final_output_qnode_answers: Set[str],
