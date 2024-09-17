@@ -66,7 +66,7 @@ class PloverTester:
                 kg = json_response["message"]["knowledge_graph"]
                 assert kg["nodes"]
                 for node in kg["nodes"].values():
-                    assert node["name"]
+                    assert "name" in node  # Code be null for some (e.g. pathwhiz), but slot should still exist
                     assert node["categories"]
                     node_attributes = node.get("attributes")
                     assert isinstance(node_attributes, list)  # TRAPI 1.5 requires empty attribute lists if none

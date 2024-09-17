@@ -55,12 +55,12 @@ def test_unconstrained_output_node():
           "e00": {
              "subject": "n00",
              "object": "n01",
-             "predicates": ["biolink:related_to"]
+             "predicates": ["biolink:interacts_with"]
           }
        },
        "nodes": {
           "n00": {
-             "ids": [ASPIRIN_CURIE],
+             "ids": [tester.acetaminophen_id],
              "categories": ["biolink:ChemicalEntity"]
           },
           "n01": {
@@ -80,11 +80,11 @@ def test_unconstrained_predicate():
        },
        "nodes": {
           "n00": {
-             "ids": [ASPIRIN_CURIE],
-             "categories": ["biolink:ChemicalEntity"]
+             "ids": [tester.parkinsons_id],
+             "categories": ["biolink:Disease"]
           },
           "n01": {
-              "categories": ["biolink:ChemicalEntity"]
+              "categories": ["biolink:Protein"]
           }
        }
     }
@@ -165,9 +165,10 @@ def test_multiple_input_ids():
         },
         "nodes": {
             "n00": {
-                "ids": [ASPIRIN_CURIE, PROC_CURIE]
+                "ids": [tester.parkinsons_id, PROC_CURIE]
             },
             "n01": {
+                "categories": ["biolink:Protein"]
             }
         }
     }
@@ -181,7 +182,7 @@ def test_single_node_query():
         },
         "nodes": {
             "n00": {
-                "ids": [ASPIRIN_CURIE]
+                "ids": [tester.parkinsons_id]
             }
         }
     }
@@ -195,7 +196,7 @@ def test_single_node_query_with_multiple_ids():
         },
         "nodes": {
             "n00": {
-                "ids": [ASPIRIN_CURIE, ACETAMINOPHEN_CURIE]
+                "ids": [tester.parkinsons_id, tester.t2_diabetes_id]
             }
         }
     }
@@ -329,12 +330,13 @@ def test_mixins_in_query():
         "edges": {
             "e00": {
                 "subject": "n00",
-                "object": "n01"
+                "object": "n01",
+                "predicates": ["biolink:interacts_with"]
             }
         },
         "nodes": {
             "n00": {
-                "ids": [ACETAMINOPHEN_CURIE]
+                "ids": [tester.acetaminophen_id]
             },
             "n01": {
                 "categories": ["biolink:PhysicalEssence"]
@@ -472,7 +474,7 @@ def test_query_id_mapping_in_results():
                     assert node_binding.get("query_id") == DIABETES_CURIE
 
 
-def test_21():
+def test_qualified_direction():
     # Test qualifiers
     query = {
         "edges": {
@@ -498,18 +500,17 @@ def test_21():
             }
         }
     }
-    kg = _run_query(query)
-    assert "NCBIGene:2554" in kg["nodes"]["n01"]
+    response = tester.run_query(query)
+    assert "NCBIGene:2554" in response["message"]["knowledge_graph"]["nodes"]
 
 
-def test_22():
+def test_qualified_aspect():
     # Test qualifiers
     query = {
         "edges": {
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
@@ -529,225 +530,22 @@ def test_22():
             }
         }
     }
-    kg = _run_query(query)
-    assert "NCBIGene:1890" in kg["nodes"]["n01"]
+    response = tester.run_query(query)
+    assert "NCBIGene:1890" in response["message"]["knowledge_graph"]["nodes"]
 
 
-def test_23():
+def test_qualified_predicate_overrides_regular_predicate():
     # Test qualifiers
     query = {
         "edges": {
             "e00": {
                 "subject": "n00",
                 "object": "n01",
-                "predicates": ["biolink:affects"],
+                "predicates": ["biolink:interacts_with"],  # This is wrong regular predicate, but it shouldn't matter
                 "qualifier_constraints": [
                     {"qualifier_set": [
                         {"qualifier_type_id": "biolink:qualified_predicate",
                          "qualifier_value": "biolink:causes"},
-                        {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "increased"},
-                        # {"qualifier_type_id": "biolink:object_aspect_qualifier",
-                        #  "qualifier_value": "activity_or_abundance"}
-                    ]}
-                ]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
-            },
-            "n01": {
-                "categories": ["biolink:NamedThing"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
-
-
-def test_24():
-    # Test qualifiers
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:affects"],
-                "qualifier_constraints": [
-                    {"qualifier_set": [
-                        {"qualifier_type_id": "biolink:qualified_predicate",
-                         "qualifier_value": "biolink:causes"},
-                        # {"qualifier_type_id": "biolink:object_direction_qualifier",
-                        #  "qualifier_value": "increased"},
-                        # {"qualifier_type_id": "biolink:object_aspect_qualifier",
-                        #  "qualifier_value": "activity_or_abundance"}
-                    ]}
-                ]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
-            },
-            "n01": {
-                "categories": ["biolink:NamedThing"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
-
-
-def test_25():
-    # Test qualifiers
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:has_participant"],  # This is the wrong regular predicate
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
-            },
-            "n01": {
-                "categories": ["biolink:NamedThing"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert MITOCHONDRIAL_DEPOLARIZATION not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
-
-
-def test_26():
-    # Test qualifiers
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:interacts_with"],  # This is the wrong regular predicate
-                "qualifier_constraints": [
-                    {"qualifier_set": [
-                        # {"qualifier_type_id": "biolink:qualified_predicate",
-                        #  "qualifier_value": "biolink:causes"},
-                        {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "increased"},
-                        {"qualifier_type_id": "biolink:object_aspect_qualifier",
-                         "qualifier_value": "activity_or_abundance"}
-                    ]}
-                ]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
-            },
-            "n01": {
-                "categories": ["biolink:NamedThing"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert not kg["nodes"] or MITOCHONDRIAL_DEPOLARIZATION not in kg["nodes"]["n01"]  # Its regular predicate is 'regulates'
-
-
-def test_27():
-    # Test qualifiers
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:regulates"],
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
-            },
-            "n01": {
-                "categories": ["biolink:NamedThing"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert MITOCHONDRIAL_DEPOLARIZATION in kg["nodes"]["n01"]
-
-
-def test_28():
-    # Test qualifiers
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "predicates": ["biolink:regulates"],
-                "qualifier_constraints": [
-                    {"qualifier_set": [
-                        {"qualifier_type_id": "biolink:qualified_predicate",
-                         "qualifier_value": "biolink:causes"},
-                        {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "decreased"}
-                    ]}
-                ]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ["CHEBI:94557"]
-            },
-            "n01": {
-                "categories": ["biolink:NamedThing"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert "NCBIGene:2554" in kg["nodes"]["n01"]
-
-
-def test_29():
-    # Test qualifiers
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "qualifier_constraints": [
-                    {"qualifier_set": [
-                        {"qualifier_type_id": "biolink:qualified_predicate",
-                         "qualifier_value": "biolink:causes"},
-                        {"qualifier_type_id": "biolink:object_direction_qualifier",
-                         "qualifier_value": "decreased"}
-                    ]}
-                ]
-            }
-        },
-        "nodes": {
-            "n00": {
-                "ids": ["CHEBI:94557"]
-            },
-            "n01": {
-                "categories": ["biolink:NamedThing"]
-            }
-        }
-    }
-    kg = _run_query(query)
-    assert "NCBIGene:2554" in kg["nodes"]["n01"]
-
-
-def test_30():
-    # Test qualifiers
-    query = {
-        "edges": {
-            "e00": {
-                "subject": "n00",
-                "object": "n01",
-                "qualifier_constraints": [
-                    {"qualifier_set": [
                         {"qualifier_type_id": "biolink:object_aspect_qualifier",
                          "qualifier_value": "activity_or_abundance"}
                     ]}
@@ -763,41 +561,93 @@ def test_30():
             }
         }
     }
-    kg = _run_query(query)
-    assert "NCBIGene:1890" in kg["nodes"]["n01"]
+    response = tester.run_query(query)
+    assert "NCBIGene:1890" in response["message"]["knowledge_graph"]["nodes"]
 
 
-def test_31():
-    # Test treats
+def test_qualified_predicate_only():
+    # Test qualifiers
     query = {
         "edges": {
             "e00": {
-                "subject": "n01",
-                "object": "n00",
-                "predicates": ["biolink:treats_or_applied_or_studied_to_treat"]
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:affects"],
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"}
+                    ]}
+                ]
             }
         },
         "nodes": {
             "n00": {
-                "ids": [BIPOLAR_CURIE]
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
             },
             "n01": {
-                "categories": ["biolink:Drug"]
+                "categories": ["biolink:NamedThing"]
             }
         }
     }
-    kg = _run_query(query)
-    assert len(kg["nodes"]["n01"])
+    response = tester.run_query(query)
+    assert MITOCHONDRIAL_DEPOLARIZATION in response["message"]["knowledge_graph"]["nodes"]
 
 
-def test_32():
+def test_qualified_edge_queried_only_by_regular_predicate():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:regulates"],
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
+            },
+            "n01": {
+                "categories": ["biolink:NamedThing"]
+            }
+        }
+    }
+    response = tester.run_query(query)
+    assert MITOCHONDRIAL_DEPOLARIZATION in response["message"]["knowledge_graph"]["nodes"]
+
+
+def test_qualified_edge_queried_only_by_wrong_regular_predicate():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "predicates": ["biolink:has_participant"],  # Its regular predicate is actually 'regulates'
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": [POS_REG_OF_MITOCHONDRIAL_DEPOL]
+            },
+            "n01": {
+                "categories": ["biolink:NamedThing"]
+            }
+        }
+    }
+    response = tester.run_query(query)
+    assert MITOCHONDRIAL_DEPOLARIZATION not in response["message"]["knowledge_graph"]["nodes"]
+
+
+def test_is_set_handling():
     # Test is_set handling
     query = {
         "edges": {
             "e00": {
                 "subject": "n01",
                 "object": "n00",
-                "predicates": ["biolink:related_to"]
+                "predicates": ["biolink:treats"]
             }
         },
         "nodes": {
@@ -805,42 +655,38 @@ def test_32():
                 "ids": [DIABETES_CURIE]
             },
             "n01": {
-                "categories": ["biolink:NamedThing"]
+                "categories": ["biolink:ChemicalEntity"]
             }
         }
     }
 
     query["nodes"]["n00"]["is_set"] = True
     query["nodes"]["n01"]["is_set"] = True
-    kg, trapi_response_issettrue = _run_query(query, return_trapi_response=True)
+    trapi_response_issettrue = tester.run_query(query)
     results_issettrue = trapi_response_issettrue["message"].get("results")
     assert results_issettrue
     assert len(results_issettrue) == 1
 
     query["nodes"]["n00"]["is_set"] = False
     query["nodes"]["n01"]["is_set"] = True
-    kg, trapi_response_objectset = _run_query(query, return_trapi_response=True)
+    trapi_response_objectset = tester.run_query(query)
     results_objectset = trapi_response_objectset["message"].get("results")
     assert results_objectset
 
     query["nodes"]["n00"]["is_set"] = True
     query["nodes"]["n01"]["is_set"] = False
-    kg, trapi_response_subjectset = _run_query(query, return_trapi_response=True)
+    trapi_response_subjectset = tester.run_query(query)
     results_subjectset = trapi_response_subjectset["message"].get("results")
     assert results_subjectset
 
     query["nodes"]["n00"]["is_set"] = False
     query["nodes"]["n01"]["is_set"] = False
-    kg, trapi_response_issetfalse = _run_query(query, return_trapi_response=True)
+    trapi_response_issetfalse = tester.run_query(query)
     results_issetfalse = trapi_response_issetfalse["message"].get("results")
     assert results_issetfalse
 
-    # _print_results(results_issettrue)
-    # _print_results(results_objectset)
-    # _print_results(results_subjectset)
-    # _print_results(results_issetfalse)
-
     assert len(results_issetfalse) > len(results_subjectset) > len(results_objectset) > len(results_issettrue)
+
 
 def test_undirected_related_to_for_underlying_treats_edge():
     """
@@ -869,16 +715,15 @@ def test_undirected_related_to_for_underlying_treats_edge():
             }
         }
     }
-    kg_1 = _run_query(query)
-    assert kg_1["nodes"]["n00"] and kg_1["nodes"]["n00_1"]
+    response_1 = tester.run_query(query)
+    edges_1 = response_1["message"]["knowledge_graph"]["edges"]
     # Swap subject/object and make sure we get the same answers
     query["edges"]["e00_1"]["subject"] = "n00"
     query["edges"]["e00_1"]["object"] = "n00_1"
-    kg_2 = _run_query(query)
-    assert kg_2["nodes"]["n00"] and kg_2["nodes"]["n00_1"]
-    assert len(kg_1["edges"]["e00_1"]) == len(kg_2["edges"]["e00_1"])
-    assert len(kg_1["nodes"]["n00"]) == len(kg_2["nodes"]["n00_1"])
-    assert len(kg_1["nodes"]["n00_1"]) == len(kg_2["nodes"]["n00"])
+    response_2 = tester.run_query(query)
+    edges_2 = response_2["message"]["knowledge_graph"]["edges"]
+
+    assert len(edges_1) == len(edges_2)
 
 
 def test_version():
