@@ -1393,14 +1393,18 @@ class PloverDB:
         # Make sure we extract the true predicate/qualified predicate from conglomerate predicates
         direct_qg_predicates = {self._get_used_predicate(direct_predicate) for direct_predicate in direct_qg_predicates}
 
-        ancestor_predicates = set(self.bh.get_ancestors(predicate, include_mixins=False))
-        ancestor_predicates_in_qg = ancestor_predicates.intersection(direct_qg_predicates)
-        has_symmetric_ancestor_in_qg = any(self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
-        has_asymmetric_ancestor_in_qg = any(not self.bh.is_symmetric(ancestor) for ancestor in ancestor_predicates_in_qg)
-        if self.bh.is_symmetric(predicate) or (has_symmetric_ancestor_in_qg and not has_asymmetric_ancestor_in_qg):
+        if predicate in direct_qg_predicates:
+            return self.bh.is_symmetric(predicate)
+        elif all(self.bh.is_symmetric(direct_predicate) for direct_predicate in direct_qg_predicates):
             return True
         else:
-            return False
+            # Figure out which predicate(s) in the QG this descendant predicate corresponds to
+            ancestor_predicates = set(self.bh.get_ancestors(predicate, include_mixins=True)).difference({predicate})
+            ancestor_predicates_in_qg = ancestor_predicates.intersection(direct_qg_predicates)
+            if any(self.bh.is_symmetric(qg_predicate_ancestor) for qg_predicate_ancestor in ancestor_predicates_in_qg):
+                return True
+            else:
+                return self.bh.is_symmetric(predicate)
 
     @staticmethod
     def _get_used_predicate(conglomerate_predicate: str) -> str:

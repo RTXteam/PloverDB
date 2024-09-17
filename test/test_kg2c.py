@@ -322,7 +322,7 @@ def test_concept_subclasses_single_node_query():
         }
     }
     response = tester.run_query(query_subclass)
-    assert tester.get_num_distinct_concepts(response, "n00") > 1
+    assert tester.get_num_distinct_concepts(response, "n00") == 1
 
 
 def test_mixins_in_query():
@@ -459,8 +459,7 @@ def test_query_id_mapping_in_results():
     }
     response = tester.run_query(query)
     assert tester.get_num_distinct_concepts(response, "n00") == 2
-    assert any(node_id for node_id in response["message"]["knowledge_graph"]["nodes"]
-               if DIABETES_T1_CURIE in tester.get_equivalent_curies(response, node_id))
+    assert DIABETES_T1_CURIE in response["message"]["knowledge_graph"]["nodes"]
 
     for result in response["message"]["results"]:
         for qnode_key, node_bindings in result["node_bindings"].items():
@@ -701,7 +700,6 @@ def test_undirected_related_to_for_underlying_treats_edge():
                 "predicates": ["biolink:related_to"]
             }
         },
-        "include_metadata": True,
         "nodes": {
             "n00": {
                 "ids": [
