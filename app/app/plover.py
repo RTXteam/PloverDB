@@ -912,6 +912,64 @@ class PloverDB:
         self.log_trapi("INFO", log_message)
         return trapi_response
 
+    def get_edges(self, node_pairs: List[List[str]]) -> dict:
+        """
+        Finds edges between the specified node pairs. Does *not* currently do concept subclass reasoning.
+        """
+        # Loop through pairs
+        qg_template = {"nodes": {"na": {"ids": []}, "nb": {"ids": []}},
+                       "edges": {"e": {"subject": "na", "object": "nb", "predicates": ["biolink:related_to"]}}}
+        node_pairs_to_edge_ids = dict()
+        all_node_ids = set()
+        all_edge_ids = set()
+        for node_id_a, node_id_b in node_pairs:
+            # Convert to equivalent identifiers we recognize
+            node_id_a_preferred = self.preferred_id_map.get(node_id_a, node_id_a)
+            node_id_b_preferred = self.preferred_id_map.get(node_id_b, node_id_b)
+
+            # Find answers for this pair (NO SUBCLASS REASONING)
+            qg_template["nodes"]["na"]["ids"] = [node_id_a_preferred]
+            qg_template["nodes"]["nb"]["ids"] = [node_id_b_preferred]
+            input_node_ids, output_node_ids, edge_ids = self._lookup_answers("na", "nb", qg_template)
+
+            # Record answers for this pair
+            pair_key = f"{node_id_a}--{node_id_b}"
+            node_pairs_to_edge_ids[pair_key] = list(edge_ids)
+            all_edge_ids |= edge_ids
+            all_node_ids |= input_node_ids
+            all_node_ids |= output_node_ids
+
+        logging.info(f"Found edges for {len(node_pairs_to_edge_ids)} node pairs.")
+
+        # Then grab all edge/node objects
+        kg = {"edges": {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
+                        for edge_id in all_edge_ids},
+              "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
+                        for node_id in all_node_ids}}
+
+        logging.info(f"Returning answer with {len(kg['edges'])} edges and {len(kg['nodes'])} nodes.")
+        return {"pairs_to_edge_ids": node_pairs_to_edge_ids, "knowledge_graph": kg}
+
+    def get_neighbors(self, node_ids: List[str], categories: List[str]) -> dict:
+        """
+        Finds neighbors for input nodes. Does *not* do subclass reasoning currently.
+        """
+        qg_template = {"nodes": {"n_in": {"ids": []}, "n_out": {"categories": categories}},
+                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": ["biolink:related_to"]}}}
+        neighbors_map = dict()
+        for node_id in node_ids:
+            # Convert to the equivalent identifier we recognize
+            node_id_preferred = self.preferred_id_map.get(node_id, node_id)
+
+            # Find neighbors of this node
+            qg_template["nodes"]["n_in"]["ids"] = [node_id_preferred]
+            input_node_ids, output_node_ids, edge_ids = self._lookup_answers("n_in", "n_out", qg_template)
+
+            # Record neighbors for this node
+            neighbors_map[node_id] = output_node_ids
+
+        return neighbors_map
+
     def _lookup_answers(self, input_qnode_key: str, output_qnode_key: str, trapi_qg: dict) -> Tuple[set, set, set]:
         qedge = next(qedge for qedge in trapi_qg["edges"].values())
         # Convert to canonical predicates in the QG as needed

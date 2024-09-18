@@ -64,9 +64,42 @@ def run_query(kp_endpoint_name: str, query: dict):
 
 @app.post("/query")
 def run_query_default(query: dict):
-    # Use the alphabetically-first endpoint
     logging.info(f"{default_endpoint_name}: Received a query: {query}")
     answer = plover_objs_map[default_endpoint_name].answer_query(query)
+    return answer
+
+
+@app.post("/{kp_endpoint_name}/get_edges")
+def get_edges(kp_endpoint_name: str, query: dict):
+    pairs = query["pairs"]
+    logging.info(f"{kp_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
+    answer = plover_objs_map[kp_endpoint_name].get_edges(pairs)
+    return answer
+
+
+@app.post("/get_edges")
+def get_edges(query: dict):
+    pairs = query["pairs"]
+    logging.info(f"{default_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
+    answer = plover_objs_map[default_endpoint_name].get_edges(pairs)
+    return answer
+
+
+@app.post("/{kp_endpoint_name}/get_neighbors")
+def get_neighbors(kp_endpoint_name: str, query: dict):
+    node_ids = query["node_ids"]
+    categories = query.get("categories", ["biolink:NamedThing"])
+    logging.info(f"{kp_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
+    answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories)
+    return answer
+
+
+@app.post("/get_neighbors")
+def get_neighbors(query: dict):
+    node_ids = query["node_ids"]
+    categories = query.get("categories", ["biolink:NamedThing"])
+    logging.info(f"{default_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
+    answer = plover_objs_map[default_endpoint_name].get_neighbors(node_ids, categories)
     return answer
 
 

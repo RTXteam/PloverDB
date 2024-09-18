@@ -724,6 +724,23 @@ def test_undirected_related_to_for_underlying_treats_edge():
     assert len(edges_1) == len(edges_2)
 
 
+def test_get_edges():
+    pairs = [["HP:0100256", "PUBCHEM.COMPOUND:5235"], ["KEGG.REACTION:R11959", "CHEBI:32398"]]
+    response_1 = tester.run_get_edges(pairs)
+    # Now make sure we get the same answer with backwards pair
+    pairs[0].reverse()
+    response_2 = tester.run_get_edges(pairs)
+    assert set(response_1["knowledge_graph"]["edges"]) == set(response_2["knowledge_graph"]["edges"])
+
+
+def test_get_neighbors():
+    query = {"node_ids": ["HP:0100256", "KEGG:00040"]}
+    response = tester.run_get_neighbors(query)
+    # Now try with category constraint
+    query["categories"] = ["biolink:ChemicalEntity"]
+    response_2 = tester.run_get_neighbors(query)
+
+
 def test_version():
     # Print out the version of the KG2c being tested
     query = {
