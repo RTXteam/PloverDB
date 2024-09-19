@@ -11,6 +11,7 @@ import logging
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import FileResponse
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import plover
@@ -115,7 +116,6 @@ def get_meta_knowledge_graph_default():
 
 @app.get("/{kp_endpoint_name}/sri_test_triples")
 def get_sri_test_triples(kp_endpoint_name: str):
-    logging.info(f"in sri test triples, kp endpoint name is {kp_endpoint_name}")
     with open(plover_objs_map[kp_endpoint_name].sri_test_triples_path, "r") as sri_test_file:
         sri_test_triples = json.load(sri_test_file)
     return sri_test_triples
@@ -174,3 +174,9 @@ def run_get_logs(num_lines: int = 100):
         return response
     except Exception as e:
         handle_internal_error(e)
+
+
+@app.get("/{kp_endpoint_name}")
+def run_query(kp_endpoint_name: str):
+    logging.info(f"{kp_endpoint_name}: Going to homepage.")
+    return FileResponse(plover_objs_map[kp_endpoint_name].home_html_path)

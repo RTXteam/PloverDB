@@ -46,6 +46,7 @@ class PloverDB:
         self.endpoint_name = self.kg_config["endpoint_name"]
         self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}.pkl"
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
+        self.home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
@@ -453,6 +454,16 @@ class PloverDB:
                        "preferred_id_map": self.preferred_id_map}
         with open(self.pickle_index_path, "wb") as index_file:
             pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
+
+        # Fill out the home page HTML template for this KP
+        logging.info(f"Filling out html home template and saving to {self.home_html_path}..")
+        with open(f"{SCRIPT_DIR}/../home_template.html", "r") as template_file:
+            html_string = template_file.read()
+        revised_html = html_string.replace("{{kp_infores_curie}}",
+                                           self.kp_infores_curie).replace("{{kp_endpoint_name}}",
+                                                                          self.endpoint_name)
+        with open(self.home_html_path, "w+") as kp_home_file:
+            kp_home_file.write(revised_html)
 
         if not self.is_test:
             logging.info(f"Removing local unzipped nodes/edges files from the image now that index building is done")
