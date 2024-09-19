@@ -20,21 +20,21 @@ class PloverTester:
 
         self.endpoint = endpoint
         self.subendpoint = subendpoint
-        self.endpoint_url = f"{self.endpoint}/{self.subendpoint}/query" if self.subendpoint else f"{self.endpoint}/query"
+        self.endpoint_url = f"{self.endpoint}/{self.subendpoint}" if self.subendpoint else f"{self.endpoint}"
         print(f"endpoint url is {self.endpoint_url}")
 
     def run_query(self, trapi_qg: dict, should_produce_results: bool = True, should_produce_error: bool = False) -> dict:
         trapi_query = {"message": {"query_graph": trapi_qg}, "submitter": "ploverdb-test-suite"}
         is_edgeless_query = False if len(trapi_qg.get("edges", {})) else True
-        response = requests.post(self.endpoint_url, json=trapi_query, headers={'accept': 'application/json'})
+        response = requests.post(f"{self.endpoint_url}/query", json=trapi_query, headers={'accept': 'application/json'})
         if should_produce_error:
-            assert response.status_code != 200
+            assert not response.ok
 
-        if response.status_code == 200:
+        if response.ok:
             print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
             json_response = response.json()
             if pytest.save:
-                with open(f"test_response.json", "w+") as test_output_file:
+                with open(f"{SCRIPT_DIR}/test_response.json", "w+") as test_output_file:
                     json.dump(json_response, test_output_file, indent=2)
 
             assert json_response["message"]
@@ -66,7 +66,7 @@ class PloverTester:
                 kg = json_response["message"]["knowledge_graph"]
                 assert kg["nodes"]
                 for node in kg["nodes"].values():
-                    assert node["name"]
+                    assert "name" in node  # Code be null for some (e.g. pathwhiz), but slot should still exist
                     assert node["categories"]
                     node_attributes = node.get("attributes")
                     assert isinstance(node_attributes, list)  # TRAPI 1.5 requires empty attribute lists if none
@@ -100,6 +100,47 @@ class PloverTester:
                     assert entry["message"]
 
             return json_response
+        else:
+            print(f"Response status code was {response.status_code}. Response was: {response.text}")
+            return dict()
+
+    def run_get_edges(self, pairs: List[List[str]]) -> dict:
+        pairs_query = {"pairs": pairs}
+        response = requests.post(f"{self.endpoint_url}/get_edges", json=pairs_query,
+                                 headers={'accept': 'application/json'})
+        if response.ok:
+            print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
+            response_json = response.json()
+            if pytest.save:
+                with open(f"{SCRIPT_DIR}/test_response.json", "w+") as test_output_file:
+                    json.dump(response_json, test_output_file, indent=2)
+            pairs_to_edge_ids = response_json.get("pairs_to_edge_ids")
+            assert pairs_to_edge_ids
+            assert len(pairs_to_edge_ids) == len(pairs)
+            knowledge_graph = response_json.get("knowledge_graph")
+            assert knowledge_graph
+            assert knowledge_graph.get("edges")
+            assert knowledge_graph.get("nodes")
+            print(f"Returned {len(knowledge_graph['edges'])} edges.")
+            return response_json
+        else:
+            print(f"Response status code was {response.status_code}. Response was: {response.text}")
+            return dict()
+
+    def run_get_neighbors(self, query: dict) -> dict:
+        response = requests.post(f"{self.endpoint_url}/get_neighbors", json=query,
+                                 headers={'accept': 'application/json'})
+        if response.ok:
+            print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
+            response_json = response.json()
+            if pytest.save:
+                with open(f"{SCRIPT_DIR}/test_response.json", "w+") as test_output_file:
+                    json.dump(response_json, test_output_file, indent=2)
+            assert len(response_json) == len(query["node_ids"])
+            print(f"Answer includes {len(response_json)} entries.")
+            for neighbors_list in response_json.values():
+                assert neighbors_list
+            return response_json
         else:
             print(f"Response status code was {response.status_code}. Response was: {response.text}")
             return dict()

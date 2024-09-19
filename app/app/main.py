@@ -11,6 +11,7 @@ import logging
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import FileResponse
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import plover
@@ -64,9 +65,42 @@ def run_query(kp_endpoint_name: str, query: dict):
 
 @app.post("/query")
 def run_query_default(query: dict):
-    # Use the alphabetically-first endpoint
     logging.info(f"{default_endpoint_name}: Received a query: {query}")
     answer = plover_objs_map[default_endpoint_name].answer_query(query)
+    return answer
+
+
+@app.post("/{kp_endpoint_name}/get_edges")
+def get_edges(kp_endpoint_name: str, query: dict):
+    pairs = query["pairs"]
+    logging.info(f"{kp_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
+    answer = plover_objs_map[kp_endpoint_name].get_edges(pairs)
+    return answer
+
+
+@app.post("/get_edges")
+def get_edges(query: dict):
+    pairs = query["pairs"]
+    logging.info(f"{default_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
+    answer = plover_objs_map[default_endpoint_name].get_edges(pairs)
+    return answer
+
+
+@app.post("/{kp_endpoint_name}/get_neighbors")
+def get_neighbors(kp_endpoint_name: str, query: dict):
+    node_ids = query["node_ids"]
+    categories = query.get("categories", ["biolink:NamedThing"])
+    logging.info(f"{kp_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
+    answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories)
+    return answer
+
+
+@app.post("/get_neighbors")
+def get_neighbors(query: dict):
+    node_ids = query["node_ids"]
+    categories = query.get("categories", ["biolink:NamedThing"])
+    logging.info(f"{default_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
+    answer = plover_objs_map[default_endpoint_name].get_neighbors(node_ids, categories)
     return answer
 
 
@@ -82,7 +116,6 @@ def get_meta_knowledge_graph_default():
 
 @app.get("/{kp_endpoint_name}/sri_test_triples")
 def get_sri_test_triples(kp_endpoint_name: str):
-    logging.info(f"in sri test triples, kp endpoint name is {kp_endpoint_name}")
     with open(plover_objs_map[kp_endpoint_name].sri_test_triples_path, "r") as sri_test_file:
         sri_test_triples = json.load(sri_test_file)
     return sri_test_triples
@@ -141,3 +174,9 @@ def run_get_logs(num_lines: int = 100):
         return response
     except Exception as e:
         handle_internal_error(e)
+
+
+@app.get("/{kp_endpoint_name}")
+def run_query(kp_endpoint_name: str):
+    logging.info(f"{kp_endpoint_name}: Going to homepage.")
+    return FileResponse(plover_objs_map[kp_endpoint_name].home_html_path)
