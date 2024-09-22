@@ -62,7 +62,7 @@
       "attribute_type_id": "biolink:clinical_trial_status"
     },
     "enrollment": {
-      "attribute_type_id": "biolink:clinical_trial_study_size",
+      "attribute_type_id": "biolink:supporting_study_size",
       "value_type_id": "metatype:Integer"
     },
     "child": {
