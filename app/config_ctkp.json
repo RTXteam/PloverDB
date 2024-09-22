@@ -86,7 +86,7 @@
     "default": [
       {
         "resource_id":  "infores:clinicaltrials",
-        "resource_role":  "primary_knowledge_source"
+        "resource_role":  "supporting_data_source"
       },
       {
         "resource_id":  "infores:aact",
@@ -95,19 +95,8 @@
       },
       {
         "resource_id":  "{kp_infores_curie}",
-        "resource_role":  "aggregator_knowledge_source",
-        "upstream_resource_ids":  ["infores:aact"]
-      }
-    ],
-    "biolink:treats": [
-      {
-        "resource_id":  "infores:clinicaltrials",
-        "resource_role":  "supporting_data_source"
-      },
-      {
-        "resource_id":  "{kp_infores_curie}",
         "resource_role":  "primary_knowledge_source",
-        "upstream_resource_ids":  ["infores:clinicaltrials"]
+        "upstream_resource_ids":  ["infores:aact"]
       }
     ]
   }
