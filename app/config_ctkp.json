@@ -51,7 +51,7 @@
       "attribute_source": "{kp_infores_curie}"
     },
     "nctid": {
-      "attribute_type_id": "biolink:supporting_study",
+      "attribute_type_id": "biolink:supporting_study_metadata",
       "value_url": "https://clinicaltrials.gov/study/{value}?tab=table"
     },
     "phase": {
