@@ -910,18 +910,51 @@ class PloverDB:
                                                                                         output_qnode_key,
                                                                                         trapi_qg)
 
-        # Form final TRAPI response
-        trapi_response = self._create_response_from_answer_ids(input_qnode_answers,
-                                                               output_qnode_answers,
-                                                               qedge_answers,
-                                                               input_qnode_key,
-                                                               output_qnode_key,
-                                                               qedge_key,
-                                                               trapi_query["message"]["query_graph"],
-                                                               descendant_to_query_id_map)
-        log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
-        self.log_trapi("INFO", log_message)
-        return trapi_response
+        # Temporarily keeping the 'include_metadata' option to make Plover backwards-compatible for pathfinder
+        if trapi_qg.get("include_metadata") is True:
+            # TODO: Delete after Pathfinder is updated for Plover2.0
+            nodes = {input_qnode_key: {node_id: self.get_node_as_tuple(node_id) + (list(descendant_to_query_id_map[input_qnode_key].get(node_id, set())),)
+                                       for node_id in input_qnode_answers},
+                     output_qnode_key: {node_id: self.get_node_as_tuple(node_id) + (list(descendant_to_query_id_map[output_qnode_key].get(node_id, set())),)
+                                        for node_id in output_qnode_answers}}
+            edges = {qedge_key: {edge_id: self.get_edge_as_tuple(edge_id) for edge_id in qedge_answers}}
+            log_message = f"Done with query, returning {qedge_answers} edges (slim format)"
+            return {"nodes": nodes, "edges": edges}
+        elif trapi_qg.get("include_metadata") is False:
+            # TODO: Delete after Pathfinder is updated for Plover2.0
+            nodes = {input_qnode_key: [node_id for node_id in input_qnode_answers],
+                     output_qnode_key: list(output_qnode_answers)}
+            edges = {qedge_key: list(qedge_answers)}
+            log_message = f"Done with query, returning {qedge_answers} edges (ids-only format)"
+            return {"nodes": nodes, "edges": edges}
+        else:
+            # Form final TRAPI response
+            trapi_response = self._create_response_from_answer_ids(input_qnode_answers,
+                                                                   output_qnode_answers,
+                                                                   qedge_answers,
+                                                                   input_qnode_key,
+                                                                   output_qnode_key,
+                                                                   qedge_key,
+                                                                   trapi_query["message"]["query_graph"],
+                                                                   descendant_to_query_id_map)
+            log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
+            self.log_trapi("INFO", log_message)
+            return trapi_response
+
+    def get_node_as_tuple(self, node_id: str) -> tuple:
+        # TODO: Delete after Pathfinder is updated for Plover2.0
+        node = self.node_lookup_map[node_id]
+        categories = node[self.categories_property]
+        category = categories[0] if isinstance(categories, list) else categories
+        return node.get("name"), node.get(self.categories_property)[0]
+
+    def get_edge_as_tuple(self, edge_id: str) -> tuple:
+        # TODO: Delete after Pathfinder is updated for Plover2.0
+        edge = self.edge_lookup_map[edge_id]
+        return (edge["subject"], edge["object"], edge[self.edge_predicate_property],
+                edge.get("primary_knowledge_source"), edge.get(self.graph_qualified_predicate_property, ""),
+                edge.get(self.graph_object_direction_property, ""), edge.get(self.graph_object_aspect_property, ""),
+                "False")  # Silly to have these in strings, but that's the old format... will delete eventually
 
     def get_edges(self, node_pairs: List[List[str]]) -> dict:
         """
@@ -1151,20 +1184,20 @@ class PloverDB:
 
         # Add any qualifier info
         qualifiers = []
-        if edge_biolink.get("qualified_predicate"):
+        if edge_biolink.get(self.graph_qualified_predicate_property):
             qualifiers.append({
                 "qualifier_type_id": "biolink:qualified_predicate",
-                "qualifier_value": edge_biolink["qualified_predicate"]
+                "qualifier_value": edge_biolink[self.graph_qualified_predicate_property]
             })
-        if edge_biolink.get("qualified_object_direction"):
+        if edge_biolink.get(self.graph_object_direction_property):
             qualifiers.append({
                 "qualifier_type_id": "biolink:object_direction_qualifier",
-                "qualifier_value": edge_biolink["qualified_object_direction"]
+                "qualifier_value": edge_biolink[self.graph_object_direction_property]
             })
-        if edge_biolink.get("qualified_object_aspect"):
+        if edge_biolink.get(self.graph_object_aspect_property):
             qualifiers.append({
                 "qualifier_type_id": "biolink:object_aspect_qualifier",
-                "qualifier_value": edge_biolink["qualified_object_aspect"]
+                "qualifier_value": edge_biolink[self.graph_object_aspect_property]
             })
         if qualifiers:
             trapi_edge["qualifiers"] = qualifiers
