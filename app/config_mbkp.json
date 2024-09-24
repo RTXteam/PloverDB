@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_nodes_v0.1.1.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_edges_p0.1.1.tsv.gz",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_nodes_v0.2.1.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_edges_p0.2.1.tsv.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-microbiome",
   "endpoint_name": "mbkp",
@@ -53,11 +53,11 @@
     "default": [
       {
         "resource_id": "{kp_infores_curie}",
-        "resource_role": "aggregator_knowledge_source"
+        "resource_role": "primary_knowledge_source"
       },
       {
         "resource_id": "infores:pubmed-central",
-        "resource_role": "primary_knowledge_source"
+        "resource_role": "supporting_data_source"
       }
     ]
   }
