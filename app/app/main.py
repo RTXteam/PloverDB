@@ -56,30 +56,37 @@ logging.info(f"Plover objs map is: {plover_objs_map}. Default endpoint is {defau
 
 
 @app.post("/{kp_endpoint_name}/query")
-def run_query(kp_endpoint_name: str, query: dict):
-    logging.info(f"{kp_endpoint_name}: Received a query: {query}")
-    # TODO: Throw error if endpoint name isn't in map
-    answer = plover_objs_map[kp_endpoint_name].answer_query(query)
-    return answer
+async def run_query(kp_endpoint_name: str, query: dict):
+    if kp_endpoint_name in plover_objs_map:
+        logging.info(f"{kp_endpoint_name}: Received a query: {query}")
+        answer = plover_objs_map[kp_endpoint_name].answer_query(query)
+        return answer
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.post("/query")
-def run_query_default(query: dict):
+async def run_query_default(query: dict):
     logging.info(f"{default_endpoint_name}: Received a query: {query}")
     answer = plover_objs_map[default_endpoint_name].answer_query(query)
     return answer
 
 
 @app.post("/{kp_endpoint_name}/get_edges")
-def get_edges(kp_endpoint_name: str, query: dict):
-    pairs = query["pairs"]
-    logging.info(f"{kp_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
-    answer = plover_objs_map[kp_endpoint_name].get_edges(pairs)
-    return answer
+async def get_edges(kp_endpoint_name: str, query: dict):
+    if kp_endpoint_name in plover_objs_map:
+        pairs = query["pairs"]
+        logging.info(f"{kp_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
+        answer = plover_objs_map[kp_endpoint_name].get_edges(pairs)
+        return answer
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.post("/get_edges")
-def get_edges(query: dict):
+async def get_edges_default(query: dict):
     pairs = query["pairs"]
     logging.info(f"{default_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
     answer = plover_objs_map[default_endpoint_name].get_edges(pairs)
@@ -87,16 +94,20 @@ def get_edges(query: dict):
 
 
 @app.post("/{kp_endpoint_name}/get_neighbors")
-def get_neighbors(kp_endpoint_name: str, query: dict):
-    node_ids = query["node_ids"]
-    categories = query.get("categories", ["biolink:NamedThing"])
-    logging.info(f"{kp_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
-    answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories)
-    return answer
+async def get_neighbors(kp_endpoint_name: str, query: dict):
+    if kp_endpoint_name in plover_objs_map:
+        node_ids = query["node_ids"]
+        categories = query.get("categories", ["biolink:NamedThing"])
+        logging.info(f"{kp_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
+        answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories)
+        return answer
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.post("/get_neighbors")
-def get_neighbors(query: dict):
+async def get_neighbors_default(query: dict):
     node_ids = query["node_ids"]
     categories = query.get("categories", ["biolink:NamedThing"])
     logging.info(f"{default_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
@@ -105,20 +116,28 @@ def get_neighbors(query: dict):
 
 
 @app.get("/{kp_endpoint_name}/meta_knowledge_graph")
-def get_meta_knowledge_graph(kp_endpoint_name: str):
-    return plover_objs_map[kp_endpoint_name].meta_kg
+async def get_meta_knowledge_graph(kp_endpoint_name: str):
+    if kp_endpoint_name in plover_objs_map:
+        return plover_objs_map[kp_endpoint_name].meta_kg
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.get("/meta_knowledge_graph")
-def get_meta_knowledge_graph_default():
+async def get_meta_knowledge_graph_default():
     return plover_objs_map[default_endpoint_name].meta_kg
 
 
 @app.get("/{kp_endpoint_name}/sri_test_triples")
 def get_sri_test_triples(kp_endpoint_name: str):
-    with open(plover_objs_map[kp_endpoint_name].sri_test_triples_path, "r") as sri_test_file:
-        sri_test_triples = json.load(sri_test_file)
-    return sri_test_triples
+    if kp_endpoint_name in plover_objs_map:
+        with open(plover_objs_map[kp_endpoint_name].sri_test_triples_path, "r") as sri_test_file:
+            sri_test_triples = json.load(sri_test_file)
+        return sri_test_triples
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.get("/sri_test_triples")
@@ -129,7 +148,7 @@ def get_sri_test_triples_default():
 
 
 @app.get("/healthcheck")
-def run_health_check():
+async def run_health_check():
     return ''
 
 
@@ -177,6 +196,10 @@ def run_get_logs(num_lines: int = 100):
 
 
 @app.get("/{kp_endpoint_name}")
-def run_query(kp_endpoint_name: str):
-    logging.info(f"{kp_endpoint_name}: Going to homepage.")
-    return FileResponse(plover_objs_map[kp_endpoint_name].home_html_path)
+def get_home_page(kp_endpoint_name: str):
+    if kp_endpoint_name in plover_objs_map:
+        logging.info(f"{kp_endpoint_name}: Going to homepage.")
+        return FileResponse(plover_objs_map[kp_endpoint_name].home_html_path)
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
