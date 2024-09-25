@@ -51,6 +51,8 @@ graceful_timeout = int(graceful_timeout_str)
 timeout = int(timeout_str)
 keepalive = int(keepalive_str)
 preload_app = True
+max_requests = 500
+max_requests_jitter = 50
 
 
 # For debugging and testing
@@ -68,6 +70,8 @@ log_data = {
     "use_max_workers": use_max_workers,
     "host": host,
     "port": port,
-    "preload": preload_app
+    "preload": preload_app,
+    "max_requests": max_requests,
+    "max_requests_jitter": max_requests_jitter
 }
 print(json.dumps(log_data))
