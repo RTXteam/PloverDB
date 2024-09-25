@@ -63,7 +63,7 @@ async def run_query(kp_endpoint_name: str, query: dict):
         return answer
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
+                            detail=f"404 ERROR: Endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.post("/query")
@@ -82,7 +82,7 @@ async def get_edges(kp_endpoint_name: str, query: dict):
         return answer
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
+                            detail=f"404 ERROR: Endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.post("/get_edges")
@@ -103,7 +103,7 @@ async def get_neighbors(kp_endpoint_name: str, query: dict):
         return answer
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
+                            detail=f"404 ERROR: Endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.post("/get_neighbors")
@@ -121,7 +121,7 @@ async def get_meta_knowledge_graph(kp_endpoint_name: str):
         return plover_objs_map[kp_endpoint_name].meta_kg
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
+                            detail=f"404 ERROR: Endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.get("/meta_knowledge_graph")
@@ -137,7 +137,7 @@ def get_sri_test_triples(kp_endpoint_name: str):
         return sri_test_triples
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
+                            detail=f"404 ERROR: Endpoint specified in request (/{kp_endpoint_name}) does not exist")
 
 
 @app.get("/sri_test_triples")
@@ -202,4 +202,4 @@ def get_home_page(kp_endpoint_name: str):
         return FileResponse(plover_objs_map[kp_endpoint_name].home_html_path)
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"404 ERROR: KP endpoint specified in request (/{kp_endpoint_name}) does not exist")
+                            detail=f"404 ERROR: Endpoint specified in request (/{kp_endpoint_name}) does not exist")
