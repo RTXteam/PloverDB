@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import copy
 import csv
+import gc
 import itertools
 import json
 from datetime import datetime
@@ -252,6 +253,7 @@ class PloverDB:
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
+        gc.collect()  # Make sure we free up any memory we can
         logging.info(f"Done loading edge lookup map; there are {len(self.edge_lookup_map)} edges. "
                      f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
 
@@ -440,6 +442,7 @@ class PloverDB:
         self.node_lookup_map["PloverDB"] = plover_build_node
 
         # Save all indexes in a big pickle
+        gc.collect()  # Make sure we free up any memory we can
         logging.info(f"Saving indexes to {self.pickle_index_path}..")
         all_indexes = {"node_lookup_map": self.node_lookup_map,
                        "edge_lookup_map": self.edge_lookup_map,
