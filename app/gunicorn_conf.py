@@ -51,7 +51,7 @@ graceful_timeout = int(graceful_timeout_str)
 timeout = int(timeout_str)
 keepalive = int(keepalive_str)
 preload_app = True
-max_requests = 500
+max_requests = 1000
 max_requests_jitter = 50
 
 

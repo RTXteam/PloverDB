@@ -944,8 +944,6 @@ class PloverDB:
     def get_node_as_tuple(self, node_id: str) -> tuple:
         # TODO: Delete after Pathfinder is updated for Plover2.0
         node = self.node_lookup_map[node_id]
-        categories = node[self.categories_property]
-        category = categories[0] if isinstance(categories, list) else categories
         return node.get("name"), node.get(self.categories_property)[0]
 
     def get_edge_as_tuple(self, edge_id: str) -> tuple:

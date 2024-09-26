@@ -56,7 +56,7 @@ logging.info(f"Plover objs map is: {plover_objs_map}. Default endpoint is {defau
 
 
 @app.post("/{kp_endpoint_name}/query")
-async def run_query(kp_endpoint_name: str, query: dict):
+def run_query(kp_endpoint_name: str, query: dict):
     if kp_endpoint_name in plover_objs_map:
         logging.info(f"{kp_endpoint_name}: Received a query: {query}")
         answer = plover_objs_map[kp_endpoint_name].answer_query(query)
@@ -67,14 +67,14 @@ async def run_query(kp_endpoint_name: str, query: dict):
 
 
 @app.post("/query")
-async def run_query_default(query: dict):
+def run_query_default(query: dict):
     logging.info(f"{default_endpoint_name}: Received a query: {query}")
     answer = plover_objs_map[default_endpoint_name].answer_query(query)
     return answer
 
 
 @app.post("/{kp_endpoint_name}/get_edges")
-async def get_edges(kp_endpoint_name: str, query: dict):
+def get_edges(kp_endpoint_name: str, query: dict):
     if kp_endpoint_name in plover_objs_map:
         pairs = query["pairs"]
         logging.info(f"{kp_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
@@ -86,7 +86,7 @@ async def get_edges(kp_endpoint_name: str, query: dict):
 
 
 @app.post("/get_edges")
-async def get_edges_default(query: dict):
+def get_edges_default(query: dict):
     pairs = query["pairs"]
     logging.info(f"{default_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
     answer = plover_objs_map[default_endpoint_name].get_edges(pairs)
@@ -94,7 +94,7 @@ async def get_edges_default(query: dict):
 
 
 @app.post("/{kp_endpoint_name}/get_neighbors")
-async def get_neighbors(kp_endpoint_name: str, query: dict):
+def get_neighbors(kp_endpoint_name: str, query: dict):
     if kp_endpoint_name in plover_objs_map:
         node_ids = query["node_ids"]
         categories = query.get("categories", ["biolink:NamedThing"])
@@ -107,7 +107,7 @@ async def get_neighbors(kp_endpoint_name: str, query: dict):
 
 
 @app.post("/get_neighbors")
-async def get_neighbors_default(query: dict):
+def get_neighbors_default(query: dict):
     node_ids = query["node_ids"]
     categories = query.get("categories", ["biolink:NamedThing"])
     logging.info(f"{default_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
@@ -116,7 +116,7 @@ async def get_neighbors_default(query: dict):
 
 
 @app.get("/{kp_endpoint_name}/meta_knowledge_graph")
-async def get_meta_knowledge_graph(kp_endpoint_name: str):
+def get_meta_knowledge_graph(kp_endpoint_name: str):
     if kp_endpoint_name in plover_objs_map:
         return plover_objs_map[kp_endpoint_name].meta_kg
     else:
@@ -125,7 +125,7 @@ async def get_meta_knowledge_graph(kp_endpoint_name: str):
 
 
 @app.get("/meta_knowledge_graph")
-async def get_meta_knowledge_graph_default():
+def get_meta_knowledge_graph_default():
     return plover_objs_map[default_endpoint_name].meta_kg
 
 
@@ -148,7 +148,7 @@ def get_sri_test_triples_default():
 
 
 @app.get("/healthcheck")
-async def run_health_check():
+def run_health_check():
     return ''
 
 
