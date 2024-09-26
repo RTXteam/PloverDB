@@ -67,10 +67,7 @@ else
   sudo certbot renew
   cert_file_path=/etc/letsencrypt/live/${domain_name}/fullchain.pem
   key_file_path=/etc/letsencrypt/live/${domain_name}/privkey.pem
-  uwsgi_ini_path=${SCRIPT_DIR}/app/uwsgi.ini
-  echo "shared-socket = 0.0.0.0:443" >> ${uwsgi_ini_path}
-  echo "https = =0,${cert_file_path},${key_file_path}" >> ${uwsgi_ini_path}
-  ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 -e PORT=443 ${image_name}
+  ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 ${image_name}
 fi
 
 # Clean up unused/stopped docker items
