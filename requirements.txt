@@ -8,3 +8,4 @@ jsonlines
 fastapi
 fastapi[standard]
 flask
+flask-cors

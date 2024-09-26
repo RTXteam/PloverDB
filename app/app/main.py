@@ -5,6 +5,7 @@ import traceback
 from typing import Tuple
 
 import flask
+from flask_cors import CORS
 import pygit2
 import datetime
 import logging
@@ -21,6 +22,7 @@ SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
 
 app = flask.Flask(__name__)
+cors = CORS(app)
 
 # app.add_middleware(
 #     CORSMiddleware,
