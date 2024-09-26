@@ -252,8 +252,8 @@ class PloverDB:
         self.edge_lookup_map = {str(edge["id"]): edge for edge in graph_dict["edges"]}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
-        memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         gc.collect()  # Make sure we free up any memory we can
+        memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading edge lookup map; there are {len(self.edge_lookup_map)} edges. "
                      f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
 
