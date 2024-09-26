@@ -67,6 +67,9 @@ else
   sudo certbot renew
   cert_file_path=/etc/letsencrypt/live/${domain_name}/fullchain.pem
   key_file_path=/etc/letsencrypt/live/${domain_name}/privkey.pem
+  mv ${SCRIPT_DIR}/app/nginx_ssl_template.conf ${SCRIPT_DIR}/app/nginx.conf
+  # Plug the proper domain name into the nginx config file
+  sed -i -e 's/{{domain_name}}/${domain_name/g' /tmp/file.txt
   ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 ${image_name}
 fi
 
