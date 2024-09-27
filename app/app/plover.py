@@ -5,6 +5,7 @@ import gc
 import itertools
 import json
 from datetime import datetime
+from multiprocessing import Pool, cpu_count
 from urllib.parse import urlparse
 
 import jsonlines
@@ -510,19 +511,18 @@ class PloverDB:
             self.build_indexes()
 
         # Load our pickled indexes into memory
-        logging.info(f"Loading indexes from {self.indexes_dir_path}..")
+        logging.info(f"Loading indexes from {self.indexes_dir_path} (in parallel)..")
         start = time.time()
-        self.node_lookup_map = self._load_pickle_file(f"{self.indexes_dir_path}/node_lookup_map.pkl")
-        self.edge_lookup_map = self._load_pickle_file(f"{self.indexes_dir_path}/edge_lookup_map.pkl")
-        self.main_index = self._load_pickle_file(f"{self.indexes_dir_path}/main_index.pkl")
-        self.subclass_index = self._load_pickle_file(f"{self.indexes_dir_path}/subclass_index.pkl")
-        self.predicate_map = self._load_pickle_file(f"{self.indexes_dir_path}/predicate_map.pkl")
-        self.predicate_map_reversed = self._load_pickle_file(f"{self.indexes_dir_path}/predicate_map_reversed.pkl")
-        self.category_map = self._load_pickle_file(f"{self.indexes_dir_path}/category_map.pkl")
-        self.category_map_reversed = self._load_pickle_file(f"{self.indexes_dir_path}/category_map_reversed.pkl")
-        self.conglomerate_predicate_descendant_index = self._load_pickle_file(f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
-        self.meta_kg = self._load_pickle_file(f"{self.indexes_dir_path}/meta_kg.pkl")
-        self.preferred_id_map = self._load_pickle_file(f"{self.indexes_dir_path}/preferred_id_map.pkl")
+        index_names = ["node_lookup_map", "edge_lookup_map", "main_index", "subclass_index", "predicate_map",
+                       "predicate_map_reversed", "category_map", "category_map_reversed",
+                       "conglomerate_predicate_descendant_index", "meta_kg", "preferred_id_map"]
+        index_paths = [f"{self.indexes_dir_path}/{index_name}.pkl" for index_name in index_names]
+        with Pool(cpu_count() - 1) as pool:
+            indexes = pool.map(self._load_pickle_file, index_paths)
+
+        (self.node_lookup_map, self.edge_lookup_map, self.main_index, self.subclass_index, self.predicate_map,
+         self.predicate_map_reversed, self.category_map, self.category_map_reversed,
+         self.conglomerate_predicate_descendant_index, self.meta_kg, self.preferred_id_map) = indexes
 
         # Set up BiolinkHelper
         from biolink_helper import BiolinkHelper
