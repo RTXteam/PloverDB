@@ -532,9 +532,11 @@ class PloverDB:
 
     @staticmethod
     def _load_pickle_file(file_path: str) -> any:
+        start = time.time()
         logging.info(f"Loading {file_path} into memory..")
         with open(file_path, "rb") as pickle_file:
             contents = pickle.load(pickle_file)
+        logging.info(f"Done loading {file_path} into memory. Took {round(time.time() - start, 1)} seconds.")
         return contents
 
     @staticmethod
