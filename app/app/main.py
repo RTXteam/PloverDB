@@ -109,12 +109,10 @@ def run_health_check():
 
 
 def handle_internal_error(e: Exception):
-    error_msg = str(e)
+    tb = traceback.format_exc()
+    error_msg = f"{e}. Traceback: {tb}"
     logging.error(error_msg)
-    response = flask.jsonify(error_msg)
-    response.status_code = 500
-    response.status = 'Internal Server Error'
-    return response
+    flask.abort(500, f"500 ERROR: {error_msg}")
 
 
 @app.get("/code_version")
