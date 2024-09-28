@@ -8,10 +8,10 @@ from datetime import datetime
 from multiprocessing import Pool, cpu_count
 from urllib.parse import urlparse
 
+import flask
 import jsonlines
 import logging
 import os
-import pathlib
 import pickle
 import statistics
 import subprocess
@@ -21,7 +21,6 @@ from typing import List, Dict, Union, Set, Optional, Tuple
 
 import psutil
 import requests
-from fastapi import HTTPException
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILE_PATH = "/var/log/ploverdb.log"
@@ -1053,7 +1052,7 @@ class PloverDB:
             input_node_ids, output_node_ids, edge_ids = self._lookup_answers("n_in", "n_out", qg_template)
 
             # Record neighbors for this node
-            neighbors_map[node_id] = output_node_ids
+            neighbors_map[node_id] = list(output_node_ids)
 
         return neighbors_map
 
@@ -1752,8 +1751,7 @@ class PloverDB:
     def raise_http_error(http_code: int, err_message: str):
         detail_message = f"{http_code} ERROR: {err_message}"
         logging.error(detail_message)
-        raise HTTPException(status_code=http_code,
-                            detail=detail_message)
+        flask.abort(http_code, detail_message)
 
     def log_trapi(self, level: str, message: str, code: Optional[str] = None):
         message = f"{self.endpoint_name}: {message}"
