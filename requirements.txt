@@ -7,3 +7,5 @@ pygit2
 jsonlines
 fastapi
 fastapi[standard]
+flask
+flask-cors

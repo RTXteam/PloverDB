@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 import copy
 import csv
+import gc
 import itertools
 import json
 from datetime import datetime
 from urllib.parse import urlparse
 
+import flask
 import jsonlines
 import logging
 import os
-import pathlib
 import pickle
 import statistics
 import subprocess
@@ -19,7 +20,6 @@ from typing import List, Dict, Union, Set, Optional, Tuple
 
 import psutil
 import requests
-from fastapi import HTTPException
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILE_PATH = "/var/log/ploverdb.log"
@@ -44,9 +44,9 @@ class PloverDB:
         with open(f"{SCRIPT_DIR}/../{self.config_file_name}") as config_file:
             self.kg_config = json.load(config_file)
         self.endpoint_name = self.kg_config["endpoint_name"]
-        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}.pkl"
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
         self.home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
+        self.indexes_dir_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}"
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
@@ -105,6 +105,8 @@ class PloverDB:
     def build_indexes(self):
         logging.info(f"Starting to build indexes for endpoint {self.endpoint_name}..")
         start = time.time()
+        # Create a subdirectory to store pickles of indexes in
+        os.makedirs(self.indexes_dir_path)
 
         nodes_file_name_unzipped, edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
         nodes_path = f"{SCRIPT_DIR}/../{nodes_file_name_unzipped}"
@@ -251,6 +253,7 @@ class PloverDB:
         self.edge_lookup_map = {str(edge["id"]): edge for edge in graph_dict["edges"]}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
+        gc.collect()  # Make sure we free up any memory we can
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading edge lookup map; there are {len(self.edge_lookup_map)} edges. "
                      f"Memory usage is currently {memory_usage_percent}% ({memory_usage_gb}G)..")
@@ -282,6 +285,11 @@ class PloverDB:
                                             for study_obj in deduplicated_edge["supporting_studies"]}
                     deduplicated_edge["supporting_studies"] = list(study_objs_by_nctids.values())
             self.edge_lookup_map = deduplicated_edges_map
+
+        # Save the preferred ID map now that we're done using it
+        self._save_to_pickle_file(self.preferred_id_map, f"{self.indexes_dir_path}/preferred_id_map.pkl")
+        del self.preferred_id_map
+        gc.collect()
 
         # Convert all edges to their canonical predicate form; correct missing biolink prefixes
         logging.info(f"Converting edges to their canonical form")
@@ -360,17 +368,33 @@ class PloverDB:
                                       f" terminating.")
         logging.info(f"Done building main index; there were {edges_count} edges, {qualified_edges_count} of which "
                      f"were qualified.")
+        self._save_to_pickle_file(self.main_index, f"{self.indexes_dir_path}/main_index.pkl")
+        del self.main_index
+        gc.collect()
 
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
+        self._save_to_pickle_file(self.conglomerate_predicate_descendant_index,
+                                  f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
+        del self.conglomerate_predicate_descendant_index
 
         # Build the subclass_of index
         subclass_edges = self._get_subclass_edges()
         self._build_subclass_index(subclass_edges)
+        del subclass_edges
+        self._save_to_pickle_file(self.subclass_index, f"{self.indexes_dir_path}/subclass_index.pkl")
+        del self.subclass_index
+        gc.collect()
 
         # Create reversed category/predicate maps now that we're done building those maps
         self.category_map_reversed = self._reverse_dictionary(self.category_map)
         self.predicate_map_reversed = self._reverse_dictionary(self.predicate_map)
+
+        # Save regular category/predicate maps now that we're done using those
+        self._save_to_pickle_file(self.category_map, f"{self.indexes_dir_path}/category_map.pkl")
+        del self.category_map
+        self._save_to_pickle_file(self.predicate_map, f"{self.indexes_dir_path}/predicate_map.pkl")
+        del self.predicate_map
 
         # Build the meta knowledge graph and SRI test triples
         logging.info(f"Starting to build meta knowledge graph and SRI test triples..")
@@ -424,12 +448,23 @@ class PloverDB:
                       for category, prefixes in category_to_prefixes_map.items()}
         logging.info(f"Identified {len(meta_nodes)} different meta nodes")
         self.meta_kg = {"nodes": meta_nodes, "edges": meta_edges}
+        self._save_to_pickle_file(self.meta_kg, f"{self.indexes_dir_path}/meta_kg.pkl")
+        del self.meta_kg, meta_nodes, meta_edges, node_to_category_labels_map
+        gc.collect()
+
+        # Save some other indexes we're done using/modifying
+        self._save_to_pickle_file(self.category_map_reversed, f"{self.indexes_dir_path}/category_map_reversed.pkl")
+        del self.category_map_reversed
+        self._save_to_pickle_file(self.predicate_map_reversed, f"{self.indexes_dir_path}/predicate_map_reversed.pkl")
+        del self.predicate_map_reversed
+
         # Then save test triples file
         test_triples_dict = {"edges": list(test_triples_map.values())}
         logging.info(f"Saving test triples file to {self.sri_test_triples_path}; includes "
                      f"{len(test_triples_dict['edges'])} test triples")
         with open(self.sri_test_triples_path, "w+") as test_triples_file:
             json.dump(test_triples_dict, test_triples_file)
+        del test_triples_dict
 
         # Add a build node for this Plover build (don't want this in the meta KG, so we add it here)
         plover_build_node = {"name": f"Plover deployment of {self.kp_infores_curie}",
@@ -439,23 +474,17 @@ class PloverDB:
                                             f"Biolink version used was {self.biolink_version}."}
         self.node_lookup_map["PloverDB"] = plover_build_node
 
-        # Save all indexes in a big pickle
-        logging.info(f"Saving indexes to {self.pickle_index_path}..")
-        all_indexes = {"node_lookup_map": self.node_lookup_map,
-                       "edge_lookup_map": self.edge_lookup_map,
-                       "main_index": self.main_index,
-                       "subclass_index": self.subclass_index,
-                       "predicate_map": self.predicate_map,
-                       "predicate_map_reversed": self.predicate_map_reversed,
-                       "category_map": self.category_map,
-                       "category_map_reversed": self.category_map_reversed,
-                       "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
-                       "meta_kg": self.meta_kg,
-                       "preferred_id_map": self.preferred_id_map}
-        with open(self.pickle_index_path, "wb") as index_file:
-            pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save the node lookup map now that we're done using/modifying it
+        self._save_to_pickle_file(self.node_lookup_map, f"{self.indexes_dir_path}/node_lookup_map.pkl")
+        del self.node_lookup_map
+        gc.collect()
 
-        # Fill out the home page HTML template for this KP
+        # Save the edge lookup map now that we're done with it
+        self._save_to_pickle_file(self.edge_lookup_map, f"{self.indexes_dir_path}/edge_lookup_map.pkl")
+        del self.edge_lookup_map
+        gc.collect()
+
+        # Fill out the home page HTML template for this KP with the proper KP endpoint/infores curie
         logging.info(f"Filling out html home template and saving to {self.home_html_path}..")
         with open(f"{SCRIPT_DIR}/../home_template.html", "r") as template_file:
             html_string = template_file.read()
@@ -474,34 +503,48 @@ class PloverDB:
 
     def load_indexes(self):
         logging.info(f"Starting to load indexes for endpoint {self.endpoint_name}..")
-        logging.info(f"Checking whether pickle of indexes ({self.pickle_index_path}) already exists..")
-        pickle_index_file = pathlib.Path(self.pickle_index_path)
-        if not pickle_index_file.exists():
-            logging.info(f"No index pickle exists - will build indexes")
+        logging.info(f"Checking whether index subdirectory ({self.indexes_dir_path}) already exists..")
+        if not os.path.exists(self.indexes_dir_path):
+            logging.info(f"No pickle indexes exist - will build indexes")
             self.build_indexes()
 
         # Load our pickled indexes into memory
-        logging.info(f"Loading pickle of indexes from {self.pickle_index_path}..")
+        logging.info(f"Loading indexes from {self.indexes_dir_path} (in parallel)..")
         start = time.time()
-        with open(self.pickle_index_path, "rb") as index_file:
-            all_indexes = pickle.load(index_file)
-            self.node_lookup_map = all_indexes["node_lookup_map"]
-            self.edge_lookup_map = all_indexes["edge_lookup_map"]
-            self.main_index = all_indexes["main_index"]
-            self.subclass_index = all_indexes["subclass_index"]
-            self.predicate_map = all_indexes["predicate_map"]
-            self.predicate_map_reversed = all_indexes["predicate_map_reversed"]
-            self.category_map = all_indexes["category_map"]
-            self.category_map_reversed = all_indexes["category_map_reversed"]
-            self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
-            self.meta_kg = all_indexes["meta_kg"]
-            self.preferred_id_map = all_indexes["preferred_id_map"]
+
+        self.node_lookup_map = self._load_pickle_file(f"{self.indexes_dir_path}/node_lookup_map.pkl")
+        self.edge_lookup_map = self._load_pickle_file(f"{self.indexes_dir_path}/edge_lookup_map.pkl")
+        self.main_index = self._load_pickle_file(f"{self.indexes_dir_path}/main_index.pkl")
+        self.subclass_index = self._load_pickle_file(f"{self.indexes_dir_path}/subclass_index.pkl")
+        self.predicate_map = self._load_pickle_file(f"{self.indexes_dir_path}/predicate_map.pkl")
+        self.predicate_map_reversed = self._load_pickle_file(f"{self.indexes_dir_path}/predicate_map_reversed.pkl")
+        self.category_map = self._load_pickle_file(f"{self.indexes_dir_path}/category_map.pkl")
+        self.category_map_reversed = self._load_pickle_file(f"{self.indexes_dir_path}/category_map_reversed.pkl")
+        self.conglomerate_predicate_descendant_index = self._load_pickle_file(f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
+        self.meta_kg = self._load_pickle_file(f"{self.indexes_dir_path}/meta_kg.pkl")
+        self.preferred_id_map = self._load_pickle_file(f"{self.indexes_dir_path}/preferred_id_map.pkl")
 
         # Set up BiolinkHelper
         from biolink_helper import BiolinkHelper
         self.bh = BiolinkHelper(biolink_version=self.biolink_version)
 
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
+
+    @staticmethod
+    def _load_pickle_file(file_path: str) -> any:
+        start = time.time()
+        logging.info(f"Loading {file_path} into memory..")
+        with open(file_path, "rb") as pickle_file:
+            contents = pickle.load(pickle_file)
+        logging.info(f"Done loading {file_path} into memory. Took {round(time.time() - start, 1)} seconds.")
+        return contents
+
+    @staticmethod
+    def _save_to_pickle_file(item: any, file_path: str):
+        logging.info(f"Saving data to {file_path}..")
+        with open(file_path, "wb") as pickle_file:
+            pickle.dump(item, pickle_file, protocol=pickle.HIGHEST_PROTOCOL)
+        logging.info(f"Done saving data to {file_path}.")
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_category_ids: Set[int], predicate_id: int,
                            edge_id: int, direction: int):
@@ -910,18 +953,51 @@ class PloverDB:
                                                                                         output_qnode_key,
                                                                                         trapi_qg)
 
-        # Form final TRAPI response
-        trapi_response = self._create_response_from_answer_ids(input_qnode_answers,
-                                                               output_qnode_answers,
-                                                               qedge_answers,
-                                                               input_qnode_key,
-                                                               output_qnode_key,
-                                                               qedge_key,
-                                                               trapi_query["message"]["query_graph"],
-                                                               descendant_to_query_id_map)
-        log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
-        self.log_trapi("INFO", log_message)
-        return trapi_response
+        # Temporarily keeping the 'include_metadata' option to make Plover backwards-compatible for pathfinder
+        if trapi_qg.get("include_metadata") is True:
+            # TODO: Delete after Pathfinder is updated for Plover2.0
+            nodes = {input_qnode_key: {node_id: self.get_node_as_tuple(node_id) + (list(descendant_to_query_id_map[input_qnode_key].get(node_id, set())),)
+                                       for node_id in input_qnode_answers},
+                     output_qnode_key: {node_id: self.get_node_as_tuple(node_id) + (list(descendant_to_query_id_map[output_qnode_key].get(node_id, set())),)
+                                        for node_id in output_qnode_answers}}
+            edges = {qedge_key: {edge_id: self.get_edge_as_tuple(edge_id) for edge_id in qedge_answers}}
+            log_message = f"Done with query, returning {qedge_answers} edges (slim format)"
+            return {"nodes": nodes, "edges": edges}
+        elif trapi_qg.get("include_metadata") is False:
+            # TODO: Delete after Pathfinder is updated for Plover2.0
+            nodes = {input_qnode_key: [node_id for node_id in input_qnode_answers],
+                     output_qnode_key: list(output_qnode_answers)}
+            edges = {qedge_key: list(qedge_answers)}
+            log_message = f"Done with query, returning {qedge_answers} edges (ids-only format)"
+            return {"nodes": nodes, "edges": edges}
+        else:
+            # Form final TRAPI response
+            trapi_response = self._create_response_from_answer_ids(input_qnode_answers,
+                                                                   output_qnode_answers,
+                                                                   qedge_answers,
+                                                                   input_qnode_key,
+                                                                   output_qnode_key,
+                                                                   qedge_key,
+                                                                   trapi_query["message"]["query_graph"],
+                                                                   descendant_to_query_id_map)
+            log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
+            self.log_trapi("INFO", log_message)
+            return trapi_response
+
+    def get_node_as_tuple(self, node_id: str) -> tuple:
+        # TODO: Delete after Pathfinder is updated for Plover2.0
+        node = self.node_lookup_map[node_id]
+        categories = node[self.categories_property]
+        category = categories[0] if isinstance(categories, list) else categories
+        return node.get("name"), node.get(self.categories_property)[0]
+
+    def get_edge_as_tuple(self, edge_id: str) -> tuple:
+        # TODO: Delete after Pathfinder is updated for Plover2.0
+        edge = self.edge_lookup_map[edge_id]
+        return (edge["subject"], edge["object"], edge[self.edge_predicate_property],
+                edge.get("primary_knowledge_source"), edge.get(self.graph_qualified_predicate_property, ""),
+                edge.get(self.graph_object_direction_property, ""), edge.get(self.graph_object_aspect_property, ""),
+                "False")  # Silly to have these in strings, but that's the old format... will delete eventually
 
     def get_edges(self, node_pairs: List[List[str]]) -> dict:
         """
@@ -977,7 +1053,7 @@ class PloverDB:
             input_node_ids, output_node_ids, edge_ids = self._lookup_answers("n_in", "n_out", qg_template)
 
             # Record neighbors for this node
-            neighbors_map[node_id] = output_node_ids
+            neighbors_map[node_id] = list(output_node_ids)
 
         return neighbors_map
 
@@ -1151,20 +1227,20 @@ class PloverDB:
 
         # Add any qualifier info
         qualifiers = []
-        if edge_biolink.get("qualified_predicate"):
+        if edge_biolink.get(self.graph_qualified_predicate_property):
             qualifiers.append({
                 "qualifier_type_id": "biolink:qualified_predicate",
-                "qualifier_value": edge_biolink["qualified_predicate"]
+                "qualifier_value": edge_biolink[self.graph_qualified_predicate_property]
             })
-        if edge_biolink.get("qualified_object_direction"):
+        if edge_biolink.get(self.graph_object_direction_property):
             qualifiers.append({
                 "qualifier_type_id": "biolink:object_direction_qualifier",
-                "qualifier_value": edge_biolink["qualified_object_direction"]
+                "qualifier_value": edge_biolink[self.graph_object_direction_property]
             })
-        if edge_biolink.get("qualified_object_aspect"):
+        if edge_biolink.get(self.graph_object_aspect_property):
             qualifiers.append({
                 "qualifier_type_id": "biolink:object_aspect_qualifier",
-                "qualifier_value": edge_biolink["qualified_object_aspect"]
+                "qualifier_value": edge_biolink[self.graph_object_aspect_property]
             })
         if qualifiers:
             trapi_edge["qualifiers"] = qualifiers
@@ -1676,8 +1752,7 @@ class PloverDB:
     def raise_http_error(http_code: int, err_message: str):
         detail_message = f"{http_code} ERROR: {err_message}"
         logging.error(detail_message)
-        raise HTTPException(status_code=http_code,
-                            detail=detail_message)
+        flask.abort(http_code, detail_message)
 
     def log_trapi(self, level: str, message: str, code: Optional[str] = None):
         message = f"{self.endpoint_name}: {message}"
