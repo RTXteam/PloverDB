@@ -138,8 +138,9 @@ def run_get_logs(num_lines: int = 100):
             log_data_plover = f.readlines()
         with open('/var/log/uwsgi.log', 'r') as f:
             log_data_uwsgi = f.readlines()
-        response = {"description": f"The last {num_lines} lines from each of three logs (Plover, Gunicorn error, and "
-                                   "Gunicorn access) are included below.",
+        response = {"description": f"The last {num_lines} lines from two logs (Plover and uwsgi) "
+                                   f"are included below. You can control the number of lines shown with the "
+                                   f"num_lines parameter (e.g., ?num_lines=500).",
                     "plover": log_data_plover[-num_lines:],
                     "uwsgi": log_data_uwsgi[-num_lines:]}
         return flask.jsonify(response)
