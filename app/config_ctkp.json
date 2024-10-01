@@ -90,7 +90,7 @@
       },
       {
         "resource_id":  "infores:aact",
-        "resource_role":  "aggregator_knowledge_source",
+        "resource_role":  "supporting_data_source",
         "upstream_resource_ids":  ["infores:clinicaltrials"]
       },
       {
