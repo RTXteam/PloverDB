@@ -170,7 +170,7 @@ class PloverTester:
     @staticmethod
     def get_supporting_study_attributes(edge: dict) -> List[dict]:
         return [attribute for attribute in edge["attributes"]
-                if attribute["attribute_type_id"] == "biolink:supporting_study"]
+                if attribute["attribute_type_id"] == "biolink:supporting_study_metadata"]
 
     @staticmethod
     def get_num_distinct_concepts(response: dict, qnode_key: str) -> int:
