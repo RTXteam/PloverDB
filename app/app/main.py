@@ -100,7 +100,7 @@ instrument(app)
 def run_query(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
-        logging.info(f"{kp_endpoint_name}: Received a query: {query}")
+        logging.info(f"{kp_endpoint_name}: Received a TRAPI query")
         answer = plover_objs_map[kp_endpoint_name].answer_query(query)
         return flask.jsonify(answer)
     else:

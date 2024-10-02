@@ -892,7 +892,6 @@ class PloverDB:
             if qnode_ids:
                 self.log_trapi("INFO", f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
                 qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
-                self.log_trapi("INFO", f"After conversion, {qnode_key}'s 'ids' are: {qnode['ids']}")
 
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
