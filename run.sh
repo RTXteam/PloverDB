@@ -41,7 +41,7 @@ fi
 # Set up nginx conf as appropriate, if want to use ssl/HTTPS
 if [ ${skip_ssl} != "true" ]
 then
-  domain_name=$(head -n 1 ${SCRIPT_DIR}/domain_name.txt)
+  domain_name=$(head -n 1 ${SCRIPT_DIR}/app/domain_name.txt)
   cp ${SCRIPT_DIR}/app/nginx_ssl_template.conf ${SCRIPT_DIR}/app/nginx.conf
   # Plug the proper domain name into the nginx config file
   sed -i -e "s/{{domain_name}}/${domain_name}/g" ${SCRIPT_DIR}/app/nginx.conf
