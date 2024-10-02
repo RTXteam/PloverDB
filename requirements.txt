@@ -2,8 +2,10 @@ locust
 pytest
 PyYAML
 requests
-treelib
+networkx
 pygit2
 jsonlines
 fastapi
 fastapi[standard]
+flask
+flask-cors

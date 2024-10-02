@@ -16,7 +16,6 @@ branch=""
 host_port="9990"
 image_name=ploverimage
 container_name=plovercontainer
-domain_name=$(head -n 1 ${SCRIPT_DIR}/domain_name.txt)
 
 # Override defaults with values from any optional parameters provided
 while getopts "i:c:d:b:s:p:" flag; do
@@ -37,6 +36,19 @@ then
   git fetch
   git checkout ${branch}
   git pull origin ${branch}
+fi
+
+# Set up nginx conf as appropriate, if want to use ssl/HTTPS
+if [ ${skip_ssl} != "true" ]
+then
+  domain_name=$(head -n 1 ${SCRIPT_DIR}/domain_name.txt)
+  cp ${SCRIPT_DIR}/app/nginx_ssl_template.conf ${SCRIPT_DIR}/app/nginx.conf
+  # Plug the proper domain name into the nginx config file
+  sed -i -e "s/{{domain_name}}/${domain_name}/g" ${SCRIPT_DIR}/app/nginx.conf
+else
+  set +e
+  rm ${SCRIPT_DIR}/app/nginx.conf
+  set -e
 fi
 
 # Build the docker image
@@ -63,11 +75,12 @@ then
   # Skip configuring SSL certs if those aren't wanted
   ${docker_command} run -d --name ${container_name} -p ${host_port}:80 ${image_name}
 else
+  domain_name=$(head -n 1 ${SCRIPT_DIR}/domain_name.txt)
   # Ensure our SSL cert is current and load it into the container (on run)
   sudo certbot renew
   cert_file_path=/etc/letsencrypt/live/${domain_name}/fullchain.pem
   key_file_path=/etc/letsencrypt/live/${domain_name}/privkey.pem
-  ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 -e GUNICORN_CMD_ARGS="--keyfile=${key_file_path} --certfile=${cert_file_path}" -e PORT=443 ${image_name}
+  ${docker_command} run -v ${cert_file_path}:${cert_file_path} -v ${key_file_path}:${key_file_path} -d --name ${container_name} -p ${host_port}:443 ${image_name}
 fi
 
 # Clean up unused/stopped docker items
