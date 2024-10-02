@@ -145,5 +145,5 @@ biolink_lookup*
 *.pkl
 test*.json
 config_secrets.json
-domain_name.txt
+app/domain_name.txt
 nginx.conf

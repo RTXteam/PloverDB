@@ -11,6 +11,14 @@ import pygit2
 import datetime
 import logging
 
+from opentelemetry.semconv.resource import ResourceAttributes
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import plover
 
@@ -42,6 +50,45 @@ def load_plovers() -> Tuple[dict, str]:
 # Load a Plover object per KP/endpoint; these will be shared amongst workers
 plover_objs_map, default_endpoint_name = load_plovers()
 logging.info(f"Plover objs map is: {plover_objs_map}. Default endpoint is {default_endpoint_name}.")
+
+
+def instrument(flask_app):
+    # First figure out what to call this service in jaeger
+    default_infores = plover_objs_map[default_endpoint_name].kp_infores_curie
+    default_infores_val = default_infores.split(":")[-1]
+    app_name = default_infores_val if len(plover_objs_map) == 1 else default_infores_val.split("-")[0]
+    service_name = f"{app_name}-plover"
+    logging.info(f"Service name for opentelemetry tracing is {service_name}")
+
+    # Then figure out which jaeger host to use
+    domain_name_file_path = f"{SCRIPT_DIR}/../domain_name.txt"
+    if os.path.exists(domain_name_file_path):
+        with open(domain_name_file_path, "r") as domain_name_file:
+            domain_name = domain_name_file.read()
+            logging.info(f"Domain name is: {domain_name}")
+    else:
+        domain_name = None
+    jaeger_host = "jaeger.rtx.ai" if domain_name and "transltr.io" not in domain_name else "jaeger-otel-agent.sri"
+    logging.info(f"jaeger host to use is {jaeger_host}")
+
+    trace.set_tracer_provider(TracerProvider(
+        resource=Resource.create({
+            ResourceAttributes.SERVICE_NAME: service_name
+        })
+    ))
+    trace.get_tracer_provider().add_span_processor(
+        SimpleSpanProcessor(
+            JaegerExporter(
+                        agent_host_name=jaeger_host,
+                        agent_port=6831
+            )
+        )
+    )
+    tracer_provider = trace.get_tracer(__name__)
+    FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,code_version")
+
+
+instrument(app)
 
 
 @app.post("/<kp_endpoint_name>/query")

@@ -75,7 +75,7 @@ then
   # Skip configuring SSL certs if those aren't wanted
   ${docker_command} run -d --name ${container_name} -p ${host_port}:80 ${image_name}
 else
-  domain_name=$(head -n 1 ${SCRIPT_DIR}/domain_name.txt)
+  domain_name=$(head -n 1 ${SCRIPT_DIR}/app/domain_name.txt)
   # Ensure our SSL cert is current and load it into the container (on run)
   sudo certbot renew
   cert_file_path=/etc/letsencrypt/live/${domain_name}/fullchain.pem
