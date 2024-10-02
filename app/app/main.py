@@ -127,8 +127,9 @@ def get_neighbors(kp_endpoint_name: str = default_endpoint_name):
         query = flask.request.json
         node_ids = query["node_ids"]
         categories = query.get("categories", ["biolink:NamedThing"])
+        predicates = query.get("predicates", ["biolink:related_to"])
         logging.info(f"{kp_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
-        answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories)
+        answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories, predicates)
         return flask.jsonify(answer)
     else:
         flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")

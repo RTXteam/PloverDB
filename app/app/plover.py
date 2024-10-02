@@ -1036,12 +1036,12 @@ class PloverDB:
         logging.info(f"Returning answer with {len(kg['edges'])} edges and {len(kg['nodes'])} nodes.")
         return {"pairs_to_edge_ids": node_pairs_to_edge_ids, "knowledge_graph": kg}
 
-    def get_neighbors(self, node_ids: List[str], categories: List[str]) -> dict:
+    def get_neighbors(self, node_ids: List[str], categories: List[str], predicates: List[str]) -> dict:
         """
         Finds neighbors for input nodes. Does *not* do subclass reasoning currently.
         """
         qg_template = {"nodes": {"n_in": {"ids": []}, "n_out": {"categories": categories}},
-                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": ["biolink:related_to"]}}}
+                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": predicates}}}
         neighbors_map = dict()
         for node_id in node_ids:
             # Convert to the equivalent identifier we recognize
