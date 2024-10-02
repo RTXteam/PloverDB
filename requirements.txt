@@ -9,7 +9,5 @@ fastapi
 fastapi[standard]
 flask
 flask-cors
-opentelemetry-api==1.17.0
 opentelemetry-exporter-jaeger==1.17.0
-opentelemetry-instrumentation==0.38b0
 opentelemetry-instrumentation-flask==0.38b0

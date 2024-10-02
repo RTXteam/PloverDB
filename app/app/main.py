@@ -53,6 +53,10 @@ logging.info(f"Plover objs map is: {plover_objs_map}. Default endpoint is {defau
 
 
 def instrument(flask_app):
+    """
+    Adapted from Kevin Vizhalil's opentelemetry code in:
+    github.com/RTXteam/RTX/blob/master/code/UI/OpenAPI/python-flask-server/KG2/openapi_server/__main__.py
+    """
     # First figure out what to call this service in jaeger
     default_infores = plover_objs_map[default_endpoint_name].kp_infores_curie
     default_infores_val = default_infores.split(":")[-1]
