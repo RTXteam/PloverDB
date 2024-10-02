@@ -286,11 +286,6 @@ class PloverDB:
                     deduplicated_edge["supporting_studies"] = list(study_objs_by_nctids.values())
             self.edge_lookup_map = deduplicated_edges_map
 
-        # Save the preferred ID map now that we're done using it
-        self._save_to_pickle_file(self.preferred_id_map, f"{self.indexes_dir_path}/preferred_id_map.pkl")
-        del self.preferred_id_map
-        gc.collect()
-
         # Convert all edges to their canonical predicate form; correct missing biolink prefixes
         logging.info(f"Converting edges to their canonical form")
         for edge_id, edge in self.edge_lookup_map.items():
@@ -384,6 +379,11 @@ class PloverDB:
         del subclass_edges
         self._save_to_pickle_file(self.subclass_index, f"{self.indexes_dir_path}/subclass_index.pkl")
         del self.subclass_index
+        gc.collect()
+
+        # Save the preferred ID map now that we're done using it
+        self._save_to_pickle_file(self.preferred_id_map, f"{self.indexes_dir_path}/preferred_id_map.pkl")
+        del self.preferred_id_map
         gc.collect()
 
         # Create reversed category/predicate maps now that we're done building those maps
@@ -892,7 +892,6 @@ class PloverDB:
             if qnode_ids:
                 self.log_trapi("INFO", f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
                 qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
-                self.log_trapi("INFO", f"After conversion, {qnode_key}'s 'ids' are: {qnode['ids']}")
 
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
@@ -1037,12 +1036,12 @@ class PloverDB:
         logging.info(f"Returning answer with {len(kg['edges'])} edges and {len(kg['nodes'])} nodes.")
         return {"pairs_to_edge_ids": node_pairs_to_edge_ids, "knowledge_graph": kg}
 
-    def get_neighbors(self, node_ids: List[str], categories: List[str]) -> dict:
+    def get_neighbors(self, node_ids: List[str], categories: List[str], predicates: List[str]) -> dict:
         """
         Finds neighbors for input nodes. Does *not* do subclass reasoning currently.
         """
         qg_template = {"nodes": {"n_in": {"ids": []}, "n_out": {"categories": categories}},
-                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": ["biolink:related_to"]}}}
+                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": predicates}}}
         neighbors_map = dict()
         for node_id in node_ids:
             # Convert to the equivalent identifier we recognize
