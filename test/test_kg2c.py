@@ -736,8 +736,9 @@ def test_get_edges():
 def test_get_neighbors():
     query = {"node_ids": ["HP:0100256", "KEGG:00040"]}
     response = tester.run_get_neighbors(query)
-    # Now try with category constraint
+    # Now try with category/predicate constraints
     query["categories"] = ["biolink:ChemicalEntity"]
+    query["predicates"] = ["biolink:has_participant"]
     response_2 = tester.run_get_neighbors(query)
 
 

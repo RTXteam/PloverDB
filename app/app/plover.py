@@ -892,7 +892,6 @@ class PloverDB:
             if qnode_ids:
                 self.log_trapi("INFO", f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
                 qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
-                self.log_trapi("INFO", f"After conversion, {qnode_key}'s 'ids' are: {qnode['ids']}")
 
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
@@ -1037,12 +1036,12 @@ class PloverDB:
         logging.info(f"Returning answer with {len(kg['edges'])} edges and {len(kg['nodes'])} nodes.")
         return {"pairs_to_edge_ids": node_pairs_to_edge_ids, "knowledge_graph": kg}
 
-    def get_neighbors(self, node_ids: List[str], categories: List[str]) -> dict:
+    def get_neighbors(self, node_ids: List[str], categories: List[str], predicates: List[str]) -> dict:
         """
         Finds neighbors for input nodes. Does *not* do subclass reasoning currently.
         """
         qg_template = {"nodes": {"n_in": {"ids": []}, "n_out": {"categories": categories}},
-                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": ["biolink:related_to"]}}}
+                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": predicates}}}
         neighbors_map = dict()
         for node_id in node_ids:
             # Convert to the equivalent identifier we recognize

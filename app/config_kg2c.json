@@ -9,7 +9,7 @@
     "nodes": "all_categories"
   },
   "remote_subclass_edges_file_url": null,
-  "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo"],
+  "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:uberon"],
   "num_edges_per_answer_cutoff": 1000000,
   "normalize": false,
   "convert_input_ids": true,
