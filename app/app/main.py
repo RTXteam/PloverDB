@@ -184,8 +184,10 @@ def run_code_version():
 
 
 @app.get("/get_logs")
-def run_get_logs(num_lines: int = 100):
+def run_get_logs():
     try:
+        num_lines = flask.request.args.get('num_lines')
+        num_lines = num_lines if num_lines else 100
         with open(plover.LOG_FILE_PATH, "r") as f:
             log_data_plover = f.readlines()
         with open('/var/log/uwsgi.log', 'r') as f:
