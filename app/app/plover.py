@@ -1053,7 +1053,7 @@ class PloverDB:
 
             # Record neighbors for this node
             neighbors_map[node_id] = list(output_node_ids)
-
+        logging.info(f"Returning neighbors map with {len(neighbors_map)} entries.")
         return neighbors_map
 
     def _lookup_answers(self, input_qnode_key: str, output_qnode_key: str, trapi_qg: dict) -> Tuple[set, set, set]:
@@ -1115,9 +1115,8 @@ class PloverDB:
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
-                edge = self.edge_lookup_map[answer_edge_id]
-                subject_curie = edge["subject"]
-                object_curie = edge["object"]
+                subject_curie = self.edge_lookup_map[answer_edge_id]["subject"]
+                object_curie = self.edge_lookup_map[answer_edge_id]["object"]
                 output_curie = object_curie if object_curie != input_curie else subject_curie
                 # Add this edge and its nodes to our answer KG
                 final_qedge_answers.add(answer_edge_id)
