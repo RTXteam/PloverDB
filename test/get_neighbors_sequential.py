@@ -5,8 +5,8 @@ batch size for each query (call that N).
 The script randomly selects N node IDs for each query from a pool of node IDs. That pool of node IDs begins
 by containing only your starting node ID, but the neighbors returned from each query are added to that pool, so it
 quickly grows (and is capped at 1,000,000 node IDs). This (essentially) allows each query to be different.
-Usage: python test_get_neighbors_sequential.py <plover endpoint> <start node ID> <number of queries> <batch size>
-Example: python test_get_neighbors_sequential.py https://kg2cplover.rtx.ai:9990 CHEMBL.COMPOUND:CHEMBL112 1000 100
+Usage: python get_neighbors_sequential.py <plover endpoint> <start node ID> <number of queries> <batch size>
+Example: python get_neighbors_sequential.py https://kg2cplover.rtx.ai:9990 CHEMBL.COMPOUND:CHEMBL112 1000 100
 """
 
 import argparse
