@@ -1,11 +1,12 @@
 """
 This script does sequential testing of the /get_neighbors endpoint. Pass in the Plover endpoint you want to test,
-the ID of a node in the graph that has neighbors (ideally quite a few), and how many queries you want to run.
-The script randomly selects 100 node IDs for each query from a pool of node IDs. That pool of node IDs begins
+the ID of a node in the graph that has neighbors (ideally quite a few), how many queries you want to run, and the
+batch size for each query (call that N).
+The script randomly selects N node IDs for each query from a pool of node IDs. That pool of node IDs begins
 by containing only your starting node ID, but the neighbors returned from each query are added to that pool, so it
-quickly grows (and is capped at 1,000,000 node IDs). This allows each query to be different.
-Usage: python test_get_neighbors_sequential.py <plover endpoint> <start node ID> <number of queries to do>
-Example: python test_get_neighbors_sequential.py https://kg2cplover.rtx.ai:9990 CHEMBL.COMPOUND:CHEMBL112 300
+quickly grows (and is capped at 1,000,000 node IDs). This (essentially) allows each query to be different.
+Usage: python test_get_neighbors_sequential.py <plover endpoint> <start node ID> <number of queries> <batch size>
+Example: python test_get_neighbors_sequential.py https://kg2cplover.rtx.ai:9990 CHEMBL.COMPOUND:CHEMBL112 1000 100
 """
 
 import argparse
@@ -50,6 +51,8 @@ for query_num in range(int(args.num_queries)):
     elapsed_times.append(response.elapsed.total_seconds())
     status_codes.append(response.status_code)
 
-print(f"Finished with {len(all_node_ids)} unique node ids. Took {round((time.time() - start) / 60)} minutes.")
+print(f"Finished with {len(all_node_ids)} unique node ids.")
+print(f"Took {round((time.time() - start) / 60, 2)} minutes to do {args.num_queries} queries with a "
+      f"batch size of {args.batch_size}.")
 print(f"Average query elapsed time: {round(sum(elapsed_times) / float(len(elapsed_times)), 2)} seconds.")
 print(f"Status code counts: {dict(Counter(status_codes))}")

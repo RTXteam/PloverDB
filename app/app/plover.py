@@ -933,6 +933,8 @@ class PloverDB:
                         descendant_to_query_id_map[subject_qnode_key][descendant].add(query_curie)
                 subject_qnode_curies_with_descendants += descendants
             subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
+            log_message = f"After expansion to descendant concepts, subject qnode has {len(subject_qnode['ids'])} ids"
+            self.log_trapi("INFO", log_message)
         if object_qnode.get("ids"):
             object_qnode_curies_with_descendants = list()
             object_qnode_curies = set(object_qnode["ids"])
@@ -944,10 +946,13 @@ class PloverDB:
                         descendant_to_query_id_map[object_qnode_key][descendant].add(query_curie)
                 object_qnode_curies_with_descendants += descendants
             object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
+            log_message = f"After expansion to descendant concepts, object qnode has {len(object_qnode['ids'])} ids"
+            self.log_trapi("INFO", log_message)
 
         # Actually answer the query
         input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
         output_qnode_key = list(set(trapi_qg["nodes"]).difference({input_qnode_key}))[0]
+        self.log_trapi("INFO", f"Looking up answers to query..")
         input_qnode_answers, output_qnode_answers, qedge_answers = self._lookup_answers(input_qnode_key,
                                                                                         output_qnode_key,
                                                                                         trapi_qg)
@@ -1008,6 +1013,7 @@ class PloverDB:
         node_pairs_to_edge_ids = dict()
         all_node_ids = set()
         all_edge_ids = set()
+        logging.info(f"{self.endpoint_name}: Looking up edges for {len(node_pairs)} node pairs..")
         for node_id_a, node_id_b in node_pairs:
             # Convert to equivalent identifiers we recognize
             node_id_a_preferred = self.preferred_id_map.get(node_id_a, node_id_a)
@@ -1025,7 +1031,7 @@ class PloverDB:
             all_node_ids |= input_node_ids
             all_node_ids |= output_node_ids
 
-        logging.info(f"Found edges for {len(node_pairs_to_edge_ids)} node pairs.")
+        logging.info(f"{self.endpoint_name}: Found edges for {len(node_pairs_to_edge_ids)} node pairs.")
 
         # Then grab all edge/node objects
         kg = {"edges": {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
@@ -1033,7 +1039,8 @@ class PloverDB:
               "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
                         for node_id in all_node_ids}}
 
-        logging.info(f"Returning answer with {len(kg['edges'])} edges and {len(kg['nodes'])} nodes.")
+        logging.info(f"{self.endpoint_name}: Returning answer with {len(kg['edges'])} edges "
+                     f"and {len(kg['nodes'])} nodes.")
         return {"pairs_to_edge_ids": node_pairs_to_edge_ids, "knowledge_graph": kg}
 
     def get_neighbors(self, node_ids: List[str], categories: List[str], predicates: List[str]) -> dict:
@@ -1043,6 +1050,7 @@ class PloverDB:
         qg_template = {"nodes": {"n_in": {"ids": []}, "n_out": {"categories": categories}},
                        "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": predicates}}}
         neighbors_map = dict()
+        logging.info(f"{self.endpoint_name}: Looking up neighbors for {len(node_ids)} input nodes..")
         for node_id in node_ids:
             # Convert to the equivalent identifier we recognize
             node_id_preferred = self.preferred_id_map.get(node_id, node_id)
@@ -1053,7 +1061,7 @@ class PloverDB:
 
             # Record neighbors for this node
             neighbors_map[node_id] = list(output_node_ids)
-        logging.info(f"Returning neighbors map with {len(neighbors_map)} entries.")
+        logging.info(f"{self.endpoint_name}: Returning neighbors map with {len(neighbors_map)} entries.")
         return neighbors_map
 
     def _lookup_answers(self, input_qnode_key: str, output_qnode_key: str, trapi_qg: dict) -> Tuple[set, set, set]:
@@ -1066,16 +1074,12 @@ class PloverDB:
         output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
         output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
-        log_message = (f"After expansion to descendant concepts, have {len(input_curies)} input curies, "
-                       f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
-        self.log_trapi("INFO", log_message)
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
         final_input_qnode_answers = set()
         final_output_qnode_answers = set()
         main_index = self.main_index
-        self.log_trapi("INFO", f"Looking up answers to query..")
         for input_curie in input_curies:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
