@@ -11,7 +11,7 @@ import flask
 import jsonlines
 import logging
 import os
-import _pickle as cPickle
+import pickle
 import statistics
 import subprocess
 import time
@@ -477,7 +477,7 @@ class PloverDB:
                        "preferred_id_map": self.preferred_id_map,
                        "biolink_version": self.biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
-            cPickle.dump(all_indexes, index_file, protocol=2)
+            pickle.dump(all_indexes, index_file, protocol=2)
         mem_gb, mem_percent = self._get_current_memory_usage()
         logging.info(f"After saving indexes, memory usage is {mem_percent}% ({mem_gb}GB)")
 
@@ -509,7 +509,7 @@ class PloverDB:
         logging.info(f"Loading pickle of indexes from {self.pickle_index_path}..")
         start = time.time()
         with open(self.pickle_index_path, "rb") as index_file:
-            all_indexes = cPickle.load(index_file)
+            all_indexes = pickle.load(index_file)
             self.node_lookup_map = all_indexes["node_lookup_map"]
             self.edge_lookup_map = all_indexes["edge_lookup_map"]
             self.main_index = all_indexes["main_index"]
@@ -528,15 +528,6 @@ class PloverDB:
         self.bh = BiolinkHelper(biolink_version=self.biolink_version)
 
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
-
-    @staticmethod
-    def _load_pickle_file(file_path: str) -> any:
-        start = time.time()
-        logging.info(f"Loading {file_path} into memory..")
-        with open(file_path, "rb") as pickle_file:
-            contents = pickle.load(pickle_file)
-        logging.info(f"Done loading {file_path} into memory. Took {round(time.time() - start, 1)} seconds.")
-        return contents
 
     def _add_to_main_index(self, node_a_id: str, node_b_id: str, node_b_category_ids: Set[int], predicate_id: int,
                            edge_id: int, direction: int):
