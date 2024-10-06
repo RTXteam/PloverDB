@@ -250,7 +250,8 @@ class PloverDB:
 
         # Create basic edge lookup map
         logging.info(f"Loading edge lookup map..")
-        self.edge_lookup_map = {str(edge["id"]): edge for edge in graph_dict["edges"]}
+        # We'll use simple integers for edge IDs, since edge IDs don't matter in TRAPI
+        self.edge_lookup_map = {index: edge for index, edge in enumerate(edges)}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
         gc.collect()  # Make sure we free up any memory we can
@@ -291,8 +292,9 @@ class PloverDB:
         for edge_id, edge in self.edge_lookup_map.items():
             predicate = edge[self.edge_predicate_property]
             qualified_predicate = edge.get(self.graph_qualified_predicate_property)
-            canonical_predicate = self.bh.get_canonical_predicates(predicate)[0]
-            canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate)[0] if qualified_predicate else None
+            canonical_predicate = self.bh.get_canonical_predicates(predicate, print_warnings=False)[0]
+            canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate,
+                                                                             print_warnings=False)[0] if qualified_predicate else None
             predicate_is_canonical = canonical_predicate == predicate
             qualified_predicate_is_canonical = canonical_qualified_predicate == qualified_predicate
             if qualified_predicate and \
@@ -1574,7 +1576,7 @@ class PloverDB:
         user_qual_predicates = self._get_qualified_predicates_from_qedge(qedge)
         user_regular_predicates = self._convert_to_set(qedge.get("predicates"))
         user_predicates = user_qual_predicates if user_qual_predicates else user_regular_predicates
-        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates))
+        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates, print_warnings=False))
         user_non_canonical_predicates = user_predicates.difference(canonical_predicates)
         user_canonical_predicates = user_predicates.intersection(canonical_predicates)
         if user_non_canonical_predicates and not user_canonical_predicates:
@@ -1587,7 +1589,8 @@ class PloverDB:
                 for qualifier_constraint in qedge.get("qualifier_constraints", []):
                     for qualifier in qualifier_constraint.get("qualifier_set"):
                         if qualifier["qualifier_type_id"] == self.qedge_qualified_predicate_property:
-                            canonical_qual_predicate = self.bh.get_canonical_predicates(qualifier["qualifier_value"])[0]
+                            canonical_qual_predicate = self.bh.get_canonical_predicates(qualifier["qualifier_value"],
+                                                                                        print_warnings=False)[0]
                             qualifier["qualifier_value"] = canonical_qual_predicate
             else:
                 # Otherwise just flip all of the regular predicates
