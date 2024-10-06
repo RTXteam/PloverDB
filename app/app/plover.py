@@ -46,7 +46,7 @@ class PloverDB:
         self.endpoint_name = self.kg_config["endpoint_name"]
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
         self.home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
-        self.indexes_dir_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}"
+        self.pickle_index_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}.pkl"
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
@@ -105,8 +105,6 @@ class PloverDB:
     def build_indexes(self):
         logging.info(f"Starting to build indexes for endpoint {self.endpoint_name}..")
         start = time.time()
-        # Create a subdirectory to store pickles of indexes in
-        os.makedirs(self.indexes_dir_path)
 
         nodes_file_name_unzipped, edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
         nodes_path = f"{SCRIPT_DIR}/../{nodes_file_name_unzipped}"
@@ -195,8 +193,6 @@ class PloverDB:
 
         logging.info(f"Have loaded edges into memory.")
 
-        graph_dict = {"nodes": nodes, "edges": edges}
-
         # Set up BiolinkHelper (download from RTX repo)
         bh_file_name = "biolink_helper.py"
         logging.info(f"Downloading {bh_file_name} from RTX repo")
@@ -210,7 +206,7 @@ class PloverDB:
         # Create basic node lookup map
         logging.info(f"Building basic node/edge lookup maps")
         logging.info(f"Loading node lookup map..")
-        self.node_lookup_map = {node["id"]: node for node in graph_dict["nodes"]}
+        self.node_lookup_map = {node["id"]: node for node in nodes}
         node_properties_to_ignore = self.kg_config.get("ignore_node_properties", [])
         for node_key, node in self.node_lookup_map.items():
             # Remove node properties we don't care about (according to config file)
@@ -250,9 +246,10 @@ class PloverDB:
 
         # Create basic edge lookup map
         logging.info(f"Loading edge lookup map..")
-        self.edge_lookup_map = {str(edge["id"]): edge for edge in graph_dict["edges"]}
+        # We'll use simple integers for edge IDs, since edge IDs don't matter in TRAPI
+        self.edge_lookup_map = {index: edge for index, edge in enumerate(edges)}
         for edge in self.edge_lookup_map.values():
-            del edge["id"]  # Don't need this anymore since it's now the key
+            del edge["id"]  # Don't need this anymore since the edge ID is now the key
         gc.collect()  # Make sure we free up any memory we can
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading edge lookup map; there are {len(self.edge_lookup_map)} edges. "
@@ -308,6 +305,9 @@ class PloverDB:
                 original_subject = edge["subject"]
                 edge["subject"] = edge["object"]
                 edge["object"] = original_subject
+        gc.collect()
+        mem_gb, mem_percent = self._get_current_memory_usage()
+        logging.info(f"Memory usage is {mem_percent}% ({mem_gb}GB)")
 
         if self.is_test:
             # Narrow down our test file to exclude orphan edges
@@ -363,38 +363,22 @@ class PloverDB:
                                       f" terminating.")
         logging.info(f"Done building main index; there were {edges_count} edges, {qualified_edges_count} of which "
                      f"were qualified.")
-        self._save_to_pickle_file(self.main_index, f"{self.indexes_dir_path}/main_index.pkl")
-        del self.main_index
         gc.collect()
+        mem_gb, mem_percent = self._get_current_memory_usage()
+        logging.info(f"Memory usage is {mem_percent}% ({mem_gb}GB)")
 
         # Record each conglomerate predicate in the KG under its ancestors
         self._build_conglomerate_predicate_descendant_index()
-        self._save_to_pickle_file(self.conglomerate_predicate_descendant_index,
-                                  f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
-        del self.conglomerate_predicate_descendant_index
 
         # Build the subclass_of index
-        subclass_edges = self._get_subclass_edges()
-        self._build_subclass_index(subclass_edges)
-        del subclass_edges
-        self._save_to_pickle_file(self.subclass_index, f"{self.indexes_dir_path}/subclass_index.pkl")
-        del self.subclass_index
+        self._build_subclass_index()
         gc.collect()
-
-        # Save the preferred ID map now that we're done using it
-        self._save_to_pickle_file(self.preferred_id_map, f"{self.indexes_dir_path}/preferred_id_map.pkl")
-        del self.preferred_id_map
-        gc.collect()
+        mem_gb, mem_percent = self._get_current_memory_usage()
+        logging.info(f"After building subclass index, memory usage is {mem_percent}% ({mem_gb}GB)")
 
         # Create reversed category/predicate maps now that we're done building those maps
         self.category_map_reversed = self._reverse_dictionary(self.category_map)
         self.predicate_map_reversed = self._reverse_dictionary(self.predicate_map)
-
-        # Save regular category/predicate maps now that we're done using those
-        self._save_to_pickle_file(self.category_map, f"{self.indexes_dir_path}/category_map.pkl")
-        del self.category_map
-        self._save_to_pickle_file(self.predicate_map, f"{self.indexes_dir_path}/predicate_map.pkl")
-        del self.predicate_map
 
         # Build the meta knowledge graph and SRI test triples
         logging.info(f"Starting to build meta knowledge graph and SRI test triples..")
@@ -448,15 +432,12 @@ class PloverDB:
                       for category, prefixes in category_to_prefixes_map.items()}
         logging.info(f"Identified {len(meta_nodes)} different meta nodes")
         self.meta_kg = {"nodes": meta_nodes, "edges": meta_edges}
-        self._save_to_pickle_file(self.meta_kg, f"{self.indexes_dir_path}/meta_kg.pkl")
-        del self.meta_kg, meta_nodes, meta_edges, node_to_category_labels_map
+        # Delete no-longer-needed vars (conserve memory)
+        del meta_nodes, meta_edges, meta_triples_map, meta_qualifiers_map
+        del node_to_category_labels_map, category_to_prefixes_map
         gc.collect()
-
-        # Save some other indexes we're done using/modifying
-        self._save_to_pickle_file(self.category_map_reversed, f"{self.indexes_dir_path}/category_map_reversed.pkl")
-        del self.category_map_reversed
-        self._save_to_pickle_file(self.predicate_map_reversed, f"{self.indexes_dir_path}/predicate_map_reversed.pkl")
-        del self.predicate_map_reversed
+        mem_gb, mem_percent = self._get_current_memory_usage()
+        logging.info(f"After building meta KG, memory usage is {mem_percent}% ({mem_gb}GB)")
 
         # Then save test triples file
         test_triples_dict = {"edges": list(test_triples_map.values())}
@@ -464,7 +445,11 @@ class PloverDB:
                      f"{len(test_triples_dict['edges'])} test triples")
         with open(self.sri_test_triples_path, "w+") as test_triples_file:
             json.dump(test_triples_dict, test_triples_file)
-        del test_triples_dict
+        # Delete no-longer-needed vars (conserve memory)
+        del test_triples_dict, test_triples_map
+        gc.collect()
+        mem_gb, mem_percent = self._get_current_memory_usage()
+        logging.info(f"After building SRI test triples file, memory usage is {mem_percent}% ({mem_gb}GB)")
 
         # Add a build node for this Plover build (don't want this in the meta KG, so we add it here)
         plover_build_node = {"name": f"Plover deployment of {self.kp_infores_curie}",
@@ -474,15 +459,26 @@ class PloverDB:
                                             f"Biolink version used was {self.biolink_version}."}
         self.node_lookup_map["PloverDB"] = plover_build_node
 
-        # Save the node lookup map now that we're done using/modifying it
-        self._save_to_pickle_file(self.node_lookup_map, f"{self.indexes_dir_path}/node_lookup_map.pkl")
-        del self.node_lookup_map
-        gc.collect()
-
-        # Save the edge lookup map now that we're done with it
-        self._save_to_pickle_file(self.edge_lookup_map, f"{self.indexes_dir_path}/edge_lookup_map.pkl")
-        del self.edge_lookup_map
-        gc.collect()
+        # Save all indexes in a big pickle
+        mem_gb, mem_percent = self._get_current_memory_usage()
+        logging.info(f"Before beginning to save indexes, memory usage is {mem_percent}% ({mem_gb}GB)")
+        logging.info(f"Saving indexes to {self.pickle_index_path}..")
+        all_indexes = {"node_lookup_map": self.node_lookup_map,
+                       "edge_lookup_map": self.edge_lookup_map,
+                       "main_index": self.main_index,
+                       "subclass_index": self.subclass_index,
+                       "predicate_map": self.predicate_map,
+                       "predicate_map_reversed": self.predicate_map_reversed,
+                       "category_map": self.category_map,
+                       "category_map_reversed": self.category_map_reversed,
+                       "conglomerate_predicate_descendant_index": self.conglomerate_predicate_descendant_index,
+                       "meta_kg": self.meta_kg,
+                       "preferred_id_map": self.preferred_id_map,
+                       "biolink_version": self.biolink_version}
+        with open(self.pickle_index_path, "wb") as index_file:
+            pickle.dump(all_indexes, index_file, protocol=pickle.HIGHEST_PROTOCOL)
+        mem_gb, mem_percent = self._get_current_memory_usage()
+        logging.info(f"After saving indexes, memory usage is {mem_percent}% ({mem_gb}GB)")
 
         # Fill out the home page HTML template for this KP with the proper KP endpoint/infores curie
         logging.info(f"Filling out html home template and saving to {self.home_html_path}..")
@@ -503,26 +499,28 @@ class PloverDB:
 
     def load_indexes(self):
         logging.info(f"Starting to load indexes for endpoint {self.endpoint_name}..")
-        logging.info(f"Checking whether index subdirectory ({self.indexes_dir_path}) already exists..")
-        if not os.path.exists(self.indexes_dir_path):
-            logging.info(f"No pickle indexes exist - will build indexes")
+        logging.info(f"Checking whether pickle of indexes ({self.pickle_index_path}) already exists..")
+        if not os.path.exists(self.pickle_index_path):
+            logging.info(f"No index pickle exists - will build indexes")
             self.build_indexes()
 
         # Load our pickled indexes into memory
-        logging.info(f"Loading indexes from {self.indexes_dir_path} (in parallel)..")
+        logging.info(f"Loading pickle of indexes from {self.pickle_index_path}..")
         start = time.time()
-
-        self.node_lookup_map = self._load_pickle_file(f"{self.indexes_dir_path}/node_lookup_map.pkl")
-        self.edge_lookup_map = self._load_pickle_file(f"{self.indexes_dir_path}/edge_lookup_map.pkl")
-        self.main_index = self._load_pickle_file(f"{self.indexes_dir_path}/main_index.pkl")
-        self.subclass_index = self._load_pickle_file(f"{self.indexes_dir_path}/subclass_index.pkl")
-        self.predicate_map = self._load_pickle_file(f"{self.indexes_dir_path}/predicate_map.pkl")
-        self.predicate_map_reversed = self._load_pickle_file(f"{self.indexes_dir_path}/predicate_map_reversed.pkl")
-        self.category_map = self._load_pickle_file(f"{self.indexes_dir_path}/category_map.pkl")
-        self.category_map_reversed = self._load_pickle_file(f"{self.indexes_dir_path}/category_map_reversed.pkl")
-        self.conglomerate_predicate_descendant_index = self._load_pickle_file(f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
-        self.meta_kg = self._load_pickle_file(f"{self.indexes_dir_path}/meta_kg.pkl")
-        self.preferred_id_map = self._load_pickle_file(f"{self.indexes_dir_path}/preferred_id_map.pkl")
+        with open(self.pickle_index_path, "rb") as index_file:
+            all_indexes = pickle.load(index_file)
+            self.node_lookup_map = all_indexes["node_lookup_map"]
+            self.edge_lookup_map = all_indexes["edge_lookup_map"]
+            self.main_index = all_indexes["main_index"]
+            self.subclass_index = all_indexes["subclass_index"]
+            self.predicate_map = all_indexes["predicate_map"]
+            self.predicate_map_reversed = all_indexes["predicate_map_reversed"]
+            self.category_map = all_indexes["category_map"]
+            self.category_map_reversed = all_indexes["category_map_reversed"]
+            self.conglomerate_predicate_descendant_index = all_indexes["conglomerate_predicate_descendant_index"]
+            self.meta_kg = all_indexes["meta_kg"]
+            self.preferred_id_map = all_indexes["preferred_id_map"]
+            biolink_version = all_indexes["biolink_version"]
 
         # Set up BiolinkHelper
         from biolink_helper import BiolinkHelper
@@ -621,6 +619,7 @@ class PloverDB:
                 conglomerate_predicates_already_seen.add(conglomerate_predicate)
 
     def _get_subclass_edges(self) -> List[dict]:
+        logging.info(f"Finding subclass edges to base reasoning on..")
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edges = [edge for edge in self.edge_lookup_map.values()
                           if edge[self.edge_predicate_property] in subclass_predicates]
@@ -666,7 +665,8 @@ class PloverDB:
 
         return subclass_edges
 
-    def _build_subclass_index(self, subclass_edges: List[dict]):
+    def _build_subclass_index(self):
+        subclass_edges = self._get_subclass_edges()
         logging.info(f"Building subclass_of index using {len(subclass_edges)} subclass_of edges..")
         start = time.time()
 
