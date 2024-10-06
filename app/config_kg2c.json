@@ -12,7 +12,7 @@
   "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:uberon"],
   "num_edges_per_answer_cutoff": 1000000,
   "normalize": false,
-  "convert_input_ids": true,
+  "convert_input_ids": false,
   "drug_chemical_conflation": true,
   "biolink_helper_branch": "master",
   "ignore_edge_properties": ["domain_range_exclusion"],
