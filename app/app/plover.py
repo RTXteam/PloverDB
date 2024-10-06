@@ -477,7 +477,7 @@ class PloverDB:
                        "preferred_id_map": self.preferred_id_map,
                        "biolink_version": self.biolink_version}
         with open(self.pickle_index_path, "wb") as index_file:
-            cPickle.dump(all_indexes, index_file, protocol=-1)
+            cPickle.dump(all_indexes, index_file, protocol=2)
         mem_gb, mem_percent = self._get_current_memory_usage()
         logging.info(f"After saving indexes, memory usage is {mem_percent}% ({mem_gb}GB)")
 
