@@ -54,16 +54,22 @@ def main():
     print("query", "status", "duration", "neighbors")
     elapsed_times = []
     status_codes = []
+    num_exceptions = 0
     for index, node_id_batch in enumerate(node_id_batches):
-        response, neighbors = do_get_neighbors_request(node_id_batch, args.plover_endpoint)
-        print(index + 1, response.status_code, response.elapsed, len(neighbors))
-        elapsed_times.append(response.elapsed.total_seconds())
-        status_codes.append(response.status_code)
+        try:
+            response, neighbors = do_get_neighbors_request(node_id_batch, args.plover_endpoint)
+            print(index + 1, response.status_code, response.elapsed, len(neighbors))
+            elapsed_times.append(response.elapsed.total_seconds())
+            status_codes.append(response.status_code)
+        except Exception:
+            print(index, f'Request threw exception.')
+            num_exceptions += 1
+            time.sleep(5)  # Wait a bit as this might be an internet connection issue
 
     print(f"Took {round((time.time() - start) / 60, 2)} minutes to send {len(node_ids)} node IDs to get_neighbors in "
           f"batches of 100.")
     print(f"Average query elapsed time: {round(sum(elapsed_times) / float(len(elapsed_times)), 2)} seconds.")
-    print(f"Status code counts: {dict(Counter(status_codes))}")
+    print(f"Status code counts: {dict(Counter(status_codes))}. Exceptions: {num_exceptions}")
 
 
 if __name__ == "__main__":
