@@ -250,8 +250,7 @@ class PloverDB:
 
         # Create basic edge lookup map
         logging.info(f"Loading edge lookup map..")
-        # We'll use simple integers for edge IDs, since edge IDs don't matter in TRAPI
-        self.edge_lookup_map = {index: edge for index, edge in enumerate(edges)}
+        self.edge_lookup_map = {str(edge["id"]): edge for edge in edges}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
         gc.collect()  # Make sure we free up any memory we can
