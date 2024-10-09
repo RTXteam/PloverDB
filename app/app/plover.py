@@ -156,12 +156,16 @@ class PloverDB:
                 if "qualified_object_aspect" in edge:
                     edge[self.graph_object_aspect_property] = edge["qualified_object_aspect"]
                     del edge["qualified_object_aspect"]
+                # TODO: Remove this patch after these KG2.10.1pre issues are fixed in future KG2pre versions
+                edge["predicate"] = edge["predicate"].replace("biolink:biolink_", "biolink:")
+                if edge["primary_knowledge_source"] == "infores:biothings-multiomics-clinicaltrials":
+                    edge["primary_knowledge_source"] = "infores:multiomics-clinicaltrials"
 
         # Zip up specified 'zip' columns to form a list of dicts (e.g., list of supporting studies)
         if self.kg_config.get("zip"):
             for zipped_prop_name, zipped_prop_info in self.kg_config["zip"].items():
                 for edge in edges:
-                    # TODO: Remove this patch after CTKP TSVs are fixed..
+                    # TODO: Add generalized way of handling this situation (not CTKP-specific)
                     if "tested_intervention" in zipped_prop_info["properties"]:
                         edge["tested_intervention"] = edge["tested_intervention"] * len(edge["nctid"])
                     zip_cols = [edge[property_name] for property_name in zipped_prop_info["properties"]]
