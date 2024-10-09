@@ -1252,8 +1252,14 @@ class PloverDB:
         return trapi_edge
 
     def _get_trapi_node_attribute(self, property_name: str, value: any) -> dict:
-        attribute = self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name})
+        # Just use a default attribute for any properties/attributes not yet defined in kg_config.json
+        attribute = copy.deepcopy(self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name}))
         attribute["value"] = value
+        if attribute.get("attribute_source"):
+            attribute["attribute_source"] = attribute["attribute_source"].replace("{kp_infores_curie}",
+                                                                                  self.kp_infores_curie)
+        if attribute.get("value_url"):
+            attribute["value_url"] = attribute["value_url"].replace("{value}", value)
         return attribute
 
     def _get_trapi_edge_attributes(self, edge_biolink: dict) -> List[dict]:
