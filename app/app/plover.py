@@ -250,8 +250,7 @@ class PloverDB:
 
         # Create basic edge lookup map
         logging.info(f"Loading edge lookup map..")
-        # We'll use simple integers for edge IDs, since edge IDs don't matter in TRAPI
-        self.edge_lookup_map = {index: edge for index, edge in enumerate(edges)}
+        self.edge_lookup_map = {str(edge["id"]): edge for edge in edges}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
         gc.collect()  # Make sure we free up any memory we can
@@ -1252,8 +1251,14 @@ class PloverDB:
         return trapi_edge
 
     def _get_trapi_node_attribute(self, property_name: str, value: any) -> dict:
-        attribute = self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name})
+        # Just use a default attribute for any properties/attributes not yet defined in kg_config.json
+        attribute = copy.deepcopy(self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name}))
         attribute["value"] = value
+        if attribute.get("attribute_source"):
+            attribute["attribute_source"] = attribute["attribute_source"].replace("{kp_infores_curie}",
+                                                                                  self.kp_infores_curie)
+        if attribute.get("value_url"):
+            attribute["value_url"] = attribute["value_url"].replace("{value}", value)
         return attribute
 
     def _get_trapi_edge_attributes(self, edge_biolink: dict) -> List[dict]:
