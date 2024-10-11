@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://kg2webhost.rtx.ai/kg2c-2.10.0-v1.0-nodes.jsonl.gz",
-  "edges_file": "https://kg2webhost.rtx.ai/kg2c-2.10.0-v1.0-edges.jsonl.gz",
+  "nodes_file": "https://kg2webhost.rtx.ai/kg2c-2.10.1-v1.0-nodes.jsonl.gz",
+  "edges_file": "https://kg2webhost.rtx.ai/kg2c-2.10.1-v1.0-edges.jsonl.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:rtx-kg2",
   "endpoint_name": "kg2c",
@@ -30,38 +30,46 @@
     },
     "iri": {
       "attribute_type_id": "biolink:IriType",
-      "value_type_id": "metatype:Uri"
+      "value_type_id": "metatype:Uri",
+      "attribute_source": "{kp_infores_curie}"
     },
     "description": {
       "attribute_type_id": "biolink:description",
-      "value_type_id": "metatype:String"
+      "value_type_id": "metatype:String",
+      "attribute_source": "{kp_infores_curie}"
     },
     "all_categories": {
       "attribute_type_id": "biolink:category",
       "value_type_id": "metatype:Uriorcurie",
-      "description": "Categories of all nodes in this synonym set in RTX-KG2."
+      "description": "Categories of all nodes in this synonym set in RTX-KG2.",
+      "attribute_source": "{kp_infores_curie}"
     },
     "all_names": {
       "attribute_type_id": "biolink:synonym",
       "value_type_id": "metatype:String",
-      "description": "Names of all nodes in this synonym set in RTX-KG2."
+      "description": "Names of all nodes in this synonym set in RTX-KG2.",
+      "attribute_source": "{kp_infores_curie}"
     },
     "equivalent_curies": {
       "attribute_type_id": "biolink:xref",
       "value_type_id": "metatype:Nodeidentifier",
-      "description": "Identifiers of all nodes in this synonym set in RTX-KG2."
+      "description": "Identifiers of all nodes in this synonym set in RTX-KG2.",
+      "attribute_source": "{kp_infores_curie}"
     },
     "publications": {
       "attribute_type_id": "biolink:publications",
-      "value_type_id": "biolink:Uriorcurie"
+      "value_type_id": "biolink:Uriorcurie",
+      "attribute_source": "{kp_infores_curie}"
     },
     "kg2_ids": {
       "attribute_type_id": "biolink:original_predicate",
       "value_type_id": "metatype:String",
-      "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping."
+      "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping.",
+      "attribute_source": "{kp_infores_curie}"
     },
     "publications_info": {
-      "attribute_type_id": "bts:sentence"
+      "attribute_type_id": "bts:sentence",
+      "attribute_source": "{kp_infores_curie}"
     }
   },
   "sources_template": {}
