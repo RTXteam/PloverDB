@@ -35,7 +35,7 @@
     },
     "max_research_phase": {
       "attribute_type_id": "biolink:max_research_phase",
-      "value_type_id": "biolink:MaxResearchPhaseEnum"
+      "value_type_id": "biolink:ResearchPhaseEnum"
     },
     "clinical_approval_status": {
       "attribute_type_id": "biolink:clinical_approval_status",
@@ -51,18 +51,18 @@
       "attribute_source": "{kp_infores_curie}"
     },
     "nctid": {
-      "attribute_type_id": "biolink:supporting_study_metadata",
+      "attribute_type_id": "biolink:supporting_study",
       "value_url": "https://clinicaltrials.gov/study/{value}?tab=table"
     },
     "phase": {
-      "attribute_type_id": "biolink:clinical_trial_phase",
-      "value_type_id": "biolink:MaxResearchPhaseEnum"
+      "attribute_type_id": "clinical_trial_phase",
+      "value_type_id": "biolink:ResearchPhaseEnum"
     },
     "overall_status": {
-      "attribute_type_id": "biolink:clinical_trial_status"
+      "attribute_type_id": "clinical_trial_status"
     },
     "enrollment": {
-      "attribute_type_id": "biolink:supporting_study_size",
+      "attribute_type_id": "study_size",
       "value_type_id": "metatype:Integer"
     },
     "child": {
@@ -78,7 +78,7 @@
       "value_type_id": "metatype:Boolean"
     },
     "tested_intervention": {
-      "attribute_type_id": "biolink:clinical_trial_tested_intervention",
+      "attribute_type_id": "clinical_trial_tested_intervention",
       "value_type_id": "metatype:String"
     }
   },
