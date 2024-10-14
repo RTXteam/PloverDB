@@ -18,7 +18,7 @@
   "ignore_edge_properties": [],
   "zip": {
     "supporting_studies": {
-      "properties": ["nctid", "phase", "primary_purpose", "intervention_model", "time_perspective", "overall_status",
+      "properties": ["nctid", "phase", "tested", "primary_purpose", "intervention_model", "time_perspective", "overall_status",
                         "start_date", "enrollment", "enrollment_type", "age_range", "child", "adult", "older_adult",
                         "tested_intervention"],
       "leader": "nctid"
