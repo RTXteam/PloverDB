@@ -34,7 +34,7 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 * For Ubuntu 20.04, try `sudo apt-get install -y docker.io`
 * For Mac, `brew install --cask docker` worked for me with macOS Big Sur
 
-#### How to run a dev Plover
+### How to run Plover locally (dev)
 
 To run Plover locally for development:
 
@@ -49,11 +49,11 @@ Note that by default, this script will use the `sudo docker` command; use the op
 
 See [this section](how-to-test) for details on using/testing your Plover.
 
-#### How to deploy Plover
+### How to deploy Plover
 
 We deploy Plover on Ubuntu AWS EC2 machines; Ubuntu 22 and 18 have both been verified to work. The size/type of instance you'll need will depend on the size/contents of your graph (the RTX-KG2c knowledge graph has ~7 million nodes and ~30 million edges and requires a 128GiB RAM instance; we use an `r5a.4xlarge`).
 
-##### Steps to be done once, at initial setup for a new instance:
+#### Steps to be done once, at initial setup for a new instance:
 
 1. Make sure ports `9990`, `80`, and `443` are open
 1. Install SSL certificates and set them up for auto-renewal:
@@ -67,9 +67,9 @@ We deploy Plover on Ubuntu AWS EC2 machines; Ubuntu 22 and 18 have both been ver
 1. Create a `domain_name.txt` file in `/app/` (plug in your domain name in place of `multiomics.rtx.ai` - needs to be the same domain name entered in the step above when configuring certbot):
    1. `echo "multiomics.rtx.ai" > /app/domain_name.txt`
 
-##### Steps to build Plover once initial setup is complete:
+#### Steps to build Plover once initial setup is complete:
 
-1. Clone/fork this repo and navigate into it (`cd PloverDB/`)
+1. `cd PloverDB/`
 1. Edit the config file at `/app/config_kg2c.json` for your graph
    1. Most notably, you need to point to nodes/edges files for your graph in TSV or JSON Lines KGX format
    1. We suggest also changing the name of this file for your KP (e.g., `config_mykp.json`); the default template is for RTX-KG2c
@@ -80,13 +80,13 @@ After the build completes and the container finishes loading, your Plover will b
 
 See [this section](how-to-test) for details on using/testing your Plover.
 
-#### How to deploy a new KP to an existing Plover
-
-TODO
-
 #### Automatic deployments
 
 TODO - having own branch/forking, configuring with ITRB, or running remote deployment server.
+
+#### How to deploy a new KP to an existing Plover
+
+TODO
 
 #### For ITRB
 
@@ -109,27 +109,38 @@ TODO
 
 ## How to test
 
-You should now be able to send your Plover TRAPI query POST requests at port 9990; the URL for this would look something like: `https://yourinstance.rtx.ai:9990/query`. Or, if you are just using Plover locally: `http://localhost:9990/query`.
-
-To verify that your new service is working, you can check a few endpoints (**plug in your domain name** in place of 'kg2cplover.rtx.ai'):
+To quickly verify that your Plover service is working, you can check a few endpoints (**plug in your domain name** in place of `kg2cplover.rtx.ai`):
    1. Navigate to https://kg2cplover.rtx.ai:9990/code_version in your browser; it should display information about the build
-   2. Naviagte to https://kg2cplover.rtx.ai:9990/get_logs in your browser; it should display log messages
-   3. Navigate to https://kg2cplover.rtx.ai:9990/meta_knowledge_graph in your browser; it should display the meta knowledge graph
-   4. Navigate to https://kg2cplover.rtx.ai:9990/sri_test_triples in your browser; it should display the SRI test triples
-   5. Try sending a TRAPI query to https://kg2cplover.rtx.ai:9990/query
+   2. Naviagte to https://kg2cplover.rtx.ai:9990/get_logs in your browser; it should display log messages from Plover and uwsgi
+   3. Navigate to https://kg2cplover.rtx.ai:9990/meta_knowledge_graph in your browser; it should display the TRAPI meta knowledge graph for your graph
+   4. Navigate to https://kg2cplover.rtx.ai:9990/sri_test_triples in your browser; it should display SRI test triples for your graph
 
+You should be able to send your Plover TRAPI query POST requests at port 9990; the URL for this would look something like: `https://yourinstance.rtx.ai:9990/query`. Or, if you are just using Plover locally: `http://localhost:9990/query`. As an example:
+```
+curl -X 'POST' 'https://kg2cplover.rtx.ai:9990/query' -H 'Content-Type: application/json' -d '{"message":{"query_graph":{"edges":{"e00":{"subject":"n00","object":"n01"}},"nodes":{"n00":{"ids":["CHEMBL.COMPOUND:CHEMBL112"]},"n01":{}}}}}'
+```
+Note that if you are hosting multiple KPs on this Plover, the URLs for their individual `/query` endpoints would look something like this:
+```
+https://multiomics.rtx.ai:9990/ctkp/query
+https://multiomics.rtx.ai:9990/dakp/query
+```
+And similarly, as an example, other KP-specific endpoints for the `ctkp` KP would look like so:
+```
+https://multiomics.rtx.ai:9990/ctkp/meta_knowledge_graph
+https://multiomics.rtx.ai:9990/ctkp/sri_test_triples
+```
 
 
 
 ## Input files
 
-The only input files Plover require are the knowledge graph (represented in KGX-style nodes/edges files) and a config file, which are detailed in the below two sections.
+The only input files Plover requires are the knowledge graph (represented in KGX-style nodes/edges files) and a config file, which are detailed in the below two sections.
 
-#### Nodes and edges files
+### Nodes and edges files
 
 TODO
 
-#### Config file
+### Config file
 
 Can have files locally - put them in /app and just list their names in nodes/edges slots. 
 
