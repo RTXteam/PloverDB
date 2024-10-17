@@ -11,6 +11,14 @@ import pygit2
 import datetime
 import logging
 
+from opentelemetry.semconv.resource import ResourceAttributes
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import plover
 
@@ -44,12 +52,55 @@ plover_objs_map, default_endpoint_name = load_plovers()
 logging.info(f"Plover objs map is: {plover_objs_map}. Default endpoint is {default_endpoint_name}.")
 
 
+def instrument(flask_app):
+    """
+    Adapted from Kevin Vizhalil's opentelemetry code in:
+    github.com/RTXteam/RTX/blob/master/code/UI/OpenAPI/python-flask-server/KG2/openapi_server/__main__.py
+    """
+    # First figure out what to call this service in jaeger
+    default_infores = plover_objs_map[default_endpoint_name].kp_infores_curie
+    default_infores_val = default_infores.split(":")[-1]
+    app_name = default_infores_val if len(plover_objs_map) == 1 else default_infores_val.split("-")[0]
+    service_name = f"{app_name}-plover"
+    logging.info(f"Service name for opentelemetry tracing is {service_name}")
+
+    # Then figure out which jaeger host to use
+    domain_name_file_path = f"{SCRIPT_DIR}/../domain_name.txt"
+    if os.path.exists(domain_name_file_path):
+        with open(domain_name_file_path, "r") as domain_name_file:
+            domain_name = domain_name_file.read()
+            logging.info(f"Domain name is: {domain_name}")
+    else:
+        domain_name = None
+    jaeger_host = "jaeger.rtx.ai" if domain_name and "transltr.io" not in domain_name else "jaeger-otel-agent.sri"
+    logging.info(f"jaeger host to use is {jaeger_host}")
+
+    trace.set_tracer_provider(TracerProvider(
+        resource=Resource.create({
+            ResourceAttributes.SERVICE_NAME: service_name
+        })
+    ))
+    trace.get_tracer_provider().add_span_processor(
+        SimpleSpanProcessor(
+            JaegerExporter(
+                        agent_host_name=jaeger_host,
+                        agent_port=6831
+            )
+        )
+    )
+    tracer_provider = trace.get_tracer(__name__)
+    FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,code_version")
+
+
+instrument(app)
+
+
 @app.post("/<kp_endpoint_name>/query")
 @app.post("/query")
 def run_query(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
-        logging.info(f"{kp_endpoint_name}: Received a query: {query}")
+        logging.info(f"{kp_endpoint_name}: Received a TRAPI query")
         answer = plover_objs_map[kp_endpoint_name].answer_query(query)
         return flask.jsonify(answer)
     else:
@@ -76,8 +127,9 @@ def get_neighbors(kp_endpoint_name: str = default_endpoint_name):
         query = flask.request.json
         node_ids = query["node_ids"]
         categories = query.get("categories", ["biolink:NamedThing"])
+        predicates = query.get("predicates", ["biolink:related_to"])
         logging.info(f"{kp_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
-        answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories)
+        answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories, predicates)
         return flask.jsonify(answer)
     else:
         flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
@@ -132,14 +184,16 @@ def run_code_version():
 
 
 @app.get("/get_logs")
-def run_get_logs(num_lines: int = 100):
+def run_get_logs():
     try:
+        num_lines = int(flask.request.args.get('num_lines', 100))
         with open(plover.LOG_FILE_PATH, "r") as f:
             log_data_plover = f.readlines()
         with open('/var/log/uwsgi.log', 'r') as f:
             log_data_uwsgi = f.readlines()
-        response = {"description": f"The last {num_lines} lines from each of three logs (Plover, Gunicorn error, and "
-                                   "Gunicorn access) are included below.",
+        response = {"description": f"The last {num_lines} lines from two logs (Plover and uwsgi) "
+                                   f"are included below. You can control the number of lines shown with the "
+                                   f"num_lines parameter (e.g., ?num_lines=500).",
                     "plover": log_data_plover[-num_lines:],
                     "uwsgi": log_data_uwsgi[-num_lines:]}
         return flask.jsonify(response)
