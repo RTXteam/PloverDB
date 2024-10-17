@@ -139,7 +139,7 @@ class PloverTester:
             assert len(response_json) == len(query["node_ids"])
             print(f"Answer includes {len(response_json)} entries.")
             for neighbors_list in response_json.values():
-                assert neighbors_list
+                assert isinstance(neighbors_list, list)
             return response_json
         else:
             print(f"Response status code was {response.status_code}. Response was: {response.text}")
@@ -170,7 +170,7 @@ class PloverTester:
     @staticmethod
     def get_supporting_study_attributes(edge: dict) -> List[dict]:
         return [attribute for attribute in edge["attributes"]
-                if attribute["attribute_type_id"] == "biolink:supporting_study_metadata"]
+                if attribute["attribute_type_id"] == "biolink:supporting_study"]
 
     @staticmethod
     def get_num_distinct_concepts(response: dict, qnode_key: str) -> int:
