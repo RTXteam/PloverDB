@@ -140,3 +140,11 @@ kg2c*.json
 biolink_helper.py
 biolink_lookup*
 *index*.json
+*.jsonl
+*.jsonl.gz
+*.pkl
+test*.json
+config_secrets.json
+app/domain_name.txt
+nginx.conf
+test/*.csv
