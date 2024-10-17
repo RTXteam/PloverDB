@@ -156,14 +156,16 @@ class PloverDB:
                 if "qualified_object_aspect" in edge:
                     edge[self.graph_object_aspect_property] = edge["qualified_object_aspect"]
                     del edge["qualified_object_aspect"]
+                # TODO: Remove this patch after these KG2.10.1pre issues are fixed in future KG2pre versions
+                if self.kp_infores_curie == "infores:rtx-kg2":
+                    edge["predicate"] = edge["predicate"].replace("biolink:biolink_", "biolink:")
+                    if edge["primary_knowledge_source"] == "infores:biothings-multiomics-clinicaltrials":
+                        edge["primary_knowledge_source"] = "infores:multiomics-clinicaltrials"
 
         # Zip up specified 'zip' columns to form a list of dicts (e.g., list of supporting studies)
         if self.kg_config.get("zip"):
             for zipped_prop_name, zipped_prop_info in self.kg_config["zip"].items():
                 for edge in edges:
-                    # TODO: Remove this patch after CTKP TSVs are fixed..
-                    if "tested_intervention" in zipped_prop_info["properties"]:
-                        edge["tested_intervention"] = edge["tested_intervention"] * len(edge["nctid"])
                     zip_cols = [edge[property_name] for property_name in zipped_prop_info["properties"]]
                     item_tuples = list(zip(*zip_cols))
                     item_objs = [dict(zip(zipped_prop_info["properties"], item_tuple)) for item_tuple in item_tuples]
@@ -250,7 +252,7 @@ class PloverDB:
 
         # Create basic edge lookup map
         logging.info(f"Loading edge lookup map..")
-        self.edge_lookup_map = {str(edge["id"]): edge for edge in graph_dict["edges"]}
+        self.edge_lookup_map = {str(edge["id"]): edge for edge in edges}
         for edge in self.edge_lookup_map.values():
             del edge["id"]  # Don't need this anymore since it's now the key
         gc.collect()  # Make sure we free up any memory we can
@@ -291,8 +293,9 @@ class PloverDB:
         for edge_id, edge in self.edge_lookup_map.items():
             predicate = edge[self.edge_predicate_property]
             qualified_predicate = edge.get(self.graph_qualified_predicate_property)
-            canonical_predicate = self.bh.get_canonical_predicates(predicate)[0]
-            canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate)[0] if qualified_predicate else None
+            canonical_predicate = self.bh.get_canonical_predicates(predicate, print_warnings=False)[0]
+            canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate,
+                                                                             print_warnings=False)[0] if qualified_predicate else None
             predicate_is_canonical = canonical_predicate == predicate
             qualified_predicate_is_canonical = canonical_qualified_predicate == qualified_predicate
             if qualified_predicate and \
@@ -892,7 +895,6 @@ class PloverDB:
             if qnode_ids:
                 self.log_trapi("INFO", f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
                 qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
-                self.log_trapi("INFO", f"After conversion, {qnode_key}'s 'ids' are: {qnode['ids']}")
 
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
@@ -934,6 +936,8 @@ class PloverDB:
                         descendant_to_query_id_map[subject_qnode_key][descendant].add(query_curie)
                 subject_qnode_curies_with_descendants += descendants
             subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
+            log_message = f"After expansion to descendant concepts, subject qnode has {len(subject_qnode['ids'])} ids"
+            self.log_trapi("INFO", log_message)
         if object_qnode.get("ids"):
             object_qnode_curies_with_descendants = list()
             object_qnode_curies = set(object_qnode["ids"])
@@ -945,10 +949,13 @@ class PloverDB:
                         descendant_to_query_id_map[object_qnode_key][descendant].add(query_curie)
                 object_qnode_curies_with_descendants += descendants
             object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
+            log_message = f"After expansion to descendant concepts, object qnode has {len(object_qnode['ids'])} ids"
+            self.log_trapi("INFO", log_message)
 
         # Actually answer the query
         input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
         output_qnode_key = list(set(trapi_qg["nodes"]).difference({input_qnode_key}))[0]
+        self.log_trapi("INFO", f"Looking up answers to query..")
         input_qnode_answers, output_qnode_answers, qedge_answers = self._lookup_answers(input_qnode_key,
                                                                                         output_qnode_key,
                                                                                         trapi_qg)
@@ -1009,6 +1016,7 @@ class PloverDB:
         node_pairs_to_edge_ids = dict()
         all_node_ids = set()
         all_edge_ids = set()
+        logging.info(f"{self.endpoint_name}: Looking up edges for {len(node_pairs)} node pairs..")
         for node_id_a, node_id_b in node_pairs:
             # Convert to equivalent identifiers we recognize
             node_id_a_preferred = self.preferred_id_map.get(node_id_a, node_id_a)
@@ -1026,7 +1034,7 @@ class PloverDB:
             all_node_ids |= input_node_ids
             all_node_ids |= output_node_ids
 
-        logging.info(f"Found edges for {len(node_pairs_to_edge_ids)} node pairs.")
+        logging.info(f"{self.endpoint_name}: Found edges for {len(node_pairs_to_edge_ids)} node pairs.")
 
         # Then grab all edge/node objects
         kg = {"edges": {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
@@ -1034,16 +1042,18 @@ class PloverDB:
               "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
                         for node_id in all_node_ids}}
 
-        logging.info(f"Returning answer with {len(kg['edges'])} edges and {len(kg['nodes'])} nodes.")
+        logging.info(f"{self.endpoint_name}: Returning answer with {len(kg['edges'])} edges "
+                     f"and {len(kg['nodes'])} nodes.")
         return {"pairs_to_edge_ids": node_pairs_to_edge_ids, "knowledge_graph": kg}
 
-    def get_neighbors(self, node_ids: List[str], categories: List[str]) -> dict:
+    def get_neighbors(self, node_ids: List[str], categories: List[str], predicates: List[str]) -> dict:
         """
         Finds neighbors for input nodes. Does *not* do subclass reasoning currently.
         """
         qg_template = {"nodes": {"n_in": {"ids": []}, "n_out": {"categories": categories}},
-                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": ["biolink:related_to"]}}}
+                       "edges": {"e": {"subject": "n_in", "object": "n_out", "predicates": predicates}}}
         neighbors_map = dict()
+        logging.info(f"{self.endpoint_name}: Looking up neighbors for {len(node_ids)} input nodes..")
         for node_id in node_ids:
             # Convert to the equivalent identifier we recognize
             node_id_preferred = self.preferred_id_map.get(node_id, node_id)
@@ -1054,7 +1064,7 @@ class PloverDB:
 
             # Record neighbors for this node
             neighbors_map[node_id] = list(output_node_ids)
-
+        logging.info(f"{self.endpoint_name}: Returning neighbors map with {len(neighbors_map)} entries.")
         return neighbors_map
 
     def _lookup_answers(self, input_qnode_key: str, output_qnode_key: str, trapi_qg: dict) -> Tuple[set, set, set]:
@@ -1067,16 +1077,12 @@ class PloverDB:
         output_curies = self._convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
         output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
-        log_message = (f"After expansion to descendant concepts, have {len(input_curies)} input curies, "
-                       f"{len(output_curies)} output curies, {len(qedge_predicates_expanded)} derived predicates")
-        self.log_trapi("INFO", log_message)
 
         # Use our main index to find results to the query
         final_qedge_answers = set()
         final_input_qnode_answers = set()
         final_output_qnode_answers = set()
         main_index = self.main_index
-        self.log_trapi("INFO", f"Looking up answers to query..")
         for input_curie in input_curies:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
@@ -1116,9 +1122,8 @@ class PloverDB:
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
-                edge = self.edge_lookup_map[answer_edge_id]
-                subject_curie = edge["subject"]
-                object_curie = edge["object"]
+                subject_curie = self.edge_lookup_map[answer_edge_id]["subject"]
+                object_curie = self.edge_lookup_map[answer_edge_id]["object"]
                 output_curie = object_curie if object_curie != input_curie else subject_curie
                 # Add this edge and its nodes to our answer KG
                 final_qedge_answers.add(answer_edge_id)
@@ -1248,8 +1253,14 @@ class PloverDB:
         return trapi_edge
 
     def _get_trapi_node_attribute(self, property_name: str, value: any) -> dict:
-        attribute = self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name})
+        # Just use a default attribute for any properties/attributes not yet defined in kg_config.json
+        attribute = copy.deepcopy(self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name}))
         attribute["value"] = value
+        if attribute.get("attribute_source"):
+            attribute["attribute_source"] = attribute["attribute_source"].replace("{kp_infores_curie}",
+                                                                                  self.kp_infores_curie)
+        if attribute.get("value_url"):
+            attribute["value_url"] = attribute["value_url"].replace("{value}", value)
         return attribute
 
     def _get_trapi_edge_attributes(self, edge_biolink: dict) -> List[dict]:
@@ -1572,7 +1583,7 @@ class PloverDB:
         user_qual_predicates = self._get_qualified_predicates_from_qedge(qedge)
         user_regular_predicates = self._convert_to_set(qedge.get("predicates"))
         user_predicates = user_qual_predicates if user_qual_predicates else user_regular_predicates
-        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates))
+        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates, print_warnings=False))
         user_non_canonical_predicates = user_predicates.difference(canonical_predicates)
         user_canonical_predicates = user_predicates.intersection(canonical_predicates)
         if user_non_canonical_predicates and not user_canonical_predicates:
@@ -1585,7 +1596,8 @@ class PloverDB:
                 for qualifier_constraint in qedge.get("qualifier_constraints", []):
                     for qualifier in qualifier_constraint.get("qualifier_set"):
                         if qualifier["qualifier_type_id"] == self.qedge_qualified_predicate_property:
-                            canonical_qual_predicate = self.bh.get_canonical_predicates(qualifier["qualifier_value"])[0]
+                            canonical_qual_predicate = self.bh.get_canonical_predicates(qualifier["qualifier_value"],
+                                                                                        print_warnings=False)[0]
                             qualifier["qualifier_value"] = canonical_qual_predicate
             else:
                 # Otherwise just flip all of the regular predicates
