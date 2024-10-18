@@ -15,6 +15,8 @@ You must provide **URLs** from which the **nodes/edges files** can be downloaded
 
 Note that a single Plover app can host/serve **multiple KPs** - each KP is exposed at its own endpoint (e.g., `/ctkp`, `/dakp`). See [this section](#how-to-deploy-a-new-kp-to-an-existing-plover) for more info.
 
+
+
 ## Table of Contents
 1. [How to run](#how-to-run)
    1. [How to run a dev Plover](#how-to-run-a-dev-plover)
@@ -51,6 +53,8 @@ See [this section](how-to-test) for details on using/testing your Plover.
 
 ### How to deploy Plover
 
+_NOTE: This section provides generalized info about deploying Plover; for deployment info specific to the RTX/ARAX/KG2 team, see the [this page](https://github.com/RTXteam/PloverDB/wiki/Deployment-how-tos) in the Plover wiki._
+
 We deploy Plover on Ubuntu AWS EC2 machines; Ubuntu 22 and 18 have both been verified to work. The size/type of instance you'll need will depend on the size/contents of your graph (the RTX-KG2c knowledge graph has ~7 million nodes and ~30 million edges and requires a 128GiB RAM instance; we use an `r5a.4xlarge`).
 
 #### Steps to be done once, at initial setup for a new instance:
@@ -86,7 +90,15 @@ TODO - having own branch/forking, configuring with ITRB, or running remote deplo
 
 #### How to deploy a new KP to an existing Plover
 
-TODO
+If you want your Plover instance to serve **multiple knowledge graphs/KPs**, you can control those using Plover's config files. **Each KP should have its own config file in `PloverDB/app/`.** Plover will then automatically expose one KP service per such config file, at the `endpoint_name` specified in each config file.
+
+So this means, if you have an existing Plover instance and you want to add an additional KP service to it, all you need to do is:
+
+1. Add another config file for the new KP in `PloverDB/app/`
+   1. We suggest creating a copy of an existing KP config file, editing it for the new KP, and renaming it to something like `config_mykp.json`
+1. Rebuild/redeploy Plover
+
+The new KP will then be available at the `endpoint_name` you specify in your new config file. For our example, that would be at `/mykp`, so to query that endpoint, we would send requests to `https://kg2cplover.rtx.ai:9990/mykp/query` (sub in your own domain name in place of 'kg2cplover.rtx.ai').
 
 #### For ITRB
 
