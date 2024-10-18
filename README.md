@@ -166,6 +166,22 @@ Can have files locally - put them in /app and just list their names in nodes/edg
 
 
 ## Debugging
+
+_NOTE: Swap in your domain name in place of 'kg2cplover.rtx.ai' in the below examples._
+
+### How to check version
+
+If you want to see the **code version** for the `RTXteam/PloverDB`
+project that was used for the running service, as well as the **versions of the knowledge graph(s)** it ingested, 
+go to https://kg2cplover.rtx.ai:9990/code_version in your browser. 
+
+Or, to access it programatically:
+```
+curl -L -X GET -H 'accept: application/json' https://kg2cplover.rtx.ai:9990/code_version
+```
+
+### How to view logs
+
 To view logs in your **browser**, go to https://kg2cplover.rtx.ai:9990/get_logs. This will show information from 
 the Plover and uwsgi logs. By default, the last 100 lines in each log are displayed; you can change this using 
 the `num_lines` parameter - e.g., https://kg2cplover.rtx.ai:9990/get_logs?num_lines=500.
@@ -178,18 +194,16 @@ If you want to **save** the contents of the log to a file locally, run:
 ```
 docker logs plovercontainer >& logs/mylog.log
 ```
+To print out the **full log files** on the terminal (useful if the container is running but the Plover service/endpoints are not working), run:
+```
+docker exec plovercontainer cat /var/log/ploverdb.log
+docker exec plovercontainer cat /var/log/uwsgi.log
+```
 
 If you want to use **cURL** to debug PloverDB, make sure to specify the `-L` (i.e., `--location`) option for the 
 `curl` command, since PloverDB seems to use redirection. Like this:
 ```
 curl -L -X POST -d @test20.json -H 'Content-Type: application/json' -H 'accept: application/json' https://kg2cplover.rtx.ai:9990/query
-```
-
-If you want to see the **code version** for the `RTXteam/PloverDB`
-project that was used for the running service, as well as the **versions of the knowledge graphs** it ingested, 
-you can use the `code_version` API endpoint (https://kg2cplover.rtx.ai:9990/code_version):
-```
-curl -L -X GET -H 'accept: application/json' https://kg2cplover.rtx.ai:9990/code_version
 ```
 
 
