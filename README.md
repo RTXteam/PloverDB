@@ -19,8 +19,8 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 1. [How to run](#how-to-run)
    1. [How to run a dev Plover](#how-to-run-a-dev-plover)
    1. [How to deploy Plover](#how-to-deploy-plover)
-1. [Provided endpoints](#provided-endpoints)
 1. [How to test](#how-to-test)
+1. [Provided endpoints](#provided-endpoints)
 1. [Input files](#input-files)
    1. [Nodes and edges files](#nodes-and-edges-files)
    1. [Config file](#config-file)
@@ -100,13 +100,6 @@ sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
 
 
 
-## Provided endpoints
-
-TODO
-
-
-
-
 ## How to test
 
 To quickly verify that your Plover service is working, you can check a few endpoints (**plug in your domain name** in place of `kg2cplover.rtx.ai`):
@@ -129,6 +122,32 @@ And similarly, as an example, other KP-specific endpoints for the `ctkp` KP woul
 https://multiomics.rtx.ai:9990/ctkp/meta_knowledge_graph
 https://multiomics.rtx.ai:9990/ctkp/sri_test_triples
 ```
+
+
+
+## Provided endpoints
+
+Plover exposes all endpoints required by TRAPI, as well as a few others useful for debugging/specialized queries:
+* `/query` (`POST`)
+   * Accepts TRAPI queries (see [TRAPI documentation](https://github.com/NCATSTranslator/ReasonerAPI/tree/master) for info on query format)
+* `/meta_knowledge_graph` (`GET`)
+   * Provides the underlying graph's meta knowledge graph, as defined by TRAPI
+* `/sri_test_triples` (`GET`)
+   * Provides example triples - one for each meta edge in the meta knowledge graph
+   * Used for testing by the Translator SRI team (and others)
+* `/get_neighbors` (`POST`)
+   * Returns neighbors of the input node(s), with optional category/predicate constraints
+   * Example query: `{"node_ids": ["CHEMBL.COMPOUND:CHEMBL112"], "categories": ["biolink:Protein"], "predicates": ["biolink:interacts_with]}`
+* `/get_edges` (`POST`)
+   * Returns any edges in the underlying graph between specified pairs of nodes
+   * Example query: `{"pairs": [["CHEMBL.COMPOUND:CHEMBL112", "NCBIGene:1555"], ["CHEMBL.COMPOUND:CHEMBL112", "UNII:FYS6T7F842"]]}`
+* `/get_logs` (`GET`)
+   * Used for debugging; returns last `N` lines of the uwsgi and Plover logs
+   * You can control `N` with the `num_lines` paramater: `/get_logs?num_lines=500`
+* `/code_version` (`GET`)
+   * Used for debugging; shows the version of code running on the Plover instance as well as the knowledge graph version(s)
+* `/healthcheck` (`GET`)
+   * Simple endpoint that can be used to check whether Plover is up and running (returns an empty string)
 
 
 
