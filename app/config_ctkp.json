@@ -19,7 +19,7 @@
   "zip": {
     "supporting_studies": {
       "properties": ["nctid", "phase", "tested", "primary_purpose", "intervention_model", "time_perspective", "overall_status",
-                        "start_date", "enrollment", "enrollment_type", "age_range", "child", "adult", "older_adult"],
+                        "start_date", "enrollment", "enrollment_type", "age_range", "child", "adult", "older_adult", "brief_title"],
       "leader": "nctid"
     }},
   "other_array_properties": ["source_record_urls"],
@@ -75,6 +75,10 @@
     "older_adult": {
       "attribute_type_id": "older_adult",
       "value_type_id": "metatype:Boolean"
+    },
+    "brief_title": {
+      "attribute_type_id": "brief_title",
+      "value_type_id": "metatype:String"
     },
     "tested_intervention": {
       "attribute_type_id": "clinical_trial_tested_intervention",
