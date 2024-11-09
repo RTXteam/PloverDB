@@ -98,6 +98,7 @@ class PloverDB:
                                             "aggregator_knowledge_source", "supporting_data_source"}
         self.kp_infores_curie = self.kg_config["kp_infores_curie"]
         self.edge_sources = self._load_edge_sources(self.kg_config)
+        self.array_delimiter = self.kg_config.get("array_delimiter", ",")
         self.query_log = []
 
     # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
@@ -811,7 +812,7 @@ class PloverDB:
     def _load_column_value(self, col_value: any, col_name: str) -> any:
         # Load lists as actual lists, instead of strings
         if col_name in self.array_properties:
-            return [self._load_value(val) for val in col_value.split(",")]
+            return [self._load_value(val) for val in col_value.split(self.array_delimiter)]
         else:
             return self._load_value(col_value)
 
