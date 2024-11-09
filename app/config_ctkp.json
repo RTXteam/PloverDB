@@ -15,6 +15,7 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
+  "array_delimiter": ",",
   "ignore_edge_properties": [],
   "zip": {
     "supporting_studies": {
