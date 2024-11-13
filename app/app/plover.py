@@ -1779,7 +1779,7 @@ class PloverDB:
         else:
             logging.debug(message)
         # Then also add it to our TRAPI log
-        log_entry = {"timestamp": datetime.now(),
+        log_entry = {"timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                      "level": level,
                      "message": message}
         if code:
