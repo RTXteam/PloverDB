@@ -19,7 +19,7 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 
 ## Table of Contents
 1. [How to run](#how-to-run)
-   1. [How to run a dev Plover](#how-to-run-a-dev-plover)
+   1. [How to run Plover locally (dev)](#how-to-run-plover-locally-dev)
    1. [How to deploy Plover](#how-to-deploy-plover)
 1. [How to test](#how-to-test)
 1. [Provided endpoints](#provided-endpoints)
@@ -84,9 +84,28 @@ After the build completes and the container finishes loading, your Plover will b
 
 See [this section](how-to-test) for details on using/testing your Plover.
 
-#### Automatic deployments
+#### Automatic deployment methods
 
-TODO - having own branch/forking, configuring with ITRB, or running remote deployment server.
+There are a couple options for automatic or semi-automatic deployment of your Plover service:
+
+**If for an ITRB deployment**, ask ITRB to set up continuous deployment for your fork/branch of the Plover repo, such that committing code to that branch (i.e., updating your config file(s))  will automatically trigger a rebuild of the ITRB application.
+
+**If for a self-hosted deployment**, you can use Plover's built-in remote deployment server. You can do this like so:
+1. On the host instance:
+    1. Add a `config_secrets.json` file in the root `PloverDB/` directory. Its contents should look something like this (where you plug in the usernames/API keys that should have deployment permissions): `{"api-keys": {"my-secret-api-key": "myusername"}}`. Note that you can make the key and username whatever you would like.
+    1. Start the rebuild server by running `fastapi run PloverDB/rebuild_main.py` (you may want to do this in a `screen` session or the like)
+1. From any machine, you can then trigger a deployment/rebuild by submitting a request to the `/rebuild` endpoint like the following, adapted for your own instance name/username/API key/branch:
+```
+curl -X 'POST' \
+   'http://multiomics.rtx.ai:8000/rebuild' \
+   -H 'accept: application/json' \
+   -H 'Content-Type: application/json' \
+   -H 'Authorization: Bearer my-secret-api-key' \
+   -d '{
+   "branch": "mybranchname"
+   }'
+```
+When processing such a request, the app pulls the latest code from whatever branch you specify and then does a fresh Docker rebuild of the main Plover service.
 
 #### How to deploy a new KP to an existing Plover
 
@@ -173,7 +192,7 @@ TODO
 
 ### Config file
 
-Can have files locally - put them in /app and just list their names in nodes/edges slots. 
+TOOD: Note that one can have nodes/edges files present only locally - put them in /app and just list their names (instead of URLs) in the nodes/edges slots. 
 
 
 
