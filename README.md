@@ -76,7 +76,7 @@ We deploy Plover on Ubuntu AWS EC2 machines; Ubuntu 22 and 18 have both been ver
 1. `cd PloverDB/`
 1. Edit the config file at `/app/config_kg2c.json` for your graph
    1. Most notably, you need to point to nodes/edges files for your graph in TSV or JSON Lines KGX format
-   1. We suggest also changing the name of this file for your KP (e.g., `config_mykp.json`); the default template is for RTX-KG2c
+   1. We suggest also **changing the name of this file** for your KP (e.g., `config_mykp.json`); just ensure that the file name starts with `config` and ends with `.json`
    1. More info on the config file contents is provided in [this section](#config-file)
 1. Run `bash -x run.sh`
 
