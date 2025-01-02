@@ -21,6 +21,7 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 1. [How to run](#how-to-run)
    1. [How to run Plover locally (dev)](#how-to-run-plover-locally-dev)
    1. [How to deploy Plover](#how-to-deploy-plover)
+   1. [Memory and space requirements](#memory-and-space-requirements)
 1. [How to test](#how-to-test)
 1. [Provided endpoints](#provided-endpoints)
 1. [Input files](#input-files)
@@ -34,7 +35,7 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 
 **First**, you need to **install Docker** if you don't already have it.
 * For Ubuntu 20.04, try `sudo apt-get install -y docker.io`
-* For Mac, `brew install --cask docker` worked for me with macOS Big Sur
+* For Mac, try `brew install --cask docker`
 
 ### How to run Plover locally (dev)
 
@@ -53,32 +54,34 @@ See [this section](how-to-test) for details on using/testing your Plover.
 
 ### How to deploy Plover
 
-_NOTE: This section provides generalized info about deploying Plover; for deployment info specific to the RTX/ARAX/KG2 team, see the [this page](https://github.com/RTXteam/PloverDB/wiki/Deployment-how-tos) in the Plover wiki._
+_NOTE: For more deployment info specific to the RTX-KG2/ARAX team, see the [this page](https://github.com/RTXteam/PloverDB/wiki/Deployment-how-tos) in the Plover wiki._
 
-We deploy Plover on Ubuntu AWS EC2 machines; Ubuntu 22 and 18 have both been verified to work. The size/type of instance you'll need will depend on the size/contents of your graph (the RTX-KG2c knowledge graph has ~7 million nodes and ~30 million edges and requires a 128GiB RAM instance; we use an `r5a.4xlarge`).
+Because Plover is Dockerized, it can be run on any machine with Docker installed.
+
+The amount of memory and disk space your host instance will need depends on the size/contents of your graph. See [this section](memory-and-space-requirements) for more info on the memory/space requirements.
 
 #### Steps to be done once, at initial setup for a new instance:
 
-1. Make sure ports `9990`, `80`, and `443` are open
-1. Install SSL certificates and set them up for auto-renewal:
+1. Make sure ports `9990`, `80`, and `443` on the host instance are open
+1. Install SSL certificates on the host instance and set them up for auto-renewal:
    1. `sudo snap install --classic certbot`
    1. `sudo ln -s /snap/bin/certbot /usr/bin/certbot`
    1. `sudo certbot certonly --standalone`
       1. Enter your instance's domain name (e.g., `multiomics.rtx.ai`) as the domain to be certified. You can optionally also list any `CNAME`s for the instance separated by commas (e.g., `multiomics.rtx.ai,ctkp.rtx.ai`).
    1. Verify the autorenewal setup by doing a dry run of certificate renewal:
       1. `sudo certbot renew --dry-run`
-1. Clone/fork the PloverDB repo and `cd` into `PloverDB/`
-1. Create a `domain_name.txt` file in `/app/` (plug in your domain name in place of `multiomics.rtx.ai` - needs to be the same domain name entered in the step above when configuring certbot):
-   1. `echo "multiomics.rtx.ai" > /app/domain_name.txt`
+1. Fork the PloverDB repo
+1. Create a `domain_name.txt` file in `PloverDB/app/` like so:
+   * `echo "multiomics.rtx.ai" > PloverDB/app/domain_name.txt`
+   * (plug in your domain name in place of `multiomics.rtx.ai` - needs to be the same domain name entered in the step above when configuring certbot)
 
 #### Steps to build Plover once initial setup is complete:
 
-1. `cd PloverDB/`
-1. Edit the config file at `/app/config_kg2c.json` for your graph
+1. Edit the config file at `PloverDB/app/config_kg2c.json` for your graph
    1. Most notably, you need to point to nodes/edges files for your graph in TSV or JSON Lines KGX format
    1. We suggest also **changing the name of this file** for your KP (e.g., `config_mykp.json`); just ensure that the file name starts with `config` and ends with `.json`
    1. More info on the config file contents is provided in [this section](#config-file)
-1. Run `bash -x run.sh`
+1. Run `bash -x PloverDB/run.sh`
 
 After the build completes and the container finishes loading, your Plover will be accessible at something like https://multiomics.rtx.ai:9990 (plug in your own domain name).
 
@@ -88,11 +91,13 @@ See [this section](how-to-test) for details on using/testing your Plover.
 
 There are a couple options for automatic or semi-automatic deployment of your Plover service:
 
-**If for an ITRB deployment**, ask ITRB to set up continuous deployment for your fork/branch of the Plover repo, such that committing code to that branch (i.e., updating your config file(s))  will automatically trigger a rebuild of the ITRB application.
+_If for an NCATS Translator ITRB deployment_, ask ITRB to set up continuous deployment for your fork/branch of the Plover repo, such that committing code to that branch (i.e., updating your config file(s))  will automatically trigger a rebuild of the ITRB application.
 
-**If for a self-hosted deployment**, you can use Plover's built-in remote deployment server. You can do this like so:
+_Otherwise, for a self-hosted deployment_, you can use Plover's built-in remote deployment server. You can do this like so:
 1. On the host instance:
-    1. Add a `config_secrets.json` file in the root `PloverDB/` directory. Its contents should look something like this (where you plug in the usernames/API keys that should have deployment permissions): `{"api-keys": {"my-secret-api-key": "myusername"}}`. Note that you can make the key and username whatever you would like.
+    1. Add a `config_secrets.json` file in the root `PloverDB/` directory. Its contents should look something like this (where you plug in the usernames/API keys that should have deployment permissions):
+       1. `{"api-keys": {"my-secret-api-key": "myusername"}}`
+       2. Note that you can make the key and username whatever you would like.
     1. Start the rebuild server by running `fastapi run PloverDB/rebuild_main.py` (you may want to do this in a `screen` session or the like)
 1. From any machine, you can then trigger a deployment/rebuild by submitting a request to the `/rebuild` endpoint like the following, adapted for your own instance name/username/API key/branch:
 ```
@@ -128,6 +133,18 @@ Assuming an Ubuntu instance with Docker installed and SSL certificates already h
 sudo docker build -t ploverimage .
 sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
 ```
+
+### Memory and space requirements
+
+The amount of memory and disk space your host instance will need to run Plover depends on the size/contents of your graph(s).
+
+Memory/space consumption examples:
+| Plover deployment | Number of KGs | KG size details | Memory consumption[a] | Disk space consumption  |  Instance type used |
+|-----------------|---|-------------------------------------|----------|-----|------------------------------------------------------|
+| [RTX-KG2 KP](https://kg2cploverdb.transltr.io/kg2c)      | 1 | ~7 million nodes, ~30 million edges | 90 GiB   | 25G | AWS EC2 `r5a.4xlarge` (128 GiB RAM), 100G disk space |
+| [Multiomics KPs](https://multiomics.transltr.io)  | 4 | Combined, ~100k nodes, ~500k edges  | 2.5 GiB  | 6G  | AWS EC2 `t4g.xlarge` (16 GiB RAM), 20G disk space    |
+
+_[a]: These are approximate values when the service is at rest; this will increase somewhat under heavy usage, by up to ~10% based on our experience._
 
 
 
