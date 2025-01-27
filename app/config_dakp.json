@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_nodes_v0.3.5.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_edges_p0.3.5.tsv.gz",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_nodes_v0.3.6.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_edges_p0.3.6.tsv.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-drugapprovals",
   "endpoint_name": "dakp",
