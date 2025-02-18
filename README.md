@@ -201,11 +201,26 @@ Plover exposes all endpoints required by TRAPI, as well as a few others useful f
 
 ## Input files
 
-The only input files Plover requires are the knowledge graph (represented in KGX-style nodes/edges files) and a config file, which are detailed in the below two sections.
+The only input files Plover requires are the knowledge graph (in [Biolink KGX](https://github.com/biolink/kgx/blob/master/specification/kgx-format.md) flat-file format) and a config file, which are detailed in the below two sections.
 
 ### Nodes and edges files
 
-TODO
+Plover accepts knowledge graphs in [Biolink KGX](https://github.com/biolink/kgx/blob/master/specification/kgx-format.md) format; both [TSV](https://github.com/biolink/kgx/blob/master/specification/kgx-format.md#kgx-format-as-tsv) and [JSON Lines](https://github.com/biolink/kgx/blob/master/specification/kgx-format.md#kgx-format-as-json-lines) format are supported. Once your graph is in this format, you have two choices as for how to give Plover access to your graph:
+
+1. **Publicly-accessible URL (recommended)**: Simply host your graph's nodes and edges files in any publicly accessible web location; this could be a public AWS S3 bucket, a location on an existing server, or really just anywhere the graph can be freely downloaded from. You then provide the URLs to your nodes and edges files in the `nodes_file` and `edges_file` slots in Plover's [config file](#config-file). 
+
+2. **Local copy**: Put copies of your graph's nodes and edges files in the `PloverDB/app/` directory on your host machine, and then specify those files' names (not paths) in the `nodes_file` and `edges_file` slots in Plover's [config file](#config-file). This can be useful for dev work, but note that Plover's [remote deployment mechanism](automatic-deployment-methods) is **not** compatible with this option.
+
+The 'core' properties that Plover expects every node and edge to have are listed below; you may include any additional properties on nodes/edges as well, which Plover will load into TRAPI attributes.
+
+* Core node properties: `id`, `category` (`name` is encouraged, but not required)
+* Core edge properties: `subject`, `object`, `predicate`, `primary_knowledge_source`
+
+Some notes:
+* **File names**: You may name your nodes/edges files whatever you like, though we suggest including some sort of graph version number in their names.
+* **Array delimiter**: For array fields (only applicable to TSV-formatted graphs), the default delimiter is a comma (`,`), but you can change this to whatever delimiter you'd like using the `array_delimiter` slot in Plover's config file (e.g., `"array_delimiter": "|",`).
+
+
 
 ### Config file
 
