@@ -209,7 +209,7 @@ Plover accepts knowledge graphs in [Biolink KGX](https://github.com/biolink/kgx/
 
 1. **Publicly-accessible URL (recommended)**: Simply host your graph's nodes and edges files in any publicly accessible web location; this could be a public AWS S3 bucket, a location on an existing server, or really just anywhere the graph can be freely downloaded from. You then provide the URLs to your nodes and edges files in the `nodes_file` and `edges_file` slots in Plover's [config file](#config-file). 
 
-2. **Local copy**: Put copies of your graph's nodes and edges files in the `PloverDB/app/` directory on your host machine, and then specify those files' names (not paths) in the `nodes_file` and `edges_file` slots in Plover's [config file](#config-file). This can be useful for dev work, but note that Plover's [remote deployment mechanism](automatic-deployment-methods) is **not** compatible with this option.
+2. **Local copy**: Put copies of your graph's nodes and edges files in the `PloverDB/app/` directory on your host machine, and then specify those files' names (not paths) in the `nodes_file` and `edges_file` slots in Plover's [config file](#config-file). This can be useful for dev work, but note that Plover's [remote deployment mechanism](#automatic-deployment-methods) is **not** compatible with this option.
 
 The 'core' properties that Plover expects every node and edge to have are listed below; you may include any additional properties on nodes/edges as well, which Plover will load into TRAPI attributes.
 
@@ -224,7 +224,32 @@ Some notes:
 
 ### Config file
 
+Each knowledge graph that Plover hosts/serves needs its own JSON config file, such as the one [here](https://github.com/RTXteam/PloverDB/blob/main/app/config_kg2c.json) for the RTX-KG2 knowledge graph.
+
+Most importantly, you need to specify the URLs from which your Biolink KGX-formatted flat-file knowledge graph can be downloaded in the `nodes_file` and `edges_file` slots. Definitions for all config slots are included below.
+
+* `nodes_file`: A publicly accessible URL from which a Biolink KGX-compliant TSV or JSON Lines file containing all the nodes in your graph can be downloaded.
+* `edges_file`: A publicly accessible URL from which a Biolink KGX-compliant TSV or JSON Lines file containing all the edges in your graph can be downloaded.
+* `biolink_version`: The version of Biolink that your graph adheres to and that Plover should use when answering queries over your graph.
+* `kp_infores_curie`: A unique identifier (compact URI) for your knowledge provider from the [Biolink Information Resource Registry](https://github.com/biolink/information-resource-registry/blob/main/infores_catalog.yaml) (e.g., `"infores:rtx-kg2"`). This curie will be included on edges in TRAPI responses.
+* `endpoint_name`: Whatever you want to name the sub-endpoint that this KP will be accessible at (e.g., "kg2c" or "ctkp"); this is mostly relevant only if this Plover is hosting _more than one_ KP, as otherwise the one KP being hosted will be the default KP, and thus will be query-able at mydomain.com/query instead of mydomain.com/mykp/query.
+* `labels`: Specifies the names of the node and edge properties that you want Plover to treat as node and edge types when answering queries over the KP; this will typically be "predicate" for edges and "category" or "categories" for nodes (accepts either string or array values for node labels)
+* `remote_subclass_edges_file_url`: An optional property where you can specify the URL for an external file to use as a source of `subclass_of` edges, if your graph doesn't contain `subclass_of` edges itself; this file should essentially be a Biolink KGX edges file containing only `subclass_of` edges
+* `subclass_sources`: Allows you to specify which knowledge sources you want Plover to use for `subclass_of` edges (Plover will basically ignore all subclass_of edges that are _not_ from one of the knowledge sources listed here); this should be an array of infores curies.
+* `num_edges_per_answer_cutoff`: An integer representing the maximum number of edges you want Plover to ever return for a query; suggested value is something like 1,000,000. Note that when Plover imposes this cutoff, it does not do any prioritization/ranking when deciding which edges to keep - the decision is arbitrary.
+* `normalize`: A boolean value that tells Plover whether you want it to 'canonicalize' or 'synonymize' your graph; if set to true, Plover will use the SRI Node Normalizer (queried via its API) at build time to canonicalize your graph. 
+* `convert_input_ids`: A boolean value that tells Plover whether you want it to convert the identifiers used in incoming queries into their equivalent identifiers that your graph uses for those nodes; suggested to set to true.
+* `drug_chemical_conflation`: A boolean value that controls whether Plover should use the "drug_chemical_conflate" option when querying the SRI Node Normalizer API (which allows drugs and chemicals to be conflated)
+* `biolink_helper_branch`: The branch in the RTX repo that the BiolinkHelper should be downloaded from; should almost always be `"master"`.
+* `ignore_edge_properties`: An optional array of edge property names in your flat file graph that you want Plover to ignore (meaning, they should not appear in TRAPI responses)
+* `ignore_node_properties`: An optional array of node property names in your flat file graph that you want Plover to ignore (meaning, they should not appear in TRAPI responses)
+* `zip`: Relevant only to graphs that are provided in TSV format; this slot provides a way to 'zip' columns in your TSV to form nested attributes in TRAPI responses. TODO 
+* `other_array_properties`: TODO 
+* `trapi_attribute_map`: TODO
+
 TOOD: Note that one can have nodes/edges files present only locally - put them in /app and just list their names (instead of URLs) in the nodes/edges slots. 
+
+TODO: explain how sources are construted?
 
 
 
