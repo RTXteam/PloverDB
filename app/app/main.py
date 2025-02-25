@@ -111,7 +111,7 @@ def get_home_page():
         <body>
             <h2>Plover API</h2>
             <h4>Querying</h4>
-            <p>Individual TRAPI APIs for the <b>{len(plover_objs_map)} knowledge graphs</b> hosted on this Plover 
+            <p>Individual TRAPI APIs for the <b>{len(plover_objs_map)} knowledge graph(s)</b> hosted on this Plover 
             instance are available at the following sub-endpoints:
             <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
             <i>* Default KP (i.e., can be accessed via <code>/query</code> or 
