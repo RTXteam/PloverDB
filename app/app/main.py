@@ -97,7 +97,6 @@ instrument(app)
 
 @app.get("/")
 def get_home_page():
-    kp_curies = [f"{plover_obj.kp_infores_curie}" for plover_obj in plover_objs_map.values()]
     endpoints_info = [(f"<li>{plover_obj.kp_infores_curie}{'*' if plover_obj.endpoint_name == default_endpoint_name else ''}:"
                        f" <a href='/{kp_name}'>/{kp_name}</a></li>")
                       for kp_name, plover_obj in plover_objs_map.items()]
@@ -110,7 +109,7 @@ def get_home_page():
             <title>Plover API</title>
         </head>
         <body>
-            <h2>Plover API for {', '.join(kp_curies)}</h2>
+            <h2>Plover API</h2>
             <h4>Querying</h4>
             <p>Individual TRAPI APIs for each knowledge graph hosted on this Plover instance are available at 
             the following sub-endpoints:
