@@ -45,7 +45,7 @@ class PloverDB:
             self.kg_config = json.load(config_file)
         self.endpoint_name = self.kg_config["endpoint_name"]
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
-        self.home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
+        self.kp_home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
         self.indexes_dir_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}"
 
         self.is_test = self.kg_config.get("is_test")
@@ -489,13 +489,13 @@ class PloverDB:
         gc.collect()
 
         # Fill out the home page HTML template for this KP with the proper KP endpoint/infores curie
-        logging.info(f"Filling out html home template and saving to {self.home_html_path}..")
-        with open(f"{SCRIPT_DIR}/../home_template.html", "r") as template_file:
+        logging.info(f"Filling out html home template and saving to {self.kp_home_html_path}..")
+        with open(f"{SCRIPT_DIR}/../kp_home_template.html", "r") as template_file:
             html_string = template_file.read()
         revised_html = html_string.replace("{{kp_infores_curie}}",
                                            self.kp_infores_curie).replace("{{kp_endpoint_name}}",
                                                                           self.endpoint_name)
-        with open(self.home_html_path, "w+") as kp_home_file:
+        with open(self.kp_home_html_path, "w+") as kp_home_file:
             kp_home_file.write(revised_html)
 
         if not self.is_test:

@@ -95,6 +95,39 @@ def instrument(flask_app):
 instrument(app)
 
 
+@app.get("/")
+def get_home_page():
+    kp_curies = [f"{plover_obj.kp_infores_curie}" for plover_obj in plover_objs_map.values()]
+    endpoints_info = [(f"<li>{plover_obj.kp_infores_curie}{'*' if plover_obj.endpoint_name == default_endpoint_name else ''}:"
+                       f" <a href='/{kp_name}'>/{kp_name}</a></li>")
+                      for kp_name, plover_obj in plover_objs_map.items()]
+    return f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Plover API</title>
+        </head>
+        <body>
+            <h2>Plover API for {', '.join(kp_curies)}</h2>
+            <h4>Querying</h4>
+            <p>Individual TRAPI APIs for each knowledge graph hosted on this Plover instance are available at 
+            the following sub-endpoints:
+            <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
+            <i>* Default KP (i.e., can be accessed via <code>/query</code> or <code>/{default_endpoint_name}/query</code>)</i></p>
+            <h4>Other endpoints</h4>
+            <p>Instance-level (as opposed to KP-level) endpoints helpful in debugging include:
+                <ul>
+                    <li><a href="/get_logs">/get_logs</a> (GET)</li>
+                    <li><a href="/code_version">/code_version</a> (GET)</li>
+                </ul>
+            </p>
+        </body>
+        </html>
+    """
+
+
 @app.post("/<kp_endpoint_name>/query")
 @app.post("/query")
 def run_query(kp_endpoint_name: str = default_endpoint_name):
@@ -202,9 +235,9 @@ def run_get_logs():
 
 
 @app.get("/<kp_endpoint_name>")
-def get_home_page(kp_endpoint_name: str):
+def get_kp_home_page(kp_endpoint_name: str):
     if kp_endpoint_name in plover_objs_map:
         logging.info(f"{kp_endpoint_name}: Going to homepage.")
-        return send_file(plover_objs_map[kp_endpoint_name].home_html_path, as_attachment=False)
+        return send_file(plover_objs_map[kp_endpoint_name].kp_home_html_path, as_attachment=False)
     else:
         flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
