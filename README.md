@@ -11,7 +11,7 @@ Plover accepts TRAPI query graphs at its `/query` endpoint, which include:
 
 The knowledge graph to be hosted needs to be in a Biolink-compliant, KGX-style format with separate nodes and edges files; both **TSV** and **JSON Lines** formats are supported. See [this section](#nodes-and-edges-files) for more info.
 
-You must provide **URLs** from which the **nodes/edges files** can be downloaded in a **config JSON file** in `PloverDB/app/` (e.g., `config_kg2c.json`). The config file includes a number of settings that can be customized and also defines the way in which node/edge properties should be loaded into **TRAPI attributes**. See [this section](#config-file) for more info.
+You must provide **URLs** from which the **nodes/edges files** can be downloaded in a **config JSON file** in `PloverDB/app/` (e.g., `config.json`). The config file includes a number of settings that can be customized and also defines the way in which node/edge properties should be loaded into **TRAPI attributes**. See [this section](#config-file) for more info.
 
 Note that a single Plover app can host/serve **multiple KPs** - each KP is exposed at its own endpoint (e.g., `/ctkp`, `/dakp`). See [this section](#how-to-deploy-a-new-kp-to-an-existing-plover) for more info.
 
@@ -42,13 +42,11 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 To run Plover locally for development:
 
 1. Clone/fork this repo and navigate into it (`cd PloverDB/`)
-1. Edit the config file at `/app/config_kg2c.json` for your particular graph (more info in [this section](#config-file))
+1. Edit the config file at `/app/config.json` for your particular graph (more info in [this section](#config-file))
 1. Run the following command:
-    * `bash -x run.sh -s true`
+    * `bash -x run.sh`
 
-This will build a Plover Docker image and run a container off of it, publishing it at port 9990 (`http://localhost:9990`). The `-s true` parameter tells Plover to skip configuring SSL certificates.
-
-Note that by default, this script will use the `sudo docker` command; use the optional `-d` parameter to specify a different docker command (e.g., `bash -x run.sh -s true -d docker` if the docker command you use on your machine is `docker` instead of `sudo docker`).
+This will build a Plover Docker image and run a container off of it, publishing it at port 9990 (`http://localhost:9990`).
 
 See [this section](how-to-test) for details on using/testing your Plover.
 
@@ -60,7 +58,7 @@ Because Plover is Dockerized, it can be run on any machine with Docker installed
 
 The amount of memory and disk space your host instance will need depends on the size/contents of your graph. See [this section](memory-and-space-requirements) for more info on the memory/space requirements.
 
-#### Steps to be done once, at initial setup for a new instance:
+#### Steps to be done once, at initial setup for a new instance: {#initial-setup}
 
 1. Make sure ports `9990`, `80`, and `443` on the host instance are open
 1. Install SSL certificates on the host instance and set them up for auto-renewal:
@@ -77,7 +75,7 @@ The amount of memory and disk space your host instance will need depends on the 
 
 #### Steps to build Plover once initial setup is complete:
 
-1. Edit the config file at `PloverDB/app/config_kg2c.json` for your graph
+1. Edit the config file at `PloverDB/app/config.json` for your graph
    1. Most notably, you need to point to nodes/edges files for your graph in TSV or JSON Lines KGX format
    1. We suggest also **changing the name of this file** for your KP (e.g., `config_mykp.json`); just ensure that the file name starts with `config` and ends with `.json`
    1. More info on the config file contents is provided in [this section](#config-file)
@@ -150,22 +148,29 @@ _[a]: These are approximate values when the service is at rest; this will increa
 
 ## How to test
 
-To quickly verify that your Plover service is working, you can check a few endpoints (**plug in your domain name** in place of `kg2cplover.rtx.ai`):
-   1. Navigate to https://kg2cplover.rtx.ai:9990/code_version in your browser; it should display information about the build
-   2. Naviagte to https://kg2cplover.rtx.ai:9990/get_logs in your browser; it should display log messages from Plover and uwsgi
-   3. Navigate to https://kg2cplover.rtx.ai:9990/meta_knowledge_graph in your browser; it should display the TRAPI meta knowledge graph for your graph
-   4. Navigate to https://kg2cplover.rtx.ai:9990/sri_test_triples in your browser; it should display SRI test triples for your graph
+To quickly verify that your Plover service is working, you can check a few endpoints. For all of these examples, the **base URL** for your service will be either:
+1. http://localhost:9990 if you are running Plover locally, or 
+2. something like https://multiomics.rtx.ai:9990 if you have deployed Plover somewhere (**plug in your domain name** in place of `multiomics.rtx.ai`)
 
-You should be able to send your Plover TRAPI query POST requests at port 9990; the URL for this would look something like: `https://yourinstance.rtx.ai:9990/query`. Or, if you are just using Plover locally: `http://localhost:9990/query`. As an example:
+Using the proper base URL, check the following endpoints (either by viewing them in your browser or accessing them programmatically):
+
+| Endpoint                | Request Type | Description                                                    |
+|-------------------------|-------------|----------------------------------------------------------------|
+| `/code_version`         | `GET`       | Displays version information for all KGs hosted on this Plover |
+| `/get_logs`             | `GET`       | Shows log messages from Plover and uWSGI                       |
+| `/meta_knowledge_graph` | `GET`      | Displays the TRAPI meta KG for the default KG on this Plover   |
+| `/sri_test_triples`     | `GET`       | Displays test triples for the default KG on this Plover        |
+
+You should also be able to **send TRAPI query POST requests** to your Plover at the `/query` endpoint. As an example:
 ```
-curl -X 'POST' 'https://kg2cplover.rtx.ai:9990/query' -H 'Content-Type: application/json' -d '{"message":{"query_graph":{"edges":{"e00":{"subject":"n00","object":"n01"}},"nodes":{"n00":{"ids":["CHEMBL.COMPOUND:CHEMBL112"]},"n01":{}}}}}'
+curl -X 'POST' 'https://multiomics.rtx.ai:9990/query' -H 'Content-Type: application/json' -d '{"message":{"query_graph":{"edges":{"e00":{"subject":"n00","object":"n01"}},"nodes":{"n00":{"ids":["CHEMBL.COMPOUND:CHEMBL112"]},"n01":{}}}}}'
 ```
-Note that if you are hosting multiple KPs on this Plover, the URLs for their individual `/query` endpoints would look something like this:
+Note that if you are hosting _multiple KPs_ on this Plover (say, two KPs, with `endpoint_name`s of `ctkp` and `dakp`), the URLs for their individual `/query` endpoints would look something like this:
 ```
 https://multiomics.rtx.ai:9990/ctkp/query
 https://multiomics.rtx.ai:9990/dakp/query
 ```
-And similarly, as an example, other KP-specific endpoints for the `ctkp` KP would look like so:
+And similarly, other KP-specific endpoints for the `ctkp` KP in our example would look something like this:
 ```
 https://multiomics.rtx.ai:9990/ctkp/meta_knowledge_graph
 https://multiomics.rtx.ai:9990/ctkp/sri_test_triples
@@ -175,27 +180,26 @@ https://multiomics.rtx.ai:9990/ctkp/sri_test_triples
 
 ## Provided endpoints
 
-Plover exposes all endpoints required by TRAPI, as well as a few others useful for debugging/specialized queries:
-* `/query` (`POST`)
-   * Accepts TRAPI queries (see [TRAPI documentation](https://github.com/NCATSTranslator/ReasonerAPI/tree/master) for info on query format)
-* `/meta_knowledge_graph` (`GET`)
-   * Provides the underlying graph's meta knowledge graph, as defined by TRAPI
-* `/sri_test_triples` (`GET`)
-   * Provides example triples - one for each meta edge in the meta knowledge graph
-   * Used for testing by the Translator SRI team (and others)
-* `/get_neighbors` (`POST`)
-   * Returns neighbors of the input node(s), with optional category/predicate constraints
-   * Example query: `{"node_ids": ["CHEMBL.COMPOUND:CHEMBL112"], "categories": ["biolink:Protein"], "predicates": ["biolink:interacts_with]}`
-* `/get_edges` (`POST`)
-   * Returns any edges in the underlying graph between specified pairs of nodes
-   * Example query: `{"pairs": [["CHEMBL.COMPOUND:CHEMBL112", "NCBIGene:1555"], ["CHEMBL.COMPOUND:CHEMBL112", "UNII:FYS6T7F842"]]}`
-* `/get_logs` (`GET`)
-   * Used for debugging; returns last `N` lines of the uwsgi and Plover logs
-   * You can control `N` with the `num_lines` paramater: `/get_logs?num_lines=500`
-* `/code_version` (`GET`)
-   * Used for debugging; shows the version of code running on the Plover instance as well as the knowledge graph version(s)
-* `/healthcheck` (`GET`)
-   * Simple endpoint that can be used to check whether Plover is up and running (returns an empty string)
+Plover exposes all endpoints required by TRAPI, as well as a few others useful for debugging/specialized queries. All endpoints are documented in the below table.
+
+NOTE: In the below table, `<kp_endpoint_name>` indicates a wildcard of sorts where you plug in the `endpoint_name` of the KP on that Plover instance that you want to query (where its `endpoint_name` is specified in its [config.json](#config-file) file). If you omit the `<kp_endpoint_name>`, the default KP on that Plover instance will be queried (useful if you are hosting only one KP on your Plover).
+
+| Endpoint                                                                         | Endpoint Type | Request Type | Description                                                                                        | Example Queries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|----------------------------------------------------------------------------------|---------------|--------------|----------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.`/query`, or <br/> 2.`/<kp_endpoint_name>/query`                               | [TRAPI](https://github.com/NCATSTranslator/ReasonerAPI/tree/master)         | POST         | Runs a TRAPI query on 1) the default KP or 2) the specified KP.                                    | `curl -X 'POST' 'https://multiomics.rtx.ai:9990/query' -H 'Content-Type: application/json' -d '{"message":{"query_graph":{"edges":{"e00":{"subject":"n00","object":"n01"}},"nodes":{"n00":{"ids":["CHEMBL.COMPOUND:CHEMBL112"]},"n01":{}}}}}'` <br/> <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/dakp/query' -H 'Content-Type: application/json' -d '{"message":{"query_graph":{"edges":{"e00":{"subject":"n00","object":"n01"}},"nodes":{"n00":{"ids":["CHEMBL.COMPOUND:CHEMBL112"]},"n01":{}}}}}'`                                            |
+| 1.`/meta_knowledge_graph`, or <br/> 2.`/<kp_endpoint_name>/meta_knowledge_graph` | [TRAPI](https://github.com/NCATSTranslator/ReasonerAPI/tree/master)         | GET          | Retrieves the TRAPI meta knowledge graph for 1) the default KP or 2) the specified KP.             | `curl -X 'GET' 'https://multiomics.rtx.ai:9990/meta_knowledge_graph'` <br/> <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/dakp/meta_knowledge_graph'`                                                                                                                                                                                                                                                                                                                                                                                              |
+| 1.`/sri_test_triples`, or 2.`/<kp_endpoint_name>/sri_test_triples`               | Standard      | GET          | Returns test triples for the specified endpoint (one example triple for every meta-edge).          | `curl -X 'GET' 'https://multiomics.rtx.ai:9990/sri_test_triples'` <br/> <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/dakp/sri_test_triples'`                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 1.`/get_edges`, or 2.`/<kp_endpoint_name>/get_edges`                             | Custom        | POST         | Retrieves edges between specified node pairs.                                                      | `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_edges' -H 'Content-Type: application/json' -d '{"pairs":[["MONDO:0005159", "CHEBI:6427"], ["CHEBI:18332", "MONDO:0005420"]]}'` <br/> <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/dakp/get_edges' -H 'Content-Type: application/json' -d '{"pairs":[["MONDO:0005159", "CHEBI:6427"], ["CHEBI:18332", "MONDO:0005420"]]}'`                                                                                                                                                                    |
+| 1.`/get_neighbors`, or 2.`/<kp_endpoint_name>/get_neighbors`                                   | Custom        | POST         | Retrieves neighbors for the specified nodes, with optional filtering by categories and predicates. | `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"]}'` <br/> <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/dakp/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"]}'` <br/> <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"],"categories":["biolink:Disease"],"predicates":["biolink:treats"]}'` |
+| `/healthcheck`                                                                   | Custom        | GET          | Simple health check endpoint to verify server is running (returns an empty string).                | `curl -X 'GET' 'https://multiomics.rtx.ai:9990/healthcheck'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `/code_version`                                                                  | Custom        | GET          | Retrieves the current code and knowledge graph versions running on the Plover instance.            | https://multiomics.rtx.ai:9990/code_version <br/> <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/code_version'`                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `/get_logs`                                                                      | Custom        | GET          | Retrieves recent log entries from both Plover and uWSGI logs.                                      | https://multiomics.rtx.ai:9990/get_logs <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs'` <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs?num_lines=20'`                                                                                                                                                                                                                                                                                                                                                            |
+| `/`                                                                              | Custom        | GET          | Home page for the API, listing available sub-endpoints and additional instance-level endpoints.    | https://multiomics.rtx.ai:9990                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `/<kp_endpoint_name>`                                                            | Custom        | GET          | Home page for the specific knowledge graph endpoint.                                               | https://multiomics.rtx.ai:9990/dakp <br/> <br/> https://multiomics.rtx.ai:9990/ctkp                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+
+
+
 
 
 
@@ -224,7 +228,7 @@ Some notes:
 
 ### Config file
 
-Each knowledge graph that Plover hosts/serves needs its own JSON config file, such as the one [here](https://github.com/RTXteam/PloverDB/blob/main/app/config_kg2c.json) for the RTX-KG2 knowledge graph.
+Each knowledge graph that Plover hosts/serves needs its own JSON config file, such as the one [here](https://github.com/RTXteam/PloverDB/blob/main/app/config.json) for the RTX-KG2 knowledge graph.
 
 Most importantly, you need to specify the URLs from which your Biolink KGX-formatted flat-file knowledge graph can be downloaded in the `nodes_file` and `edges_file` slots. Definitions for all config slots are included below.
 
