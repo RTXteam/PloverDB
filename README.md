@@ -83,7 +83,7 @@ The amount of memory and disk space your host instance will need depends on the 
 
 After the build completes and the container finishes loading, your Plover will be accessible at something like https://multiomics.rtx.ai:9990 (plug in your own domain name).
 
-See [this section](how-to-test) for details on using/testing your Plover.
+See [this section](#how-to-test) for details on using/testing your Plover.
 
 #### Automatic deployment methods
 
