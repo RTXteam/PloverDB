@@ -48,7 +48,7 @@ To run Plover locally for development:
 
 This will build a Plover Docker image and run a container off of it, publishing it at port 9990 (`http://localhost:9990`).
 
-See [this section](how-to-test) for details on using/testing your Plover.
+See [this section](#how-to-test) for details on using/testing your Plover.
 
 ### How to deploy Plover
 
@@ -56,7 +56,7 @@ _NOTE: For more deployment info specific to the RTX-KG2/ARAX team, see the [this
 
 Because Plover is Dockerized, it can be run on any machine with Docker installed.
 
-The amount of memory and disk space your host instance will need depends on the size/contents of your graph. See [this section](memory-and-space-requirements) for more info on the memory/space requirements.
+The amount of memory and disk space your host instance will need depends on the size/contents of your graph. See [this section](#memory-and-space-requirements) for more info on the memory/space requirements.
 
 #### Steps to be done once, at initial setup for a new instance: {#initial-setup}
 
