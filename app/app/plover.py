@@ -55,7 +55,7 @@ class PloverDB:
         if "description" not in self.trapi_attribute_map:
             self.trapi_attribute_map["description"] = {"attribute_type_id": "biolink:description",
                                                        "value_type_id": "metatype:String"}
-        self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
+        self.num_edges_per_answer_cutoff = self.kg_config.get("num_edges_per_answer_cutoff", 1000000)
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.array_properties = {property_name for zip_info in self.kg_config.get("zip", dict()).values()
@@ -66,7 +66,7 @@ class PloverDB:
         self.qedge_qualified_predicate_property = f"biolink:{self.graph_qualified_predicate_property}"
         self.qedge_object_direction_property = f"biolink:{self.graph_object_direction_property}"
         self.qedge_object_aspect_property = f"biolink:{self.graph_object_aspect_property}"
-        self.bh_branch = self.kg_config["biolink_helper_branch"]  # The RTX branch to download BiolinkHelper from
+        self.bh_branch = self.kg_config.get("biolink_helper_branch", "master")  # The RTX branch to download BiolinkHelper from
         self.bh = None  # BiolinkHelper is downloaded later on
         self.non_biolink_item_id = 9999
         self.category_map = dict()  # Maps category english name --> int ID
