@@ -1,6 +1,6 @@
 # PloverDB
 
-Plover is an **in-memory** Python-based platform for hosting/serving [Biolink](https://github.com/biolink/biolink-model)-compliant knowledge graphs as **[TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) APIs**.
+Plover is a fully **in-memory** Python-based platform for hosting/serving [Biolink](https://github.com/biolink/biolink-model)-compliant knowledge graphs as **[TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) APIs**.
 
 In answering queries, Plover abides by all **[Translator Knowledge Provider reasoning requirements](https://github.com/NCATSTranslator/TranslatorEngineering?tab=readme-ov-file#architecture-principles)**; it also can normalize the underlying graph and convert query node IDs to the proper equivalent identifiers for the given knowledge graph. 
 
@@ -11,9 +11,9 @@ Plover accepts [TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) query gra
 
 The knowledge graph to be hosted needs to be in a [Biolink](https://github.com/biolink/biolink-model)-compliant, [KGX-style format](https://github.com/biolink/kgx/blob/master/specification/kgx-format.md) with separate nodes and edges files; both **TSV** and **JSON Lines** formats are supported. See [this section](#nodes-and-edges-files) for more info.
 
-You must provide **URLs** from which the **nodes/edges files** can be downloaded in a **config JSON file** in `PloverDB/app/` (e.g., `config.json`). The config file includes a number of settings that can be customized and also defines the way in which node/edge properties should be loaded into **[TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) Attributes**. See [this section](#config-file) for more info.
+You must provide publicly accessible **URLs** from which the **nodes/edges files** can be downloaded in a **config JSON file** in `PloverDB/app/` (e.g., `config.json`), or you can provide your graph files locally (see [this section](#nodes-and-edges-files) for more info). The config file includes a number of settings that can be customized and also defines the way in which node/edge properties should be loaded into **[TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) Attributes**. See [this section](#config-file) for more info.
 
-Note that a single Plover app can host/serve **multiple KPs** - each KP is exposed at its own endpoint (e.g., `/ctkp`, `/dakp`). See [this section](#how-to-deploy-a-new-kp-to-an-existing-plover) for more info.
+Note that a single Plover app can host/serve **multiple KPs** - each KP is exposed at its own endpoint (e.g., `/ctkp`, `/dakp`), and has its own Plover config file. See [this section](#how-to-deploy-a-new-kp-to-an-existing-plover) for more info.
 
 
 
@@ -41,7 +41,7 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 To run Plover locally for development:
 
 1. Clone/fork this repo and navigate into it (`cd PloverDB/`)
-1. Edit the config file at `/app/config.json` for your particular graph (more info in [this section](#config-file))
+1. Edit the config file at `/app/config.json` for your particular graph (more info in [this section](#input-files))
 1. Run the following command:
     * `bash -x run.sh`
 
