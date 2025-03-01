@@ -8,7 +8,6 @@
     "edges": "predicate",
     "nodes": "all_categories"
   },
-  "remote_subclass_edges_file_url": null,
   "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:uberon"],
   "num_edges_per_answer_cutoff": 1000000,
   "normalize": false,
@@ -17,27 +16,7 @@
   "biolink_helper_branch": "master",
   "ignore_edge_properties": ["domain_range_exclusion"],
   "ignore_node_properties": ["category"],
-  "zip": {},
-  "other_array_properties": [],
   "trapi_attribute_map": {
-    "knowledge_level": {
-      "attribute_type_id": "biolink:knowledge_level",
-      "attribute_source": "{kp_infores_curie}"
-    },
-    "agent_type": {
-      "attribute_type_id": "biolink:agent_type",
-      "attribute_source": "{kp_infores_curie}"
-    },
-    "iri": {
-      "attribute_type_id": "biolink:IriType",
-      "value_type_id": "metatype:Uri",
-      "attribute_source": "{kp_infores_curie}"
-    },
-    "description": {
-      "attribute_type_id": "biolink:description",
-      "value_type_id": "metatype:String",
-      "attribute_source": "{kp_infores_curie}"
-    },
     "all_categories": {
       "attribute_type_id": "biolink:category",
       "value_type_id": "metatype:Uriorcurie",
@@ -50,27 +29,11 @@
       "description": "Names of all nodes in this synonym set in RTX-KG2.",
       "attribute_source": "{kp_infores_curie}"
     },
-    "equivalent_curies": {
-      "attribute_type_id": "biolink:xref",
-      "value_type_id": "metatype:Nodeidentifier",
-      "description": "Identifiers of all nodes in this synonym set in RTX-KG2.",
-      "attribute_source": "{kp_infores_curie}"
-    },
-    "publications": {
-      "attribute_type_id": "biolink:publications",
-      "value_type_id": "biolink:Uriorcurie",
-      "attribute_source": "{kp_infores_curie}"
-    },
     "kg2_ids": {
       "attribute_type_id": "biolink:original_predicate",
       "value_type_id": "metatype:String",
       "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping.",
       "attribute_source": "{kp_infores_curie}"
-    },
-    "publications_info": {
-      "attribute_type_id": "bts:sentence",
-      "attribute_source": "{kp_infores_curie}"
     }
-  },
-  "sources_template": {}
+  }
 }

@@ -50,11 +50,7 @@ class PloverDB:
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
-        self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
-        # Ensure an attribute shell exists for node descriptions (needed for Plover build node)
-        if "description" not in self.trapi_attribute_map:
-            self.trapi_attribute_map["description"] = {"attribute_type_id": "biolink:description",
-                                                       "value_type_id": "metatype:String"}
+        self.trapi_attribute_map = self.load_trapi_attribute_map()
         self.num_edges_per_answer_cutoff = self.kg_config.get("num_edges_per_answer_cutoff", 1000000)
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
@@ -533,6 +529,27 @@ class PloverDB:
         self.bh = BiolinkHelper(biolink_version=self.biolink_version)
 
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
+
+    def load_trapi_attribute_map(self) -> dict[str, any]:
+        # First load the default TRAPI attributes template into map form
+        with open(f"{SCRIPT_DIR}/../trapi_attribute_template.json", "r") as attribute_template_file:
+            attribute_templates = json.load(attribute_template_file)
+        trapi_attribute_map = dict()
+        for item in attribute_templates:
+            for property_name in item["property_names"]:
+                if property_name in trapi_attribute_map:
+                    logging.error(f"More than one item in trapi_attribute_template.json uses the same "
+                                  f"property_name: '{property_name}'! Not allowed.")
+                    raise ValueError()
+                else:
+                    trapi_attribute_map[property_name] = item["attribute_shell"]
+
+        # Then override defaults with any attribute shells provided in the config file
+        if self.kg_config.get("trapi_attribute_map"):
+            logging.info(f"Updating default TRAPI attribute map with config file TRAPI attribute map")
+            trapi_attribute_map.update(self.kg_config["trapi_attribute_map"])
+
+        return trapi_attribute_map
 
     @staticmethod
     def _load_pickle_file(file_path: str) -> any:
