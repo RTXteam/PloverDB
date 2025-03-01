@@ -21,7 +21,7 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 1. [How to run](#how-to-run)
    1. [How to run Plover locally (dev)](#how-to-run-plover-locally-dev)
    1. [How to deploy Plover](#how-to-deploy-plover)
-   1. [Memory and space requirements](#memory-and-space-requirements)
+   1. [Memory and space requirements](#space-and-time-requirements)
 1. [How to test](#how-to-test)
 1. [Provided endpoints](#provided-endpoints)
 1. [Input files](#input-files)
@@ -55,7 +55,7 @@ _NOTE: For more deployment info specific to the RTX-KG2/ARAX team, see the [this
 
 Because Plover is Dockerized, it can be run on any machine with Docker installed. Our deployment instructions below assume you're using a **Linux** host machine.
 
-The amount of memory and disk space your host instance will need depends on the size/contents of your graph. See [this section](#memory-and-space-requirements) for more info on the memory/space requirements.
+The amount of memory and disk space your host instance will need depends on the size/contents of your graph. See [this section](#space-and-time-requirements) for more info on the memory/space requirements.
 
 #### Steps to be done once, at initial setup for a new instance:
 
@@ -132,17 +132,17 @@ sudo docker build -t ploverimage .
 sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
 ```
 
-### Memory and space requirements
+### Space and time requirements
 
-The amount of memory and disk space your host instance will need to run Plover depends on the size/contents of your graph(s).
+The amount of memory and disk space your host instance will need to run Plover and Plover's build time depend on the size/contents of your graph(s).
 
-Memory/space consumption examples:
-Memory/space consumption examples:
+Some example graphs and their time/space usage are provided in the below table.
 
-| Plover deployment                                     | Number of KGs | KG size details                           | Memory consumption[a] | Disk space consumption | Instance type used                                    |
-|-------------------------------------------------------|---------------|-------------------------------------------|------------------------|------------------------|-------------------------------------------------------|
-| [RTX-KG2 KP](https://kg2cploverdb.ci.transltr.io) | 1             | ~7 million nodes, ~30 million edges       | 90 GiB                | 25G                    | AWS EC2 `r5a.4xlarge` (128 GiB RAM), 100GB disk space |
-| [Multiomics KPs](https://multiomics.rtx.ai:9990)      | 4             | Combined, ~100k nodes, ~500k edges        | 2.5 GiB               | 6G                     | AWS EC2 `t4g.xlarge` (16 GiB RAM), 20GB disk space    |
+| Plover deployment                                     | Number of KGs | KG size details                           | Memory consumption[a] | Disk space consumption | Instance type used                                    | Build time |
+|-------------------------------------------------------|---------------|-------------------------------------------|------------------------|------------------------|-------------------------------------------------------|------------|
+| [RTX-KG2 KP](https://kg2cploverdb.ci.transltr.io) | 1             | ~7 million nodes, ~30 million edges       | 90 GiB                | 25G                    | AWS EC2 `r5a.4xlarge` (128 GiB RAM), 100GB disk space | ~1 hour    |
+| [Multiomics KPs](https://multiomics.rtx.ai:9990)      | 4             | Combined, ~100k nodes, ~500k edges        | 2.5 GiB               | 6G                     | AWS EC2 `t4g.xlarge` (16 GiB RAM), 20GB disk space    | ~5 minutes |
+
 
 
 _[a]: These are approximate values when the service is at rest; this will increase somewhat under heavy usage, by up to ~10% based on our experience._
