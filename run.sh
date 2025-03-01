@@ -10,12 +10,17 @@ set -e  # Stop on error
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # Specify default values for optional parameters
-docker_command="sudo docker"
-skip_ssl=false
+skip_ssl="false"
 branch=""
 host_port="9990"
 image_name=ploverimage
 container_name=plovercontainer
+# Auto-detect if "docker" can run without sudo
+if docker info &>/dev/null; then
+  docker_command="docker"
+else
+  docker_command="sudo docker"
+fi
 
 # Override defaults with values from any optional parameters provided
 while getopts "i:c:d:b:s:p:" flag; do
@@ -31,17 +36,25 @@ done
 
 # Check out the requested branch, if one was given
 cd ${SCRIPT_DIR}
-if [ ${branch} ]
-then
+if [ ${branch} ]; then
   git fetch
   git checkout ${branch}
   git pull origin ${branch}
 fi
 
-# Set up nginx conf as appropriate, if want to use ssl/HTTPS
-if [ ${skip_ssl} != "true" ]
-then
-  domain_name=$(head -n 1 ${SCRIPT_DIR}/app/domain_name.txt)
+# Determine whether we have a local domain name file
+if [[ -f "${SCRIPT_DIR}/app/domain_name.txt" ]]; then
+    domain_name_file_exists=1
+    domain_name=$(head -n 1 "${SCRIPT_DIR}/app/domain_name.txt")
+else
+    domain_name_file_exists=0
+    if [ "$skip_ssl" != "true" ]; then
+      echo "Will not configure SSL certs because local domain_name.txt file does not exist."
+    fi
+fi
+
+# Set up nginx config as appropriate, if want to use ssl/HTTPS
+if [[ ${domain_name_file_exists} -eq 1 && ${skip_ssl} != "true" ]]; then
   cp ${SCRIPT_DIR}/app/nginx_ssl_template.conf ${SCRIPT_DIR}/app/nginx.conf
   # Plug the proper domain name into the nginx config file
   sed -i -e "s/{{domain_name}}/${domain_name}/g" ${SCRIPT_DIR}/app/nginx.conf
@@ -58,10 +71,8 @@ ${docker_command} build -t ${image_name} .
 set +e  # Don't stop on error
 ${docker_command} stop ${container_name}
 ${docker_command} rm ${container_name}
-for container_id in $(${docker_command} ps -q)
-do
-  if [[ $(${docker_command} port "${container_id}") == *"${host_port}"* ]]
-  then
+for container_id in $(${docker_command} ps -q); do
+  if [[ $(${docker_command} port "${container_id}") == *"${host_port}"* ]]; then
     echo "Stopping container ${container_id} that was running at port ${host_port}"
     ${docker_command} stop "${container_id}"
     ${docker_command} rm "${container_id}"
@@ -70,12 +81,10 @@ done
 set -e  # Stop on error
 
 # Run the docker container
-if [ ${skip_ssl} == "true" ]
-then
-  # Skip configuring SSL certs if those aren't wanted
+if [[ ${skip_ssl} == "true" || ${domain_name_file_exists} -eq 0 ]]; then
+  # Skip configuring SSL certs
   ${docker_command} run -d --name ${container_name} -p ${host_port}:80 ${image_name}
 else
-  domain_name=$(head -n 1 ${SCRIPT_DIR}/app/domain_name.txt)
   # Ensure our SSL cert is current and load it into the container (on run)
   sudo certbot renew
   cert_file_path=/etc/letsencrypt/live/${domain_name}/fullchain.pem

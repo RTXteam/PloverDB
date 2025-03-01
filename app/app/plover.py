@@ -45,17 +45,13 @@ class PloverDB:
             self.kg_config = json.load(config_file)
         self.endpoint_name = self.kg_config["endpoint_name"]
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
-        self.home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
+        self.kp_home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
         self.indexes_dir_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}"
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
-        self.trapi_attribute_map = self.kg_config["trapi_attribute_map"]
-        # Ensure an attribute shell exists for node descriptions (needed for Plover build node)
-        if "description" not in self.trapi_attribute_map:
-            self.trapi_attribute_map["description"] = {"attribute_type_id": "biolink:description",
-                                                       "value_type_id": "metatype:String"}
-        self.num_edges_per_answer_cutoff = self.kg_config["num_edges_per_answer_cutoff"]
+        self.trapi_attribute_map = self.load_trapi_attribute_map()
+        self.num_edges_per_answer_cutoff = self.kg_config.get("num_edges_per_answer_cutoff", 1000000)
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.array_properties = {property_name for zip_info in self.kg_config.get("zip", dict()).values()
@@ -66,7 +62,7 @@ class PloverDB:
         self.qedge_qualified_predicate_property = f"biolink:{self.graph_qualified_predicate_property}"
         self.qedge_object_direction_property = f"biolink:{self.graph_object_direction_property}"
         self.qedge_object_aspect_property = f"biolink:{self.graph_object_aspect_property}"
-        self.bh_branch = self.kg_config["biolink_helper_branch"]  # The RTX branch to download BiolinkHelper from
+        self.bh_branch = self.kg_config.get("biolink_helper_branch", "master")  # The RTX branch to download BiolinkHelper from
         self.bh = None  # BiolinkHelper is downloaded later on
         self.non_biolink_item_id = 9999
         self.category_map = dict()  # Maps category english name --> int ID
@@ -489,13 +485,13 @@ class PloverDB:
         gc.collect()
 
         # Fill out the home page HTML template for this KP with the proper KP endpoint/infores curie
-        logging.info(f"Filling out html home template and saving to {self.home_html_path}..")
-        with open(f"{SCRIPT_DIR}/../home_template.html", "r") as template_file:
+        logging.info(f"Filling out html home template and saving to {self.kp_home_html_path}..")
+        with open(f"{SCRIPT_DIR}/../kp_home_template.html", "r") as template_file:
             html_string = template_file.read()
         revised_html = html_string.replace("{{kp_infores_curie}}",
                                            self.kp_infores_curie).replace("{{kp_endpoint_name}}",
                                                                           self.endpoint_name)
-        with open(self.home_html_path, "w+") as kp_home_file:
+        with open(self.kp_home_html_path, "w+") as kp_home_file:
             kp_home_file.write(revised_html)
 
         if not self.is_test:
@@ -533,6 +529,27 @@ class PloverDB:
         self.bh = BiolinkHelper(biolink_version=self.biolink_version)
 
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
+
+    def load_trapi_attribute_map(self) -> dict[str, any]:
+        # First load the default TRAPI attributes template into map form
+        with open(f"{SCRIPT_DIR}/../trapi_attribute_template.json", "r") as attribute_template_file:
+            attribute_templates = json.load(attribute_template_file)
+        trapi_attribute_map = dict()
+        for item in attribute_templates:
+            for property_name in item["property_names"]:
+                if property_name in trapi_attribute_map:
+                    logging.error(f"More than one item in trapi_attribute_template.json uses the same "
+                                  f"property_name: '{property_name}'! Not allowed.")
+                    raise ValueError()
+                else:
+                    trapi_attribute_map[property_name] = item["attribute_shell"]
+
+        # Then override defaults with any attribute shells provided in the config file
+        if self.kg_config.get("trapi_attribute_map"):
+            logging.info(f"Updating default TRAPI attribute map with config file TRAPI attribute map")
+            trapi_attribute_map.update(self.kg_config["trapi_attribute_map"])
+
+        return trapi_attribute_map
 
     @staticmethod
     def _load_pickle_file(file_path: str) -> any:

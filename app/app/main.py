@@ -92,7 +92,45 @@ def instrument(flask_app):
     FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,code_version")
 
 
-instrument(app)
+# Configure opentelemetry if we know the host domain name
+domain_name_file_path = f"{SCRIPT_DIR}/../domain_name.txt"
+if os.path.exists(domain_name_file_path):
+    instrument(app)
+else:
+    logging.info(f"Not configuring opentelemetry tracing since there is no local {domain_name_file_path}")
+
+
+@app.get("/")
+def get_home_page():
+    endpoints_info = [(f"<li>{plover_obj.kp_infores_curie}{'*' if plover_obj.endpoint_name == default_endpoint_name else ''}:"
+                       f" <a href='/{kp_name}'>/{kp_name}</a></li>")
+                      for kp_name, plover_obj in plover_objs_map.items()]
+    return f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Plover API</title>
+        </head>
+        <body>
+            <h2>Plover API</h2>
+            <h4>Querying</h4>
+            <p>Individual TRAPI APIs for the <b>{len(plover_objs_map)} knowledge graph(s)</b> hosted on this Plover 
+            instance are available at the following sub-endpoints:
+            <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
+            <i>* Default KP (i.e., can be accessed via <code>/query</code> or 
+            <code>/{default_endpoint_name}/query</code>)</i></p>
+            <h4>Other endpoints</h4>
+            <p>Instance-level (as opposed to KP-level) endpoints helpful in debugging include:
+                <ul>
+                    <li><a href="/get_logs">/get_logs</a> (GET)</li>
+                    <li><a href="/code_version">/code_version</a> (GET)</li>
+                </ul>
+            </p>
+        </body>
+        </html>
+    """
 
 
 @app.post("/<kp_endpoint_name>/query")
@@ -108,7 +146,9 @@ def run_query(kp_endpoint_name: str = default_endpoint_name):
 
 
 @app.post("/<kp_endpoint_name>/get_edges")
+@app.post("/<kp_endpoint_name>/edges")
 @app.post("/get_edges")
+@app.post("/edges")
 def get_edges(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
@@ -121,7 +161,9 @@ def get_edges(kp_endpoint_name: str = default_endpoint_name):
 
 
 @app.post("/<kp_endpoint_name>/get_neighbors")
+@app.post("/<kp_endpoint_name>/neighbors")
 @app.post("/get_neighbors")
+@app.post("/neighbors")
 def get_neighbors(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
@@ -184,6 +226,7 @@ def run_code_version():
 
 
 @app.get("/get_logs")
+@app.get("/logs")
 def run_get_logs():
     try:
         num_lines = int(flask.request.args.get('num_lines', 100))
@@ -202,9 +245,9 @@ def run_get_logs():
 
 
 @app.get("/<kp_endpoint_name>")
-def get_home_page(kp_endpoint_name: str):
+def get_kp_home_page(kp_endpoint_name: str):
     if kp_endpoint_name in plover_objs_map:
         logging.info(f"{kp_endpoint_name}: Going to homepage.")
-        return send_file(plover_objs_map[kp_endpoint_name].home_html_path, as_attachment=False)
+        return send_file(plover_objs_map[kp_endpoint_name].kp_home_html_path, as_attachment=False)
     else:
         flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
