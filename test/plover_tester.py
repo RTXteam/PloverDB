@@ -106,7 +106,7 @@ class PloverTester:
 
     def run_get_edges(self, pairs: List[List[str]]) -> dict:
         pairs_query = {"pairs": pairs}
-        response = requests.post(f"{self.endpoint_url}/get_edges", json=pairs_query,
+        response = requests.post(f"{self.endpoint_url}/edges", json=pairs_query,
                                  headers={'accept': 'application/json'})
         if response.ok:
             print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
@@ -128,7 +128,7 @@ class PloverTester:
             return dict()
 
     def run_get_neighbors(self, query: dict) -> dict:
-        response = requests.post(f"{self.endpoint_url}/get_neighbors", json=query,
+        response = requests.post(f"{self.endpoint_url}/neighbors", json=query,
                                  headers={'accept': 'application/json'})
         if response.ok:
             print(f"Request elapsed time: {response.elapsed.total_seconds()} sec")
@@ -170,7 +170,7 @@ class PloverTester:
     @staticmethod
     def get_supporting_study_attributes(edge: dict) -> List[dict]:
         return [attribute for attribute in edge["attributes"]
-                if attribute["attribute_type_id"] == "biolink:supporting_study_metadata"]
+                if attribute["attribute_type_id"] == "biolink:supporting_study"]
 
     @staticmethod
     def get_num_distinct_concepts(response: dict, qnode_key: str) -> int:
