@@ -89,7 +89,7 @@ def instrument(flask_app):
         )
     )
     tracer_provider = trace.get_tracer(__name__)
-    FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,code_version")
+    FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,logs,code_version")
 
 
 instrument(app)
@@ -119,7 +119,7 @@ def get_home_page():
             <h4>Other endpoints</h4>
             <p>Instance-level (as opposed to KP-level) endpoints helpful in debugging include:
                 <ul>
-                    <li><a href="/get_logs">/get_logs</a> (GET)</li>
+                    <li><a href="/logs">/logs</a> (GET)</li>
                     <li><a href="/code_version">/code_version</a> (GET)</li>
                 </ul>
             </p>
