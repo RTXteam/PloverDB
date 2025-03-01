@@ -92,7 +92,12 @@ def instrument(flask_app):
     FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,code_version")
 
 
-instrument(app)
+# Configure opentelemetry if we know the host domain name
+domain_name_file_path = f"{SCRIPT_DIR}/../domain_name.txt"
+if os.path.exists(domain_name_file_path):
+    instrument(app)
+else:
+    logging.info(f"Not configuring opentelemetry tracing since there is no local {domain_name_file_path}")
 
 
 @app.get("/")
@@ -141,7 +146,9 @@ def run_query(kp_endpoint_name: str = default_endpoint_name):
 
 
 @app.post("/<kp_endpoint_name>/get_edges")
+@app.post("/<kp_endpoint_name>/edges")
 @app.post("/get_edges")
+@app.post("/edges")
 def get_edges(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
@@ -154,7 +161,9 @@ def get_edges(kp_endpoint_name: str = default_endpoint_name):
 
 
 @app.post("/<kp_endpoint_name>/get_neighbors")
+@app.post("/<kp_endpoint_name>/neighbors")
 @app.post("/get_neighbors")
+@app.post("/neighbors")
 def get_neighbors(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
@@ -217,6 +226,7 @@ def run_code_version():
 
 
 @app.get("/get_logs")
+@app.get("/logs")
 def run_get_logs():
     try:
         num_lines = int(flask.request.args.get('num_lines', 100))
