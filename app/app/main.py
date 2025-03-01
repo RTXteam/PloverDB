@@ -92,12 +92,7 @@ def instrument(flask_app):
     FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,code_version")
 
 
-# Configure opentelemetry if we know the host domain name
-domain_name_file_path = f"{SCRIPT_DIR}/../domain_name.txt"
-if os.path.exists(domain_name_file_path):
-    instrument(app)
-else:
-    logging.info(f"Not configuring opentelemetry tracing since there is no local {domain_name_file_path}")
+instrument(app)
 
 
 @app.get("/")

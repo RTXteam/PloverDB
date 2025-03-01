@@ -96,6 +96,7 @@ _Otherwise, for a self-hosted deployment_, you can use Plover's built-in remote 
     1. Add a `config_secrets.json` file in the root `PloverDB/` directory. Its contents should look something like this (where you plug in the usernames/API keys that should have deployment permissions):
        1. `{"api-keys": {"my-secret-api-key": "myusername"}}`
        2. Note that you can make the key and username whatever you would like.
+    1. Start up a Python environment and do `pip install -r PloverDB/requirements.txt`
     1. Start the rebuild server by running `fastapi run PloverDB/rebuild_main.py` (you may want to do this in a `screen` session or the like)
 1. From any machine, you can then trigger a deployment/rebuild by submitting a request to the `/rebuild` endpoint like the following, adapted for your own instance name/username/API key/branch:
 ```
@@ -183,12 +184,11 @@ https://multiomics.rtx.ai:9990/ctkp/sri_test_triples
 
 ### Opentelemetry
 
-Plover automatically logs Jaeger opentelemetry traces per [Translator's monitoring requirements](https://github.com/NCATSTranslator/TranslatorTechnicalDocumentation/blob/telemetry-FAQ/docs/deployment-guide/monitoring.md). To view tracings for a deployed Plover application, go to https://translator-otel.ci.transltr.io/search (this is the CI otel link; swap `test` or `prod` for `ci` in that URL as appropriate) and select the proper service name from the dropdown menu. Each Plover instance corresponds to one opentelemetry 'service'; its service name will follow the pattern `{app_name}-plover`, where Plover derives the `app_name` using the local identifier from the default KP's infores curie (e.g., `rtx-kg2-plover` or `multiomics-plover`).
+Plover automatically logs Jaeger opentelemetry traces per [Translator's monitoring requirements](https://github.com/NCATSTranslator/TranslatorTechnicalDocumentation/blob/telemetry-FAQ/docs/deployment-guide/monitoring.md). To view tracings for an ITRB- deployed Plover application, go to https://translator-otel.ci.transltr.io/search (this is the CI otel link; swap `test` or `prod` for `ci` in that URL as appropriate) and select the proper service name from the dropdown menu. Each Plover instance corresponds to one opentelemetry 'service'; its service name will follow the pattern `{app_name}-plover`, where Plover derives the `app_name` using the local identifier from the default KP's infores curie (e.g., `rtx-kg2-plover` or `multiomics-plover`).
 
 Plover determines what Jaeger host to use according to the contents of the user-created `PloverDB/app/domain_name.txt` file as follows:
-* `jaeger-otel-agent.sri` if the Plover host domain name contains `transltr.io`
-* `jaeger.rtx.ai` if the Plover host domain name does not contain `transltr.io`
-* `None` (no opentelemetry logging) if no local `PloverDB/app/domain_name.txt` file exists on the Plover host instance
+* `jaeger.rtx.ai` if the Plover host domain name exists and does not contain `transltr.io`
+* `jaeger-otel-agent.sri` otherwise
 
 
 
