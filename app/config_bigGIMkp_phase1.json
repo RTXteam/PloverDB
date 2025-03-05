@@ -1,0 +1,46 @@
+{
+  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/BigGIM/Plover_deployment_test/test_all/BigGIM.interacts_with_associated_with.nodes.biolink.compliant.tsv",
+  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/BigGIM/Plover_deployment_test/test_all/BigGIM.interacts_with_associated_with.edges.biolink.compliant.tsv",
+  "biolink_version": "4.2.1",
+  "kp_infores_curie": "infores:biothings-multiomics-biggim-drugresponse",
+  "endpoint_name": "bigGIM_phase1",
+  "labels": {
+    "edges": "predicate",
+    "nodes": "category"
+  },
+  "remote_subclass_edges_file_url": "https://kg2webhost.rtx.ai/kg2.10.0pre_subclass_edges_manual_agent.jsonl.gz",
+  "subclass_sources": ["infores:ncbi-gene", "infores:pubchem", "infores:mondo", "infores:cl"],
+  "num_edges_per_answer_cutoff": 100000,
+  "normalize": false,
+  "convert_input_ids": true,
+  "drug_chemical_conflation": false,
+  "biolink_helper_branch": "master",
+  "ignore_edge_properties": ["object_category", "subject_category", "context_qualifier", "deploy_date", "subject_aspect_qualifier"],
+  "other_array_properties": [],
+  "trapi_attribute_map": {
+    "knowledge_level": {
+      "attribute_type_id": "biolink:knowledge_level",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "agent_type": {
+      "attribute_type_id": "biolink:agent_type",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "publication": {
+      "attribute_type_id": "biolink:publications",
+      "value_type_id": "biolink:Uriorcurie"
+    }
+  },
+  "sources_template": {
+    "default": [
+      {
+        "resource_id": "{kp_infores_curie}",
+        "resource_role": "primary_knowledge_source"
+      },
+      {
+        "resource_id": "infores:pubmed-central",
+        "resource_role": "supporting_data_source"
+      }
+    ]
+  }
+}
