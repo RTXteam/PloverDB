@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_nodes_v0.2.1.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_edges_p0.2.1.tsv.gz",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_nodes_v1.3.2.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Microbiome_KG_edges_p1.3.2.tsv.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-microbiome",
   "endpoint_name": "mbkp",
@@ -15,7 +15,7 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
-  "ignore_edge_properties": ["p_correction_method", "author_year", "table_url", "sheet_name", "yaml_curator_and_organization"],
+  "ignore_edge_properties": ["domain", "mesh", "edge_score", "p_correction_method", "authors", "year_published", "table_url", "sheet_to_use", "row", "yaml_curator", "curator_organization", "method_notes", "config_path", "section"],
   "other_array_properties": ["source_record_urls"],
   "trapi_attribute_map": {
     "knowledge_level": {
