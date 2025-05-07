@@ -3,7 +3,7 @@
   "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/BigGIM/Plover_deployment_test/test_all/BigGIM.interacts_with_associated_with.edges.biolink.compliant.tsv",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:biothings-multiomics-biggim-drugresponse",
-  "endpoint_name": "bigGIM_phase1",
+  "endpoint_name": "BigGIM_DrugResponse_PerformancePhase",
   "labels": {
     "edges": "predicate",
     "nodes": "category"
