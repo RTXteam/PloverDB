@@ -1,0 +1,48 @@
+{
+  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmagenomics_KG_parsed_node_05_29_2025.tsv",
+  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmagenomics_KG_parsed_edge_05_29_2025.tsv",
+  "biolink_version": "4.2.1",
+  "kp_infores_curie": "infores:biothings-multiomics-pharmagenomics",
+  "endpoint_name": "PharmacogenomicsKG",
+  "labels": {
+    "edges": "predicate",
+    "nodes": "category"
+  },
+  "remote_subclass_edges_file_url": "https://kg2webhost.rtx.ai/kg2.10.0pre_subclass_edges_manual_agent.jsonl.gz",
+
+  "subclass_sources": ["infores:drugbank", "infores:ncbi-gene", "infores:hpo", "infores:mondo", "infores:hpo-annotations", "infores:sider",
+                      "infores:drugcentral", "infores:pharmgkb", "infores:primekg", "infores:cellmarker", "infores:signor"],
+  "num_edges_per_answer_cutoff": 100000,
+  "normalize": false,
+  "convert_input_ids": true,
+  "drug_chemical_conflation": false,
+  "biolink_helper_branch": "master",
+  "ignore_edge_properties": ["object_category", "subject_category", "context_qualifier", "deploy_date", "anatomical_context_qualifier"],
+  "other_array_properties": [],
+  "trapi_attribute_map": {
+    "knowledge_level": {
+      "attribute_type_id": "biolink:knowledge_level",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "agent_type": {
+      "attribute_type_id": "biolink:agent_type",
+      "attribute_source": "{kp_infores_curie}"
+    },
+    "publication": {
+      "attribute_type_id": "biolink:publications",
+      "value_type_id": "biolink:Uriorcurie"
+    }
+  },
+  "sources_template": {
+    "default": [
+      {
+        "resource_id": "{kp_infores_curie}",
+        "resource_role": "primary_knowledge_source"
+      },
+      {
+        "resource_id": "infores:pubmed-central",
+        "resource_role": "supporting_data_source"
+      }
+    ]
+  }
+}
