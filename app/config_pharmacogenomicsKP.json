@@ -2,7 +2,7 @@
   "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmagenomics_KG_parsed_node_05_29_2025.tsv",
   "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmagenomics_KG_parsed_edge_05_29_2025.tsv",
   "biolink_version": "4.2.1",
-  "kp_infores_curie": "infores:biothings-multiomics-pharmagenomics",
+  "kp_infores_curie": "infores:catrax-pharmacogenomics",
   "endpoint_name": "PharmacogenomicsKG",
   "labels": {
     "edges": "predicate",
