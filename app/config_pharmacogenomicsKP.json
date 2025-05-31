@@ -9,7 +9,6 @@
     "nodes": "category"
   },
   "remote_subclass_edges_file_url": "https://kg2webhost.rtx.ai/kg2.10.0pre_subclass_edges_manual_agent.jsonl.gz",
-
   "subclass_sources": ["infores:drugbank", "infores:ncbi-gene", "infores:hpo", "infores:mondo", "infores:hpo-annotations", "infores:sider",
                       "infores:drugcentral", "infores:pharmgkb", "infores:primekg", "infores:cellmarker", "infores:signor"],
   "num_edges_per_answer_cutoff": 100000,
