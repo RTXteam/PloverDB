@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_nodes_v1.0.0.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_edges_p1.0.0.tsv.gz",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_nodes_v1.1.0.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_edges_p1.1.0.tsv.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-multiomics",
   "endpoint_name": "mokp",
