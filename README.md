@@ -51,7 +51,7 @@ See [this section](#how-to-test) for details on using/testing your Plover.
 
 ### How to deploy Plover
 
-_NOTE: For more deployment info specific to the RTX-KG2/ARAX team, see the [this page](hthttps://github.com/RTXteam/PloverDB/wiki/Deployment-notes) in the Plover wiki._
+_NOTE: For more deployment info specific to the RTX-KG2/ARAX team, see the [this page](https://github.com/RTXteam/PloverDB/wiki/Deployment-notes) in the Plover wiki._
 
 Because Plover is Dockerized, it can be run on any machine with Docker installed. Our deployment instructions below assume you're using a **Linux** host machine.
 
