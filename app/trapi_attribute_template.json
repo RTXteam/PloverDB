@@ -65,7 +65,7 @@
       "publications_info"
     ],
     "attribute_shell":{
-      "attribute_type_id":"bts:sentence",
+      "attribute_type_id":"biolink:supporting_text",
       "attribute_source":"{kp_infores_curie}"
     }
   },
