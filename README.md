@@ -15,7 +15,34 @@ You must provide publicly accessible **URLs** from which the **nodes/edges files
 
 Note that a single Plover app can host/serve **multiple KPs** - each KP is exposed at its own endpoint (e.g., `/ctkp`, `/dakp`), and has its own Plover config file. See [this section](#how-to-deploy-a-new-kp-to-an-existing-plover) for more info.
 
+## Typical EC2 instance type used for building & hosting PloverDB
 
+The PloverDB software has been tested with the following EC2 configuration:
+
+- **AMI:** Ubuntu Server 18.04.6 LTS (HVM), SSD Volume Type – `ami-01d4b5043e089efa9` (64-bit x86)  
+- **Instance type:** `r5a.4xlarge` (16 vCPUs, 128 GiB RAM)  
+- **Storage:** 300 GiB root EBS volume 
+- **Security Group:** `plover-sg`, ingress TCP on ports  
+  - `22`  (SSH)  
+  - `80`  (HTTP)  
+  - `443` (HTTPS)  
+  - `8000` (alternate API/UI)  
+  - `9990` (PloverDB API)  
+
+### Host environment
+- **Architecture:** x86_64 (AMD EPYC 7571)  
+- **Kernel:** Linux 5.4.0-1103-aws  
+- **Python (host):** CPython 3.6.9  
+- **Docker (host):** 24.0.2  
+
+### Docker container
+- **Base image:** Debian 11.11  
+- **Python (in-container):** CPython 3.11  
+- **Exposed port:** `9990`  
+- **Python dependencies:** pinned in [`requirements.txt`](https://github.com/RTXteam/PloverDB/blob/main/requirements.txt)
+
+**Cost estimate (us-west-2 on-demand):**  
+- `r5a.4xlarge` @ \$0.904/hr -> build (~1 hr) ≈ 1
 
 ## Table of Contents
 1. [How to run](#how-to-run)
@@ -51,7 +78,7 @@ See [this section](#how-to-test) for details on using/testing your Plover.
 
 ### How to deploy Plover
 
-_NOTE: For more deployment info specific to the RTX-KG2/ARAX team, see the [this page](https://github.com/RTXteam/PloverDB/wiki/Deployment-how-tos) in the Plover wiki._
+_NOTE: For more deployment info specific to the RTX-KG2/ARAX team, see the [this page](https://github.com/RTXteam/PloverDB/wiki/Deployment-notes) in the Plover wiki._
 
 Because Plover is Dockerized, it can be run on any machine with Docker installed. Our deployment instructions below assume you're using a **Linux** host machine.
 
