@@ -86,7 +86,7 @@ The amount of memory and disk space your host instance will need depends on the 
 
 #### Steps to be done once, at initial setup for a new instance:
 
-1. Make sure ports `9990`, `80`, and `443` on the host instance are open. If you're plannning to use the rebuild functionality, also open port `8000`.
+1. Make sure ports `9990`, `80`, and `443` on the host instance are open. If you're planning to use the rebuild functionality, also open port `8000`.
 1. Install SSL certificates on the host instance and set them up for auto-renewal:
    1. `sudo snap install --classic certbot`
    1. `sudo ln -s /snap/bin/certbot /usr/bin/certbot`
