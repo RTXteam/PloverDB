@@ -70,7 +70,7 @@
         "upstream_resource_ids":  ["infores:dailymed", "infores:matrix"]
       },
       {
-        "resource_id":  "infores:matrix",
+        "resource_id":  "infores:medi",
         "resource_role":  "primary_knowledge_source"
       },
       {
