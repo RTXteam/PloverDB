@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_nodes_v0.3.9.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_edges_p0.3.9.tsv.gz",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_nodes_v0.4.0.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/drug_approvals_kg_edges_p0.4.0.tsv.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-drugapprovals",
   "endpoint_name": "dakp",
@@ -57,6 +57,21 @@
       {
         "resource_id":  "infores:faers",
         "resource_role":  "supporting_data_source"
+      },
+      {
+        "resource_id":  "infores:dailymed",
+        "resource_role":  "supporting_data_source"
+      }
+    ],
+    "biolink:contraindicated_for": [
+      {
+        "resource_id":  "{kp_infores_curie}",
+        "resource_role":  "aggregator_knowledge_source",
+        "upstream_resource_ids":  ["infores:dailymed", "infores:matrix"]
+      },
+      {
+        "resource_id":  "infores:matrix",
+        "resource_role":  "primary_knowledge_source"
       },
       {
         "resource_id":  "infores:dailymed",
