@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_nodes_v1.1.0.tsv",
-  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_edges_p1.1.0.tsv.gz",
+  "nodes_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_nodes_v2.0.0.tsv",
+  "edges_file": "https://db.systemsbiology.net/gestalt/KG/Multiomics_KG_edges_p2.0.0.tsv.gz",
   "biolink_version": "4.2.1",
   "kp_infores_curie": "infores:multiomics-multiomics",
   "endpoint_name": "mokp",
@@ -31,16 +31,16 @@
       "attribute_source": "{kp_infores_curie}",
       "value_type_id": "metatype:Float"
     },
-    "n": {
+    "sample_size": {
       "attribute_type_id": "GECKO:0000106",
       "attribute_source": "{kp_infores_curie}",
       "value_type_id": "metatype:Integer"
     },
-    "p": {
+    "p_value": {
       "attribute_type_id": "biolink:adjusted_p_value",
       "value_type_id": "metatype:Float"
     },
-    "relationship_type": {
+    "assertion_method": {
       "attribute_type_id": "AFR_0000895",
       "value_type_id": "metatype:String"
     },
