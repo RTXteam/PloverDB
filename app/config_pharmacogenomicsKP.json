@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmagenomics_KG_parsed_node_07_08_2025.tsv",
-  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmagenomics_KG_parsed_edge_07_08_2025.tsv",
+  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_node_08_18_2025.tsv",
+  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_edge_08_18_2025.tsv",
   "biolink_version": "4.2.5",
   "kp_infores_curie": "infores:catrax-pharmacogenomics",
   "endpoint_name": "PharmacogenomicsKG",
@@ -17,7 +17,7 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
-  "ignore_edge_properties": ["object_category", "subject_category", "context_qualifier", "deploy_date", "anatomical_context_qualifier"],
+  "ignore_edge_properties": ["context_qualifier", "deploy_date"],
   "other_array_properties": [],
   "trapi_attribute_map": {
     "knowledge_level": {
@@ -40,7 +40,8 @@
         "resource_role": "primary_knowledge_source"
       },
       {
-        "resource_id": "infores:pubmed-central",
+        ## no need for default infores now
+        "resource_id": "N/A",
         "resource_role": "supporting_data_source"
       }
     ]
