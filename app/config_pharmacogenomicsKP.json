@@ -40,7 +40,6 @@
         "resource_role": "primary_knowledge_source"
       },
       {
-        ## no need for default infores now
         "resource_id": "N/A",
         "resource_role": "supporting_data_source"
       }
