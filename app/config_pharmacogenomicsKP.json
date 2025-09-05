@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_node_08_18_2025.tsv",
-  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_edge_08_18_2025.tsv",
+  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_node_09_04_2025.tsv",
+  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_edge_09_04_2025.tsv",
   "biolink_version": "4.2.5",
   "kp_infores_curie": "infores:catrax-pharmacogenomics",
   "endpoint_name": "PharmacogenomicsKG",
@@ -17,7 +17,7 @@
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
   "biolink_helper_branch": "master",
-  "ignore_edge_properties": ["context_qualifier", "deploy_date"],
+  "ignore_edge_properties": ["deploy_date"],
   "other_array_properties": [],
   "trapi_attribute_map": {
     "knowledge_level": {
