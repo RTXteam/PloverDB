@@ -2,7 +2,7 @@
 import argparse
 import os
 import sys
-
+# adding this comment to trigger a rebuild 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from plover import PloverDB
 

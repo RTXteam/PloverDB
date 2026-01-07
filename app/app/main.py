@@ -18,7 +18,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-
+# adding this comment to trigger a rebuild 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import plover
 
