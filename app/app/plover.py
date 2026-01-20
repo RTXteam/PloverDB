@@ -1210,6 +1210,17 @@ class PloverDB:
             },
             "logs": self.query_log
         }
+        # Ensure all nodes referenced in node_bindings appear in the knowledge graph
+        nodes = response["message"]["knowledge_graph"]["nodes"]
+
+        for result in response["message"]["results"]:
+            for qnode_bindings in result["node_bindings"].values():
+                for binding in qnode_bindings:
+                    for node_id in filter(None, [binding.get("id"), binding.get("query_id")]):
+                        if node_id not in nodes and node_id in self.node_lookup_map:
+                            nodes[node_id] = self._convert_node_to_trapi_format(
+                                self.node_lookup_map[node_id]
+                            )
         return response
 
     def _convert_node_to_trapi_format(self, node_biolink: dict) -> dict:
