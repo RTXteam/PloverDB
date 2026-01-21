@@ -137,7 +137,6 @@ kg2c*.json
 *.aws
 *report*.json
 
-biolink_helper.py
 biolink_lookup*
 *index*.json
 *.jsonl
