@@ -210,8 +210,11 @@ class PloverDB:
                     del node[prop_to_ignore]
             # Record equivalent identifiers (if provided) for each node so we can 'canonicalize' incoming queries
             if self.kg_config.get("convert_input_ids"):
-                equivalent_ids = set(node.get("equivalent_curies", []) + node.get("equivalent_identifiers", [])
-                                     + node.get("equivalent_ids", []))
+                equivalent_ids = set(
+                    node.get("synonym", []) +\
+                    node.get("equivalent_identifiers", []) +\
+                    node.get("equivalent_ids", [])) +\
+                    node.get("equivalent_curies", [])
                 if equivalent_ids:
                     for equiv_id in equivalent_ids:
                         self.preferred_id_map[equiv_id] = node_key
@@ -222,6 +225,8 @@ class PloverDB:
                         del node["equivalent_identifiers"]
                     if "equivalent_ids" in node:
                         del node["equivalent_ids"]
+                    if "synonym" in node:
+                        del node["synonym"]
             del node["id"]  # Don't need this anymore since it's now the key
         memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
         logging.info(f"Done loading node lookup map; there are {len(self.node_lookup_map)} nodes. "
@@ -1190,6 +1195,17 @@ class PloverDB:
             },
             "logs": self.query_log
         }
+        # Ensure all nodes referenced in node_bindings appear in the knowledge graph
+        nodes = response["message"]["knowledge_graph"]["nodes"]
+
+        for result in response["message"]["results"]:
+            for qnode_bindings in result["node_bindings"].values():
+                for binding in qnode_bindings:
+                    for node_id in filter(None, [binding.get("id"), binding.get("query_id")]):
+                        if node_id not in nodes and node_id in self.node_lookup_map:
+                            nodes[node_id] = self._convert_node_to_trapi_format(
+                                self.node_lookup_map[node_id]
+                            )
         return response
 
     def _convert_node_to_trapi_format(self, node_biolink: dict) -> dict:
