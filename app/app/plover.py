@@ -213,8 +213,8 @@ class PloverDB:
                 equivalent_ids = set(
                     node.get("synonym", []) +\
                     node.get("equivalent_identifiers", []) +\
-                    node.get("equivalent_ids", [])) +\
-                    node.get("equivalent_curies", [])
+                    node.get("equivalent_ids", []) +\
+                    node.get("equivalent_curies", []))
                 if equivalent_ids:
                     for equiv_id in equivalent_ids:
                         self.preferred_id_map[equiv_id] = node_key
