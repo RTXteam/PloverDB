@@ -14,7 +14,6 @@
   "normalize": false,
   "convert_input_ids": true,
   "drug_chemical_conflation": false,
-  "biolink_helper_branch": "master",
   "ignore_edge_properties": ["domain", "mesh", "edge_score", "p_correction_method", "authors", "year_published", "table_url", "sheet_to_use", "row", "yaml_curator", "curator_organization", "method_notes", "config_path", "section"],
   "other_array_properties": ["source_record_urls"],
   "trapi_attribute_map": {
