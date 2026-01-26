@@ -17,13 +17,14 @@ import subprocess
 import time
 from collections import defaultdict
 from typing import List, Dict, Union, Set, Optional, Tuple
+from biolink_helper import get_biolink_helper
 
 import psutil
 import requests
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILE_PATH = "/var/log/ploverdb.log"
-
+# adding this comment to trigger a rebuild 
 
 class PloverDB:
 
@@ -50,6 +51,7 @@ class PloverDB:
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
+        logging.info(f"Biolink version to use is: {self.biolink_version}")
         self.trapi_attribute_map = self.load_trapi_attribute_map()
         self.num_edges_per_answer_cutoff = self.kg_config.get("num_edges_per_answer_cutoff", 1000000)
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
@@ -62,8 +64,7 @@ class PloverDB:
         self.qedge_qualified_predicate_property = f"biolink:{self.graph_qualified_predicate_property}"
         self.qedge_object_direction_property = f"biolink:{self.graph_object_direction_property}"
         self.qedge_object_aspect_property = f"biolink:{self.graph_object_aspect_property}"
-        self.bh_branch = self.kg_config.get("biolink_helper_branch", "master")  # The RTX branch to download BiolinkHelper from
-        self.bh = None  # BiolinkHelper is downloaded later on
+        self.bh = get_biolink_helper(self.biolink_version)
         self.non_biolink_item_id = 9999
         self.category_map = dict()  # Maps category english name --> int ID
         self.category_map_reversed = dict()  # Maps category int ID --> english name
@@ -196,15 +197,6 @@ class PloverDB:
 
         graph_dict = {"nodes": nodes, "edges": edges}
 
-        # Set up BiolinkHelper (download from RTX repo)
-        bh_file_name = "biolink_helper.py"
-        logging.info(f"Downloading {bh_file_name} from RTX repo")
-        local_path = f"{SCRIPT_DIR}/{bh_file_name}"
-        remote_path = f"https://github.com/RTXteam/RTX/blob/{self.bh_branch}/code/ARAX/BiolinkHelper/{bh_file_name}?raw=true"
-        subprocess.check_call(["curl", "-L", remote_path, "-o", local_path])
-        from biolink_helper import BiolinkHelper
-        logging.info(f"Biolink version to use is: {self.biolink_version}")
-        self.bh = BiolinkHelper(biolink_version=self.biolink_version)
 
         # Create basic node lookup map
         logging.info(f"Building basic node/edge lookup maps")
@@ -523,11 +515,6 @@ class PloverDB:
         self.conglomerate_predicate_descendant_index = self._load_pickle_file(f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
         self.meta_kg = self._load_pickle_file(f"{self.indexes_dir_path}/meta_kg.pkl")
         self.preferred_id_map = self._load_pickle_file(f"{self.indexes_dir_path}/preferred_id_map.pkl")
-
-        # Set up BiolinkHelper
-        from biolink_helper import BiolinkHelper
-        self.bh = BiolinkHelper(biolink_version=self.biolink_version)
-
         logging.info(f"Indexes are fully loaded! Took {round((time.time() - start) / 60, 2)} minutes.")
 
     def load_trapi_attribute_map(self) -> dict[str, any]:
