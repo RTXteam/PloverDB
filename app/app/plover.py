@@ -6,6 +6,7 @@ import itertools
 import json
 from datetime import datetime
 from urllib.parse import urlparse
+import getpass
 
 import flask
 import jsonlines
@@ -25,6 +26,14 @@ import requests
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILE_PATH = "/var/log/ploverdb.log"
 # adding this comment to trigger a rebuild 
+import requests, gzip, io, jsonlines
+
+def _stream_jsonl_gz(self, url):
+    r = requests.get(url, stream=True)
+    r.raise_for_status()
+    gz = gzip.GzipFile(fileobj=r.raw)
+    return jsonlines.Reader(io.TextIOWrapper(gz, encoding="utf-8"))
+
 
 class PloverDB:
 
@@ -40,6 +49,10 @@ class PloverDB:
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
                                           logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
+        logging.info(f"Running as UID={os.getuid()}, GID={os.getgid()}, USER={getpass.getuser()}")
+        logging.info(f"CWD={os.getcwd()}")
+        logging.info(f"Indexes dir={self.indexes_dir_path}")
+
 
         self.config_file_name = config_file_name
         with open(f"{SCRIPT_DIR}/../{self.config_file_name}") as config_file:
@@ -104,41 +117,54 @@ class PloverDB:
         logging.info(f"Starting to build indexes for endpoint {self.endpoint_name}..")
         start = time.time()
         # Create a subdirectory to store pickles of indexes in
+        stat = os.statvfs(self.indexes_dir_path if os.path.exists(self.indexes_dir_path) else SCRIPT_DIR)
+        free_gb = (stat.f_bavail * stat.f_frsize) / (1024**3)
+        logging.info(f"Free disk space: {round(free_gb, 2)} GB")
+
         os.makedirs(self.indexes_dir_path)
 
         nodes_file_name_unzipped, edges_file_name_unzipped = self._get_file_names_to_use_unzipped()
         nodes_path = f"{SCRIPT_DIR}/../{nodes_file_name_unzipped}"
         edges_path = f"{SCRIPT_DIR}/../{edges_file_name_unzipped}"
 
-        # Download nodes file if a URL was given, otherwise must be a local file
+        # Load nodes
         if self._is_url(self.kg_config["nodes_file"]):
-            logging.info(f"Nodes file is a url")
-            self._download_and_unzip_remote_file(self.kg_config["nodes_file"], nodes_path)
+            logging.info("Streaming nodes from URL")
+            with requests.get(self.kg_config["nodes_file"], stream=True, timeout=60) as r:
+                r.raise_for_status()
+                nodes_stream = jsonlines.Reader(
+                    io.TextIOWrapper(gzip.GzipFile(fileobj=r.raw), encoding="utf-8")
+                )
+                nodes = [node_obj for node_obj in nodes_stream]
         elif self.kg_config["nodes_file"].endswith(".gz"):
-            logging.info(f"Unzipping local nodes file")
+            logging.info("Unzipping local nodes file")
             subprocess.check_call(["gunzip", "-f", f"{nodes_path}.gz"])
-        # Download edges file if a URL was given, otherwise must be a local file
-        if self._is_url(self.kg_config["edges_file"]):
-            logging.info(f"Edges file is a url")
-            self._download_and_unzip_remote_file(self.kg_config["edges_file"], edges_path)
-        elif self.kg_config["edges_file"].endswith(".gz"):
-            logging.info(f"Unzipping local edges file")
-            subprocess.check_call(["gunzip", "-f", f"{edges_path}.gz"])
-
-        # Load the files into a KG, depending on file type
-        logging.info(f"Loading KG files into memory as a biolink KG.. ({nodes_path}, {edges_path})")
-        if nodes_path.endswith(".tsv"):
-            nodes = self._load_tsv(nodes_path)
+            with jsonlines.open(nodes_path) as reader:
+                nodes = [node_obj for node_obj in reader]
         else:
             with jsonlines.open(nodes_path) as reader:
                 nodes = [node_obj for node_obj in reader]
-        logging.info(f"Have loaded nodes into memory.. now will load edges..")
 
-        if edges_path.endswith(".tsv"):
-            edges = self._load_tsv(edges_path)
+        logging.info("Have loaded nodes into memory.. now will load edges..")
+
+        # Load edges
+        if self._is_url(self.kg_config["edges_file"]):
+            logging.info("Streaming edges from URL")
+            with requests.get(self.kg_config["edges_file"], stream=True, timeout=60) as r:
+                r.raise_for_status()
+                edges_stream = jsonlines.Reader(
+                    io.TextIOWrapper(gzip.GzipFile(fileobj=r.raw), encoding="utf-8")
+                )
+                edges = [edge_obj for edge_obj in edges_stream]
+        elif self.kg_config["edges_file"].endswith(".gz"):
+            logging.info("Unzipping local edges file")
+            subprocess.check_call(["gunzip", "-f", f"{edges_path}.gz"])
+            with jsonlines.open(edges_path) as reader:
+                edges = [edge_obj for edge_obj in reader]
         else:
             with jsonlines.open(edges_path) as reader:
                 edges = [edge_obj for edge_obj in reader]
+
 
         # Remove edge properties we don't care about (according to config file); rename others as needed
         edge_properties_to_ignore = self.kg_config.get("ignore_edge_properties")
@@ -1718,6 +1744,8 @@ class PloverDB:
         return response
 
     # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
+
+    
 
     def _get_file_names_to_use_unzipped(self) -> Tuple[str, str]:
         nodes_file = self.kg_config["nodes_file"]

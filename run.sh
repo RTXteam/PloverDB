@@ -5,6 +5,8 @@
 # Example1: bash -x run.sh -b ctkp
 # Example2: bash -x run.sh -i myimage -c mycontainer -d docker -s true -p 9990
 
+LOGFILE="$HOME/plover_run.log"
+exec > >(tee -a "$LOGFILE") 2>&1
 set -e  # Stop on error
 
 # 1. Define the diagnostic function
