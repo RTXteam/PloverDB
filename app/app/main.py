@@ -1,5 +1,6 @@
 import json
 import os
+import pwd
 import sys
 import traceback
 from typing import Tuple
@@ -7,6 +8,7 @@ from typing import Tuple
 import flask
 from flask import send_file
 from flask_cors import CORS
+import psutil
 import pygit2
 import datetime
 import logging
@@ -89,7 +91,7 @@ def instrument(flask_app):
         )
     )
     tracer_provider = trace.get_tracer(__name__)
-    FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,logs,code_version")
+    FlaskInstrumentor().instrument_app(app=flask_app, tracer_provider=trace, excluded_urls="docs,get_logs,logs,code_version,debug,healthcheck")
 
 
 instrument(app)
@@ -119,8 +121,10 @@ def get_home_page():
             <h4>Other endpoints</h4>
             <p>Instance-level (as opposed to KP-level) endpoints helpful in debugging include:
                 <ul>
+                    <li><a href="/healthcheck">/healthcheck</a> (GET)</li>
                     <li><a href="/logs">/logs</a> (GET)</li>
                     <li><a href="/code_version">/code_version</a> (GET)</li>
+                    <li><a href="/debug">/debug</a> (GET) - process identity, memory, ownership info</li>
                 </ul>
             </p>
         </body>
@@ -194,7 +198,93 @@ def get_meta_knowledge_graph(kp_endpoint_name: str = default_endpoint_name):
 
 @app.get("/healthcheck")
 def run_health_check():
-    return ""
+    # Minimal health check - verifies the app is running and data is loaded
+    if plover_objs_map and len(plover_objs_map) > 0:
+        return flask.jsonify({"status": "healthy", "endpoints_loaded": len(plover_objs_map)})
+    return flask.jsonify({"status": "unhealthy", "error": "No endpoints loaded"}), 503
+
+
+def get_process_identity() -> dict:
+    # Collect identity and ownership details needed for permission debugging.
+    uid = os.getuid()
+    try:
+        username = pwd.getpwuid(uid).pw_name
+    except KeyError:
+        username = f"unknown (uid {uid})"
+
+    home_dir = os.environ.get("HOME", "not set")
+    home_exists = os.path.isdir(home_dir) if home_dir != "not set" else False
+    git_dir = os.path.join(home_dir, ".git") if home_dir != "not set" else None
+    git_exists = os.path.isdir(git_dir) if git_dir else False
+
+    # Read .git ownership only when it exists.
+    git_owner_uid = None
+    git_owner_name = None
+    if git_exists:
+        git_stat = os.stat(git_dir)
+        git_owner_uid = git_stat.st_uid
+        try:
+            git_owner_name = pwd.getpwuid(git_owner_uid).pw_name
+        except KeyError:
+            git_owner_name = f"unknown (uid {git_owner_uid})"
+
+    return {
+        "uid": uid,
+        "username": username,
+        "home": home_dir,
+        "home_exists": home_exists,
+        "git_dir": git_dir,
+        "git_exists": git_exists,
+        "git_owner_uid": git_owner_uid,
+        "git_owner_name": git_owner_name,
+        "ownership_match": uid == git_owner_uid if git_owner_uid is not None else None
+    }
+
+
+@app.get("/debug")
+def run_debug():
+    # Returns diagnostic info for debugging ownership/memory issues without Kubernetes access
+    try:
+        # Keep identity information in one place so /code_version can log it too.
+        process_identity = get_process_identity()
+
+        # Memory info
+        process = psutil.Process()
+        mem_info = process.memory_info()
+        
+        # System/container memory limits (cgroup v1 and v2)
+        memory_limit = None
+        for cgroup_path in ["/sys/fs/cgroup/memory/memory.limit_in_bytes",
+                            "/sys/fs/cgroup/memory.max"]:
+            if os.path.exists(cgroup_path):
+                try:
+                    with open(cgroup_path, "r") as f:
+                        val = f.read().strip()
+                        if val != "max":
+                            memory_limit = int(val)
+                except Exception:
+                    pass
+                break
+        
+        response = {
+            "process_identity": process_identity,
+            "memory": {
+                "process_rss_bytes": mem_info.rss,
+                "process_rss_mb": round(mem_info.rss / (1024 * 1024), 2),
+                "process_vms_bytes": mem_info.vms,
+                "process_vms_mb": round(mem_info.vms / (1024 * 1024), 2),
+                "container_limit_bytes": memory_limit,
+                "container_limit_gb": round(memory_limit / (1024 * 1024 * 1024), 2) if memory_limit else None
+            },
+            "environment": {
+                "python_version": sys.version,
+                "working_directory": os.getcwd(),
+                "pid": os.getpid()
+            }
+        }
+        return flask.jsonify(response)
+    except Exception as e:
+        handle_internal_error(e)
 
 
 def handle_internal_error(e: Exception):
@@ -207,6 +297,8 @@ def handle_internal_error(e: Exception):
 @app.get("/code_version")
 def run_code_version():
     try:
+        # Log identity and ownership details for debugging in restricted environments.
+        logging.info("code_version identity: %s", get_process_identity())
         print(f"HOME: {os.environ['HOME']}", file=sys.stderr)
         repo = pygit2.Repository(os.environ["HOME"])
         repo_head_name = repo.head.name
@@ -227,13 +319,13 @@ def run_get_logs():
         num_lines = int(flask.request.args.get('num_lines', 100))
         with open(plover.LOG_FILE_PATH, "r") as f:
             log_data_plover = f.readlines()
-        with open('/var/log/uwsgi.log', 'r') as f:
-            log_data_uwsgi = f.readlines()
-        response = {"description": f"The last {num_lines} lines from two logs (Plover and uwsgi) "
+        with open('/var/log/gunicorn.log', 'r') as f:
+            log_data_gunicorn = f.readlines()
+        response = {"description": f"The last {num_lines} lines from two logs (Plover and gunicorn) "
                                    f"are included below. You can control the number of lines shown with the "
                                    f"num_lines parameter (e.g., ?num_lines=500).",
                     "plover": log_data_plover[-num_lines:],
-                    "uwsgi": log_data_uwsgi[-num_lines:]}
+                    "gunicorn": log_data_gunicorn[-num_lines:]}
         return flask.jsonify(response)
     except Exception as e:
         handle_internal_error(e)

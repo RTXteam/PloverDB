@@ -36,9 +36,10 @@ The PloverDB software has been tested with the following EC2 configuration:
 - **Docker (host):** 24.0.2  
 
 ### Docker container
-- **Base image:** Debian 11.11  
-- **Python (in-container):** CPython 3.11  
-- **Exposed port:** `9990`  
+- **Base image:** python:3.12  
+- **Python (in-container):** CPython 3.12  
+- **WSGI server:** gunicorn (8 workers, preload mode)  
+- **Exposed port:** `80` (container), mapped to `9990` (host)  
 - **Python dependencies:** pinned in [`requirements.txt`](https://github.com/RTXteam/PloverDB/blob/main/requirements.txt)
 
 **Cost estimate (us-west-2 on-demand):**  
@@ -154,11 +155,12 @@ The new KP will then be available at the `endpoint_name` you specify in your new
 
 Instructions tailored for ITRB deployments:
 
-Assuming an Ubuntu instance with Docker installed and SSL certificates already handled, simply run (from the desired branch):
+Assuming an Ubuntu instance with Docker installed and SSL handled externally (e.g., by Kubernetes Ingress), simply run (from the desired branch):
 ```
 sudo docker build -t ploverimage .
-sudo docker run -d --name plovercontainer -p 9990:443 ploverimage
+sudo docker run -d --name plovercontainer -p 9990:80 ploverimage
 ```
+Note: The container serves HTTP on port 80. SSL termination is handled by the Kubernetes Ingress controller (ITRB) or a reverse proxy on the host (self-hosted).
 
 ### Space and time requirements
 
@@ -190,7 +192,7 @@ Using the proper base URL, check the following endpoints (either by viewing them
 | Endpoint            | Request Type | Description                                                                                        |
 |---------------------|-------------|----------------------------------------------------------------------------------------------------|
 | `/code_version`     | `GET`       | Displays version information for all KGs hosted on this Plover                                     |
-| `/logs`             | `GET`       | Shows log messages from Plover and uWSGI                                                           |
+| `/logs`             | `GET`       | Shows log messages from Plover and gunicorn                                                        |
 | `/meta_knowledge_graph` | `GET`      | Displays the TRAPI meta KG for the default KG on this Plover                                       |
 | `/sri_test_triples` | `GET`       | Displays test triples for the default KG on this Plover |
 
@@ -232,9 +234,10 @@ NOTE: In the below table, `<kp_endpoint>` indicates a wildcard of sorts where yo
 | 1.`/sri_test_triples`, or 2.`/<kp_endpoint>/sri_test_triples`  | Standard      | GET          | Returns test triples for the knowledge graph (one example triple for every meta-edge, in a structure defined by Translator, [here](https://github.com/TranslatorSRI/SRI_testing/blob/main/tests/onehop/README.md#kp-test-data-format)). <br/><br/> **Example Queries:** <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/sri_test_triples'` <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/dakp/sri_test_triples'`                                                                                                                                                                                                                                                               |
 | 1.`/edges`, or 2.`/<kp_endpoint>/edges`                        | Custom        | POST         | Retrieves edges between specified node pairs. <br/><br/> **Example Queries:** <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_edges' -H 'Content-Type: application/json' -d '{"pairs":[["MONDO:0005159", "CHEBI:6427"], ["CHEBI:18332", "MONDO:0005420"]]}'` <br/><br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/dakp/get_edges' -H 'Content-Type: application/json' -d '{"pairs":[["MONDO:0005159", "CHEBI:6427"], ["CHEBI:18332", "MONDO:0005420"]]}'`                                                                                                                                                                                                                       |
 | 1.`/neighbors`, or 2.`/<kp_endpoint>/neighbors`                  | Custom        | POST         | Retrieves neighbors for the specified nodes, with optional filtering by categories and predicates. <br/><br/> **Example Queries:** <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"]}'` <br/><br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/dakp/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"]}'` <br/><br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"],"categories":["biolink:Disease"],"predicates":["biolink:treats"]}'` |
-| `/healthcheck`                                                  | Custom        | GET          | Simple health check endpoint to verify the server is running (returns an empty string). <br/><br/> **Example Queries:** <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/healthcheck'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `/healthcheck`                                                  | Custom        | GET          | Health check endpoint returning JSON with status and endpoints loaded count. <br/><br/> **Example Queries:** <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/healthcheck'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `/debug`                                                        | Custom        | GET          | Returns diagnostic info including process uid, HOME, .git ownership, memory usage. Useful for debugging ownership/permission issues. <br/><br/> **Example Queries:** <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/debug'`                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `/code_version`                                                 | Custom        | GET          | Retrieves the current code and knowledge graph versions running on the Plover instance. <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/code_version <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/code_version'`                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `/logs`                                                         | Custom        | GET          | Retrieves recent log entries from both Plover and uWSGI logs (for all KPs hosted). <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/get_logs <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs'` <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs?num_lines=20'`                                                                                                                                                                                                                                                                                                                                                                         |
+| `/logs`                                                         | Custom        | GET          | Retrieves recent log entries from both Plover and gunicorn logs (for all KPs hosted). <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/get_logs <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs'` <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs?num_lines=20'`                                                                                                                                                                                                                                                                                                                                                                         |
 | `/`                                                             | Custom        | GET          | Home page for the API, listing available KP endpoints and additional instance-level endpoints. <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `/<kp_endpoint>`                                               | Custom        | GET          | Home page for the specified knowledge graph/KP endpoint. <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/dakp <br/> https://multiomics.rtx.ai:9990/ctkp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
@@ -322,10 +325,10 @@ curl -L -X GET -H 'accept: application/json' https://kg2cplover.rtx.ai:9990/code
 ### How to view logs
 
 To view logs in your **browser**, go to https://kg2cplover.rtx.ai:9990/get_logs. This will show information from 
-the Plover and uwsgi logs. By default, the last 100 lines in each log are displayed; you can change this using 
+the Plover and gunicorn logs. By default, the last 100 lines in each log are displayed; you can change this using 
 the `num_lines` parameter - e.g., https://kg2cplover.rtx.ai:9990/get_logs?num_lines=500.
 
-To see the logs via the **terminal** (includes all components - uwsgi, etc.), run:
+To see the logs via the **terminal** (includes all components - gunicorn, etc.), run:
  ```
  docker logs plovercontainer
 ```
@@ -336,7 +339,7 @@ docker logs plovercontainer >& logs/mylog.log
 To print out the **full log files** on the terminal (useful if the container is running but the Plover service/endpoints are not working), run:
 ```
 docker exec plovercontainer cat /var/log/ploverdb.log
-docker exec plovercontainer cat /var/log/uwsgi.log
+docker exec plovercontainer cat /var/log/gunicorn.log
 ```
 
 If you want to use **cURL** to debug PloverDB, make sure to specify the `-L` (i.e., `--location`) option for the 
