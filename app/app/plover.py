@@ -49,9 +49,8 @@ class PloverDB:
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
                                           logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
-        logging.info(f"Running as UID={os.getuid()}, GID={os.getgid()}, USER={getpass.getuser()}")
-        logging.info(f"CWD={os.getcwd()}")
-        logging.info(f"Indexes dir={self.indexes_dir_path}")
+        
+        
 
 
         self.config_file_name = config_file_name
@@ -61,7 +60,6 @@ class PloverDB:
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
         self.kp_home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
         self.indexes_dir_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}"
-
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
         logging.info(f"Biolink version to use is: {self.biolink_version}")
@@ -115,6 +113,9 @@ class PloverDB:
 
     def build_indexes(self):
         logging.info(f"Starting to build indexes for endpoint {self.endpoint_name}..")
+        logging.info(f"Indexes dir={self.indexes_dir_path}")
+        logging.info(f"Running as UID={os.getuid()}, GID={os.getgid()}, USER={getpass.getuser()}")
+        logging.info(f"CWD={os.getcwd()}")
         start = time.time()
         # Create a subdirectory to store pickles of indexes in
         stat = os.statvfs(self.indexes_dir_path if os.path.exists(self.indexes_dir_path) else SCRIPT_DIR)
