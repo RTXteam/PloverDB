@@ -1,26 +1,49 @@
-FROM tiangolo/uwsgi-nginx-flask:python3.11
+FROM python:3.12
 
-# Increase timeout (thanks https://github.com/tiangolo/uwsgi-nginx-flask-docker/issues/120#issuecomment-459857072)
-RUN echo "uwsgi_read_timeout 600;" > /etc/nginx/conf.d/custom_timeout.conf
+# Create non-root user with explicit uid/gid
+RUN groupadd -g 1000 plover && \
+    useradd -u 1000 -g plover -m -s /bin/bash plover
 
-ENV UWSGI_CHEAPER 8
-ENV UWSGI_PROCESSES 16
+# Install system dependencies (libgit2 for pygit2, ca-certificates for HTTPS)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates libgit2-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY ./requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
+# Set up log files with correct ownership
+RUN mkdir -p /var/log && \
+    touch /var/log/ploverdb.log /var/log/gunicorn.log && \
+    chown plover:plover /var/log/ploverdb.log /var/log/gunicorn.log
 
-RUN apt-get update && apt-get install -y ca-certificates
+# Create /app directory with correct ownership before WORKDIR
+RUN mkdir -p /app && chown plover:plover /app
 
-RUN mkdir -p /home/nobody
-ENV HOME=/home/nobody
-COPY ./.git /home/nobody/.git
-COPY ./app /app
-RUN chown -R nobody /home/nobody
+WORKDIR /app
 
-RUN touch /var/log/ploverdb.log
-RUN chown nobody /var/log/ploverdb.log
+# Install Python dependencies
+COPY --chown=plover:plover requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN touch /var/log/uwsgi.log
-RUN chown nobody /var/log/uwsgi.log
+# Copy application code
+COPY --chown=plover:plover ./app /app
 
+# Copy .git to user's home for pygit2 /code_version endpoint
+COPY --chown=plover:plover ./.git /home/plover/.git
+
+# Set environment
+ENV HOME=/home/plover
+# Allow the listening port to be overridden at runtime if needed.
+ENV PORT=80
+
+# FALLBACK: If ITRB Kubernetes forces a different uid (e.g., runAsUser in securityContext),
+# the ownership check in libgit2/pygit2 will fail. This requires git installed and is not
+# consistently honored by pygit2, so treat it as a last resort.
+# RUN git config --global --add safe.directory /home/plover
+
+# Build indexes (as plover user to ensure correct ownership)
+USER plover
 RUN python /app/app/build_indexes.py
+
+# Expose port and set entrypoint
+EXPOSE 80
+# Use sh -c so the PORT environment variable is expanded at runtime.
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 8 --preload --timeout 600 --access-logfile /var/log/gunicorn.log --error-logfile /var/log/gunicorn.log app.main:app"]
