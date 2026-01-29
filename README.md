@@ -1,7 +1,7 @@
 # PloverDB
 
 Plover is a fully **in-memory** Python-based platform for hosting/serving [Biolink](https://github.com/biolink/biolink-model)-compliant knowledge graphs as **[TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) web APIs**.
-
+ 
 In answering queries, Plover abides by all **[Translator Knowledge Provider reasoning requirements](https://github.com/NCATSTranslator/TranslatorEngineering?tab=readme-ov-file#architecture-principles)**; it also can normalize the underlying graph and convert query node IDs to the proper equivalent identifiers for the given knowledge graph. 
 
 Plover accepts [TRAPI](https://github.com/NCATSTranslator/ReasonerAPI) query graphs at its `/query` endpoint, which include:
