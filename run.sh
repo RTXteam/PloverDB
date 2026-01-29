@@ -7,6 +7,42 @@
 
 set -e  # Stop on error
 
+# 1. Define the diagnostic function
+collect_diagnostics() {
+    echo "--- [FINAL DIAGNOSTICS AT EXIT] ---"
+    echo "Exit Code: $?"
+    echo "Current User: $(whoami) (UID: $(id -u))"
+    echo "Docker Status: $(systemctl is-active docker 2>/dev/null || echo 'unknown')"
+    echo "Permissions on Docker Socket: $(ls -l /var/run/docker.sock 2>/dev/null || echo 'N/A')"
+    echo "Disk Space (Free): $(df -h . | awk 'NR==2 {print $4}')"
+    
+    if [ -f "requirements.txt" ]; then
+        echo "Requirements file found. Line count: $(wc -l < requirements.txt)"
+    fi
+    
+    if [ -f "Dockerfile" ]; then
+        echo "Base Image line: $(grep '^FROM' Dockerfile)"
+    fi
+    echo "--- [END DIAGNOSTICS] ---"
+}
+
+# 2. Set the trap to run collect_diagnostics on exit (success or failure)
+trap collect_diagnostics EXIT
+
+# 3. Print the STARTING environment
+echo "=== SYSTEM DIAGNOSTICS START ==="
+echo "Timestamp: $(date)"
+echo "Current User: $(whoami) (UID: $(id -u))"
+echo "Groups: $(groups)"
+echo "OS Info: $(cat /etc/os-release | grep PRETTY_NAME)"
+echo "Kernel: $(uname -r)"
+echo "Docker Version: $(docker --version || echo 'Docker not found')"
+echo "Git Version: $(git --version || echo 'Git not found')"
+echo "Working Directory: $(pwd)"
+echo "Directory Permissions: $(ls -ld .)"
+echo "Disk Usage: $(df -h . | awk 'NR==2 {print $4 " available"}')"
+echo "=== SYSTEM DIAGNOSTICS END ==="
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # Specify default values for optional parameters
@@ -67,6 +103,13 @@ fi
 # Build the docker image
 ${docker_command} build -t ${image_name} .
 
+echo "--- [INTERNAL IMAGE CHECK] ---"
+# This runs 'python --version' INSIDE the newly built image
+${docker_command} run --rm ${image_name} python --version || echo "Could not run python in image"
+# This lists the installed pip packages INSIDE the newly built image
+${docker_command} run --rm ${image_name} pip list | grep -E "Flask|uWSGI|Werkzeug" || echo "Could not list packages"
+echo "--- [END INTERNAL CHECK] ---"
+
 # Stop/remove conflicting containers (with same name or running at our port); thanks https://stackoverflow.com/a/56953427
 set +e  # Don't stop on error
 ${docker_command} stop ${container_name}
@@ -84,6 +127,14 @@ set -e  # Stop on error
 if [[ ${skip_ssl} == "true" || ${domain_name_file_exists} -eq 0 ]]; then
   # Skip configuring SSL certs
   ${docker_command} run -d --name ${container_name} -p ${host_port}:80 ${image_name}
+
+  sleep 5
+  if ! ${docker_command} ps | grep -q ${container_name}; then
+    echo "Container ${container_name} failed to stay up!"
+    echo "--- LAST 50 LINES OF CONTAINER LOGS ---"
+    ${docker_command} logs --tail 50 ${container_name}
+    exit 1
+  fi
 else
   # Ensure our SSL cert is current and load it into the container (on run)
   sudo certbot renew
