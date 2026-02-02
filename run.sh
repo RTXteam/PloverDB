@@ -1,8 +1,10 @@
 #!/bin/bash
 # Usage: bash -x run.sh [-b branch name to build from] [-i image name] [-c container name]
 #                       [-d docker command i.e., "docker" or "sudo docker"] [-p host port to run on]
+#                       [-C to use docker cache (faster, but may miss code changes)]
 # Example1: bash -x run.sh -b ctkp
 # Example2: bash -x run.sh -i myimage -c mycontainer -d docker -p 9990
+# Example3: bash -x run.sh -C  # Use Docker cache (faster, may miss code changes)
 #
 # NOTE: SSL/HTTPS is now handled outside the container (e.g., by a reverse proxy on the host
 #       or by a Kubernetes ingress controller). The container only serves HTTP on port 80.
@@ -16,6 +18,7 @@ branch=""
 host_port="9991"  # Internal port; nginx handles external 9990 with SSL
 image_name=ploverimage
 container_name=plovercontainer
+no_cache="--no-cache"  # Default to fresh builds; use -C flag to enable cache
 # Auto-detect if "docker" can run without sudo
 if docker info &>/dev/null; then
   docker_command="docker"
@@ -24,13 +27,14 @@ else
 fi
 
 # Override defaults with values from any optional parameters provided
-while getopts "i:c:d:b:p:" flag; do
+while getopts "i:c:d:b:p:C" flag; do
 case "$flag" in
     i) image_name=$OPTARG;;
     c) container_name=$OPTARG;;
     d) docker_command=$OPTARG;;
     b) branch=$OPTARG;;
     p) host_port=$OPTARG;;
+    C) no_cache="";;  # Use cache (faster, but may miss code changes)
 esac
 done
 
@@ -43,7 +47,7 @@ if [ ${branch} ]; then
 fi
 
 # Build the docker image
-${docker_command} build -t ${image_name} .
+${docker_command} build ${no_cache} -t ${image_name} .
 
 # Stop/remove conflicting containers (with same name or running at our port); thanks https://stackoverflow.com/a/56953427
 set +e  # Don't stop on error

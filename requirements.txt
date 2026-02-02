@@ -9,7 +9,7 @@ fastapi
 fastapi[standard]
 flask
 flask-cors
-gunicorn
+uwsgi==2.0.31
 opentelemetry-exporter-jaeger==1.17.0
 opentelemetry-instrumentation-flask==0.38b0
 biolink-helper-pkg==1.0.0

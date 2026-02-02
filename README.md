@@ -20,7 +20,7 @@ Note that a single Plover app can host/serve **multiple KPs** - each KP is expos
 The PloverDB software has been tested with the following EC2 configuration:
 
 - **AMI:** Ubuntu Server 18.04.6 LTS (HVM), SSD Volume Type – `ami-01d4b5043e089efa9` (64-bit x86)  
-- **Instance type:** `r5a.4xlarge` (16 vCPUs, 128 GiB RAM)  
+- **Instance type:** `r5a.8xlarge` (32 vCPUs, 256 GiB RAM)  
 - **Storage:** 300 GiB root EBS volume 
 - **Security Group:** `plover-sg`, ingress TCP on ports  
   - `22`  (SSH)  
@@ -32,14 +32,16 @@ The PloverDB software has been tested with the following EC2 configuration:
 ### Host environment
 - **Architecture:** x86_64 (AMD EPYC 7571)  
 - **Kernel:** Linux 5.4.0-1103-aws  
-- **Python (host):** CPython 3.6.9  
-- **Docker (host):** 24.0.2  
+- **Python (host):** CPython 3.6.9+ (used for tests only)  
+- **Docker (host):** 24.0.2+  
 
 ### Docker container
-- **Base image:** python:3.12  
-- **Python (in-container):** CPython 3.12  
-- **WSGI server:** gunicorn (8 workers, preload mode)  
-- **Exposed port:** `80` (container), mapped to `9990` (host)  
+- **Base image:** `python:3.12.12` (pinned for reproducibility; see [Migration Notes](#migration-notes))  
+- **Python (in-container):** CPython 3.12.12  
+- **WSGI server:** uWSGI 2.0.31 (8-16 workers via `cheaper` algorithm)  
+- **Container user:** `plover` (uid 1000, gid 1000) for ITRB Kubernetes compatibility  
+- **Exposed port:** `80` (container), mapped to `9991` (host) by default  
+- **SSL/HTTPS:** Handled externally (nginx on host or Kubernetes Ingress)  
 - **Python dependencies:** pinned in [`requirements.txt`](https://github.com/RTXteam/PloverDB/blob/main/requirements.txt)
 
 **Cost estimate (us-west-2 on-demand):**  
@@ -56,6 +58,7 @@ The PloverDB software has been tested with the following EC2 configuration:
    1. [Nodes and edges files](#nodes-and-edges-files)
    1. [Config file](#config-file)
 1. [Debugging](#debugging)
+1. [Migration Notes](#migration-notes)
 
 
 ## How to run
@@ -73,7 +76,12 @@ To run Plover locally for development (assuming you have installed Docker), simp
 1. Run the following command:
     * `bash -x run.sh`
 
-This will build a Plover Docker image and run a container off of it, publishing it at port 9990 (`http://localhost:9990`).
+This will build a Plover Docker image and run a container off of it, publishing it at port 9991 (`http://localhost:9991`).
+
+**Note on ports:**
+- The container serves HTTP on port 80 internally
+- By default, `run.sh` maps this to host port 9991
+- For HTTPS access, configure a reverse proxy (e.g., nginx) on the host to handle SSL on port 9990 and proxy to 9991
 
 See [this section](#how-to-test) for details on using/testing your Plover.
 
@@ -153,14 +161,27 @@ The new KP will then be available at the `endpoint_name` you specify in your new
 
 #### For ITRB
 
-Instructions tailored for ITRB deployments:
+Instructions tailored for ITRB (Kubernetes) deployments:
 
-Assuming an Ubuntu instance with Docker installed and SSL handled externally (e.g., by Kubernetes Ingress), simply run (from the desired branch):
-```
+The container is designed to work with ITRB's Kubernetes environment:
+
+1. **User/ownership:** The container runs as user `plover` (uid 1000), which matches ITRB's default `securityContext` settings (`runAsUser: 1000`). This ensures the `/code_version` endpoint works correctly (pygit2 requires the process user to own the `.git` directory).
+
+2. **Port configuration:** The container serves HTTP on port 80 internally. SSL termination is handled by the Kubernetes Ingress controller, which routes HTTPS traffic to the container's HTTP port.
+
+3. **Build and run:**
+```bash
 sudo docker build -t ploverimage .
-sudo docker run -d --name plovercontainer -p 9990:80 ploverimage
+sudo docker run -d --name plovercontainer -p 80:80 ploverimage
 ```
-Note: The container serves HTTP on port 80. SSL termination is handled by the Kubernetes Ingress controller (ITRB) or a reverse proxy on the host (self-hosted).
+
+4. **Worker scaling (optional):** Worker count can be adjusted via environment variables:
+```bash
+sudo docker run -d --name plovercontainer -p 80:80 \
+  -e UWSGI_PROCESSES=12 -e UWSGI_CHEAPER=6 ploverimage
+```
+
+**Note:** The container does not include nginx; it serves HTTP directly via uWSGI. SSL/HTTPS is handled by the Kubernetes Ingress controller on ITRB or by a reverse proxy on self-hosted deployments.
 
 ### Space and time requirements
 
@@ -192,7 +213,7 @@ Using the proper base URL, check the following endpoints (either by viewing them
 | Endpoint            | Request Type | Description                                                                                        |
 |---------------------|-------------|----------------------------------------------------------------------------------------------------|
 | `/code_version`     | `GET`       | Displays version information for all KGs hosted on this Plover                                     |
-| `/logs`             | `GET`       | Shows log messages from Plover and gunicorn                                                        |
+| `/logs`             | `GET`       | Shows log messages from Plover and uWSGI                                                           |
 | `/meta_knowledge_graph` | `GET`      | Displays the TRAPI meta KG for the default KG on this Plover                                       |
 | `/sri_test_triples` | `GET`       | Displays test triples for the default KG on this Plover |
 
@@ -235,9 +256,9 @@ NOTE: In the below table, `<kp_endpoint>` indicates a wildcard of sorts where yo
 | 1.`/edges`, or 2.`/<kp_endpoint>/edges`                        | Custom        | POST         | Retrieves edges between specified node pairs. <br/><br/> **Example Queries:** <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_edges' -H 'Content-Type: application/json' -d '{"pairs":[["MONDO:0005159", "CHEBI:6427"], ["CHEBI:18332", "MONDO:0005420"]]}'` <br/><br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/dakp/get_edges' -H 'Content-Type: application/json' -d '{"pairs":[["MONDO:0005159", "CHEBI:6427"], ["CHEBI:18332", "MONDO:0005420"]]}'`                                                                                                                                                                                                                       |
 | 1.`/neighbors`, or 2.`/<kp_endpoint>/neighbors`                  | Custom        | POST         | Retrieves neighbors for the specified nodes, with optional filtering by categories and predicates. <br/><br/> **Example Queries:** <br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"]}'` <br/><br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/dakp/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"]}'` <br/><br/> `curl -X 'POST' 'https://multiomics.rtx.ai:9990/get_neighbors' -H 'Content-Type: application/json' -d '{"node_ids":["CHEMBL.COMPOUND:CHEMBL112"],"categories":["biolink:Disease"],"predicates":["biolink:treats"]}'` |
 | `/healthcheck`                                                  | Custom        | GET          | Health check endpoint returning JSON with status and endpoints loaded count. <br/><br/> **Example Queries:** <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/healthcheck'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `/debug`                                                        | Custom        | GET          | Returns diagnostic info including process uid, HOME, .git ownership, memory usage. Useful for debugging ownership/permission issues. <br/><br/> **Example Queries:** <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/debug'`                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `/debug`                                                        | Custom        | GET          | Returns comprehensive diagnostic info: process uid/username, HOME directory, .git ownership, ownership match status, per-worker and system-wide memory usage, container cgroup limits. Essential for debugging ownership/permission issues on ITRB. <br/><br/> **Example Queries:** <br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/debug'`                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `/code_version`                                                 | Custom        | GET          | Retrieves the current code and knowledge graph versions running on the Plover instance. <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/code_version <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/code_version'`                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `/logs`                                                         | Custom        | GET          | Retrieves recent log entries from both Plover and gunicorn logs (for all KPs hosted). <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/get_logs <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs'` <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs?num_lines=20'`                                                                                                                                                                                                                                                                                                                                                                         |
+| `/logs`                                                         | Custom        | GET          | Retrieves recent log entries from both Plover and uWSGI logs (for all KPs hosted). Returns only the last N lines (default 100) to avoid memory issues with large log files. <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/get_logs <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs'` <br/><br/> `curl -X 'GET' 'https://multiomics.rtx.ai:9990/get_logs?num_lines=20'`                                                                                                                                                                                                                                                                                                                                                                         |
 | `/`                                                             | Custom        | GET          | Home page for the API, listing available KP endpoints and additional instance-level endpoints. <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `/<kp_endpoint>`                                               | Custom        | GET          | Home page for the specified knowledge graph/KP endpoint. <br/><br/> **Example Queries:** <br/> https://multiomics.rtx.ai:9990/dakp <br/> https://multiomics.rtx.ai:9990/ctkp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
@@ -325,21 +346,26 @@ curl -L -X GET -H 'accept: application/json' https://kg2cplover.rtx.ai:9990/code
 ### How to view logs
 
 To view logs in your **browser**, go to https://kg2cplover.rtx.ai:9990/get_logs. This will show information from 
-the Plover and gunicorn logs. By default, the last 100 lines in each log are displayed; you can change this using 
+the Plover and uWSGI logs. By default, the last 100 lines in each log are displayed; you can change this using 
 the `num_lines` parameter - e.g., https://kg2cplover.rtx.ai:9990/get_logs?num_lines=500.
 
-To see the logs via the **terminal** (includes all components - gunicorn, etc.), run:
- ```
- docker logs plovercontainer
+To see the logs via the **terminal**, run:
+```bash
+docker logs plovercontainer
 ```
+**Note:** uWSGI writes to `/var/log/uwsgi.log` inside the container, so `docker logs` may only show the initial startup message. To see full uWSGI logs:
+```bash
+docker exec plovercontainer tail -100 /var/log/uwsgi.log
+```
+
 If you want to **save** the contents of the log to a file locally, run:
-```
+```bash
 docker logs plovercontainer >& logs/mylog.log
 ```
 To print out the **full log files** on the terminal (useful if the container is running but the Plover service/endpoints are not working), run:
-```
-docker exec plovercontainer cat /var/log/ploverdb.log
-docker exec plovercontainer cat /var/log/gunicorn.log
+```bash
+docker exec plovercontainer tail -500 /var/log/ploverdb.log
+docker exec plovercontainer tail -500 /var/log/uwsgi.log
 ```
 
 If you want to use **cURL** to debug PloverDB, make sure to specify the `-L` (i.e., `--location`) option for the 
@@ -348,6 +374,86 @@ If you want to use **cURL** to debug PloverDB, make sure to specify the `-L` (i.
 curl -L -X POST -d @test20.json -H 'Content-Type: application/json' -H 'accept: application/json' https://kg2cplover.rtx.ai:9990/query
 ```
 
+
+## Migration Notes
+
+### Migration from tiangolo/uwsgi-nginx-flask to python:3.12
+
+As of February 2026, PloverDB migrated from the `tiangolo/uwsgi-nginx-flask:python3.11` base image to the official `python:3.12.12` image. This section documents the rationale and key technical details for reproducibility.
+
+#### Why the migration was necessary
+
+1. **ITRB Kubernetes compatibility:** The tiangolo image ran uWSGI as user `nobody`, but ITRB Kubernetes enforces `securityContext: runAsUser: 1000`. This caused a mismatch between the process user and file ownership, resulting in pygit2 failing with "repository path not owned by current user" errors on the `/code_version` endpoint.
+
+2. **Base image deprecation:** The tiangolo/uwsgi-nginx-flask image is deprecated and no longer actively maintained.
+
+3. **Python version:** Upgrade to Python 3.12 for security updates and new features.
+
+#### Key technical changes
+
+| Aspect | Old (tiangolo) | New (python:3.12) |
+|--------|----------------|-------------------|
+| Base image | `tiangolo/uwsgi-nginx-flask:python3.11` | `python:3.12.12` (pinned) |
+| Container user | `nobody` (uid varies) | `plover` (uid 1000, fixed) |
+| Nginx | Inside container | External (host or Ingress) |
+| uWSGI config | Via environment variables | Via `uwsgi.ini` + CMD flags |
+| SSL/HTTPS | Inside container (nginx) | External (reverse proxy) |
+
+#### Why uWSGI (not Gunicorn)
+
+During migration, Gunicorn was initially tested as the WSGI server. However, uWSGI was retained because:
+
+- **Performance:** uWSGI (written in C) is significantly faster than Gunicorn (pure Python) for this workload. Tests showed ~10x slower performance with Gunicorn.
+- **Memory sharing:** uWSGI's fork model with copy-on-write memory sharing is well-suited for Plover's large in-memory indexes (~90 GB).
+- **Proven stability:** The original deployment used uWSGI successfully.
+
+#### Memory management: gc.freeze()
+
+Plover loads large knowledge graph indexes into memory (~90 GB for RTX-KG2). With uWSGI's forked worker model, these indexes are shared across workers via Linux copy-on-write (COW). However, Python's reference counting can inadvertently break COW by modifying memory pages when objects are accessed.
+
+To preserve memory sharing, `gc.freeze()` is called after loading indexes in `main.py`. This tells Python's garbage collector to leave those objects alone, preventing reference count updates that would trigger page copies. Without this, memory usage can balloon from ~90 GB to 700+ GB under load.
+
+#### Worker configuration
+
+The uWSGI worker configuration matches the legacy tiangolo setup:
+
+- **processes:** 8-16 workers (default: 16 max, 8 minimum via `cheaper`)
+- **cheaper algorithm:** Dynamically scales workers based on load
+- **No threads:** Single-threaded workers (1 thread per process) to minimize per-worker memory overhead
+
+Worker counts can be adjusted via environment variables `UWSGI_PROCESSES` and `UWSGI_CHEAPER` when starting the container.
+
+#### SSL/HTTPS architecture
+
+SSL is now handled **outside** the container:
+
+- **Self-hosted deployments:** nginx on the host terminates SSL on port 9990 and proxies to the container on port 9991 (HTTP).
+- **ITRB/Kubernetes:** The Kubernetes Ingress controller handles SSL termination and routes to the container's HTTP port.
+
+This separation simplifies the container (no nginx, no certificates inside) and aligns with Kubernetes best practices.
+
+#### The domain_name.txt file
+
+The `PloverDB/app/domain_name.txt` file serves two purposes:
+
+1. **Jaeger tracing:** Plover uses this file to determine the Jaeger host for OpenTelemetry traces:
+   - If the domain contains `transltr.io`: uses `jaeger-otel-agent.sri` (ITRB Jaeger)
+   - Otherwise: uses `jaeger.rtx.ai` (self-hosted Jaeger)
+
+2. **Legacy SSL (deprecated):** Previously used for nginx SSL configuration inside the container. With the new architecture, SSL certificates are managed externally.
+
+Create this file with your domain name for proper Jaeger routing:
+```bash
+echo "kg2cplover.rtx.ai" > PloverDB/app/domain_name.txt
+```
+
+### Version pinning rationale
+
+- **Base image (`python:3.12.12`):** Pinned to a specific patch version for reproducible builds. Floating tags like `python:3.12` can change unexpectedly and break builds.
+- **uWSGI (`uwsgi==2.0.31`):** Pinned in `requirements.txt` for consistency.
+- **Other dependencies:** See `requirements.txt` for the complete list of pinned versions.
+
+---
 
 ## Credits
 
