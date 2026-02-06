@@ -135,7 +135,8 @@ def get_home_page():
                     <li><a href="/healthcheck">/healthcheck</a> (GET)</li>
                     <li><a href="/logs">/logs</a> (GET)</li>
                     <li><a href="/code_version">/code_version</a> (GET)</li>
-                    <li><a href="/debug">/debug</a> (GET) - ownership, memory, environment info</li>
+                    <li><a href="/debug">/debug</a> (GET) - ownership, memory, kernel network, environment info</li>
+                    <li><a href="/debug/last">/debug/last</a> (GET) - cached snapshot (lightweight)</li>
                 </ul>
             </p>
         </body>
@@ -275,28 +276,55 @@ def _get_memory_from_status(status_content: str) -> dict | None:
     return mem_info if mem_info else None
 
 
-def _get_all_workers_info() -> dict:
+def _get_pss_kb(pid: int) -> int | None:
+    # Read Proportional Set Size from /proc/<pid>/smaps_rollup (Linux 4.14+).
+    # PSS divides shared pages proportionally among all processes that share
+    # them, giving a much more accurate per-process memory picture than RSS
+    # (which counts every shared page in full for every process).
+    content = _read_proc_file(f"/proc/{pid}/smaps_rollup")
+    if not content:
+        return None
+    for line in content.split("\n"):
+        if line.startswith("Pss:"):
+            try:
+                return int(line.split()[1])
+            except (IndexError, ValueError):
+                return None
+    return None
+
+
+def _get_all_workers_info(include_pss: bool = False) -> dict:
     # Get memory info for all uWSGI workers by reading /proc directly.
     # This avoids psutil overhead and keeps memory usage low.
+    #
+    # RSS is always included (fast — reads /proc/<pid>/status).
+    # PSS is opt-in (slow — reads /proc/<pid>/smaps_rollup which forces the
+    # kernel to walk every VMA; for 90 GB workers this can take 10+ seconds
+    # per worker).  Request via /debug?pss=true.
+    #
+    #   RSS = includes shared CoW pages in every worker (inflated for forks)
+    #   PSS = shared pages divided proportionally (accurate physical cost)
     my_pid = os.getpid()
     parent_pid = os.getppid()
-    
+
     workers = []
     total_rss_kb = 0
-    
+    total_pss_kb = 0
+    pss_available = False
+
     try:
         # Scan /proc for all process directories
         for entry in os.listdir("/proc"):
             if not entry.isdigit():
                 continue
-            
+
             pid = int(entry)
             stat_path = f"/proc/{pid}/stat"
             stat_content = _read_proc_file(stat_path)
-            
+
             if not stat_content:
                 continue
-            
+
             # /proc/<pid>/stat format: pid (comm) state ppid ...
             # We need field 4 (ppid). Handle comm containing spaces/parens.
             try:
@@ -308,37 +336,56 @@ def _get_all_workers_info() -> dict:
                 ppid = int(fields_after_comm[1])  # state is [0], ppid is [1]
             except (IndexError, ValueError):
                 continue
-            
+
             # Check if this process is a child of our parent (sibling worker)
             if ppid != parent_pid:
                 continue
-            
+
             # Get memory info for this worker
             status_content = _read_proc_file(f"/proc/{pid}/status")
             mem_info = _get_memory_from_status(status_content)
-            
+
             if mem_info:
                 rss_kb = mem_info.get("rss_kb", 0)
                 total_rss_kb += rss_kb
-                workers.append({
+                worker_info = {
                     "pid": pid,
                     "is_self": pid == my_pid,
                     "rss_mb": mem_info.get("rss_mb", 0),
-                })
+                }
+
+                # PSS from smaps_rollup — only when explicitly requested
+                # (very slow for large-memory workers: kernel walks all VMAs)
+                if include_pss:
+                    pss_kb = _get_pss_kb(pid)
+                    if pss_kb is not None:
+                        pss_available = True
+                        total_pss_kb += pss_kb
+                        worker_info["pss_mb"] = round(pss_kb / 1024, 2)
+
+                workers.append(worker_info)
     except OSError:
         # /proc not available (non-Linux), return empty
         pass
-    
+
     # Sort by PID for consistent output
     workers.sort(key=lambda w: w["pid"])
-    
-    return {
+
+    result = {
         "master_pid": parent_pid,
         "worker_count": len(workers),
         "total_rss_mb": round(total_rss_kb / 1024, 2),
         "total_rss_gb": round(total_rss_kb / (1024 * 1024), 2),
         "workers": workers,
+        "note": ("RSS is inflated for forked workers (shared CoW pages counted per-worker). "
+                 "Use /debug?pss=true for PSS (proportional, accurate) — slow for large workers."),
     }
+
+    if pss_available:
+        result["total_pss_mb"] = round(total_pss_kb / 1024, 2)
+        result["total_pss_gb"] = round(total_pss_kb / (1024 * 1024), 2)
+
+    return result
 
 
 def _get_container_memory_info() -> dict:
@@ -397,33 +444,85 @@ def _get_ownership_info() -> dict:
     return info
 
 
+def _get_kernel_network_info() -> dict:
+    # Read kernel network parameters relevant to backpressure tuning.
+    params = {
+        "somaxconn": "/proc/sys/net/core/somaxconn",
+        "tcp_max_syn_backlog": "/proc/sys/net/ipv4/tcp_max_syn_backlog",
+        "netdev_max_backlog": "/proc/sys/net/core/netdev_max_backlog",
+    }
+    result = {}
+    for name, path in params.items():
+        val = _read_proc_file(path)
+        if val and val.isdigit():
+            result[name] = int(val)
+        elif val:
+            result[name] = val
+    return result
+
+
+def _capture_debug_snapshot(include_pss: bool = False) -> dict:
+    # Capture a debug info snapshot. Used by /debug and startup cache.
+    ownership = _get_ownership_info()
+    all_workers = _get_all_workers_info(include_pss=include_pss)
+    container_memory = _get_container_memory_info()
+    kernel_network = _get_kernel_network_info()
+
+    return {
+        "ownership": ownership,
+        "workers": all_workers,
+        "container_limits": container_memory,
+        "kernel_network": kernel_network,
+        "environment": {
+            "python_version": sys.version,
+            "working_directory": os.getcwd(),
+            "uwsgi_processes": os.environ.get("UWSGI_PROCESSES", "not set"),
+            "uwsgi_cheaper": os.environ.get("UWSGI_CHEAPER", "not set"),
+        },
+        "app": {
+            "endpoints_loaded": len(plover_objs_map),
+            "endpoint_names": list(plover_objs_map.keys()),
+        },
+    }
+
+
+# Cache for /debug/last: stores the most recent debug snapshot per worker.
+# Populated at startup and refreshed on each /debug call.
+_last_debug_snapshot = _capture_debug_snapshot()
+_last_debug_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+logging.info("Captured startup debug snapshot for /debug/last.")
+
+
 @app.get("/debug")
 def run_debug():
-    # Debug endpoint providing ownership, memory, and environment info.
+    # Debug endpoint providing ownership, memory, environment, and kernel network info.
     # Uses /proc and /sys reads to avoid psutil-related memory overhead.
+    # Caches the result for the lightweight /debug/last endpoint.
+    global _last_debug_snapshot, _last_debug_timestamp
     try:
-        ownership = _get_ownership_info()
-        all_workers = _get_all_workers_info()
-        container_memory = _get_container_memory_info()
+        include_pss = flask.request.args.get("pss", "").lower() in ("true", "1", "yes")
+        snapshot = _capture_debug_snapshot(include_pss=include_pss)
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        snapshot["captured_at"] = timestamp
 
-        response = {
-            "ownership": ownership,
-            "workers": all_workers,
-            "container_limits": container_memory,
-            "environment": {
-                "python_version": sys.version,
-                "working_directory": os.getcwd(),
-                "uwsgi_processes": os.environ.get("UWSGI_PROCESSES", "not set"),
-                "uwsgi_cheaper": os.environ.get("UWSGI_CHEAPER", "not set"),
-            },
-            "app": {
-                "endpoints_loaded": len(plover_objs_map),
-                "endpoint_names": list(plover_objs_map.keys()),
-            },
-        }
-        return flask.jsonify(response)
+        # Cache for /debug/last
+        _last_debug_snapshot = snapshot
+        _last_debug_timestamp = timestamp
+
+        return flask.jsonify(snapshot)
     except Exception as e:
         handle_internal_error(e)
+
+
+@app.get("/debug/last")
+def run_debug_last():
+    # Return the last cached debug snapshot. Lightweight -- no /proc scanning.
+    # Useful when the server is under heavy load and /debug might be slow.
+    return flask.jsonify({
+        "snapshot": _last_debug_snapshot,
+        "captured_at": _last_debug_timestamp,
+        "note": "Cached from last /debug call (or startup). Call /debug for fresh data.",
+    })
 
 
 def handle_internal_error(e: Exception):
