@@ -2028,7 +2028,7 @@ class PloverDB:
         nodes_file = self.kg_config["nodes_file"]
         edges_file = self.kg_config["edges_file"]
         return nodes_file, edges_file
-        
+
     def log_trapi(self, level: str, message: str, code: Optional[str] = None):
         message = f"{self.endpoint_name}: {message}"
         # First log this in our usual log
