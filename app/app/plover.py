@@ -332,14 +332,14 @@ class PloverDB:
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
                                           logging.FileHandler(LOG_FILE_PATH)])
-        except Exception:
+        except OSError:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
                                           logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
 
         self.config_file_name = config_file_name
-        with open(f"{SCRIPT_DIR}/../{self.config_file_name}") as config_file:
+        with open(f"{SCRIPT_DIR}/../{self.config_file_name}", encoding="utf-8") as config_file:
             self.kg_config = json.load(config_file)
         self.endpoint_name = self.kg_config["endpoint_name"]
         self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
