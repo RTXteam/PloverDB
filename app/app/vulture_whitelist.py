@@ -1,0 +1,2 @@
+import plover
+plover.PloverDB._print_main_index_human_friendly
