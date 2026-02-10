@@ -1,26 +1,54 @@
-FROM tiangolo/uwsgi-nginx-flask:python3.11
+# Fixed version to avoid breaking changes
+FROM python:3.12.12
 
-# Increase timeout (thanks https://github.com/tiangolo/uwsgi-nginx-flask-docker/issues/120#issuecomment-459857072)
-RUN echo "uwsgi_read_timeout 600;" > /etc/nginx/conf.d/custom_timeout.conf
+# Create non-root user with explicit uid/gid (matches ITRB securityContext)
+RUN groupadd -g 1000 plover && \
+    useradd -u 1000 -g plover -m -s /bin/bash plover
 
-ENV UWSGI_CHEAPER 8
-ENV UWSGI_PROCESSES 16
+# Install system dependencies
+# - libgit2-dev: for pygit2 (code version endpoint)
+# - build-essential: for compiling uWSGI
+# - ca-certificates: for HTTPS connections
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libgit2-dev \
+        build-essential && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY ./requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
+# Set up log files with correct ownership
+RUN mkdir -p /var/log && \
+    touch /var/log/ploverdb.log /var/log/uwsgi.log && \
+    chown plover:plover /var/log/ploverdb.log /var/log/uwsgi.log
 
-RUN apt-get update && apt-get install -y ca-certificates
+# Create /app directory with correct ownership
+RUN mkdir -p /app && chown plover:plover /app
 
-RUN mkdir -p /home/nobody
-ENV HOME=/home/nobody
-COPY ./.git /home/nobody/.git
-COPY ./app /app
-RUN chown -R nobody /home/nobody
+WORKDIR /app
 
-RUN touch /var/log/ploverdb.log
-RUN chown nobody /var/log/ploverdb.log
+# Install Python dependencies (includes uwsgi)
+COPY --chown=plover:plover requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN touch /var/log/uwsgi.log
-RUN chown nobody /var/log/uwsgi.log
+# Copy application code
+COPY --chown=plover:plover ./app /app
 
+# Copy .git to user's home for pygit2 /code_version endpoint
+COPY --chown=plover:plover ./.git /home/plover/.git
+
+# Set environment
+ENV HOME=/home/plover
+
+# Match legacy tiangolo uWSGI worker defaults (tunable at runtime)
+ENV UWSGI_PROCESSES=16
+ENV UWSGI_CHEAPER=8
+
+# Build indexes (as plover user to ensure correct ownership)
+USER plover
 RUN python /app/app/build_indexes.py
+
+# Expose port
+EXPOSE 80
+
+# Start uWSGI with legacy-style worker scaling (env-driven)
+CMD ["sh", "-c", "uwsgi --ini /app/uwsgi.ini --processes ${UWSGI_PROCESSES:-16} --cheaper ${UWSGI_CHEAPER:-8}"]
