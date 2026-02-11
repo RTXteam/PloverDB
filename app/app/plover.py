@@ -75,7 +75,7 @@ if __name__ == "__main__" and __package__ is None:
     raise SystemExit("ERROR: This module must be run as a package")
 from .biolink_helper import get_biolink_helper
 
-SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE_PATH = "/var/log/ploverdb.log"
 DEFAULT_TIMEOUT = (4.0, 30.0)
 
