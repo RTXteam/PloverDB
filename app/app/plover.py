@@ -351,8 +351,10 @@ def _save_to_pickle_file(item: Any, file_path: str):
                     protocol=pickle.HIGHEST_PROTOCOL)
     logging.info("Done saving data to %s", file_path)
 
-def _download_remote_file(remote_file_path: str,
-                          local_destination_path: str) -> None:
+def _download_remote_file(
+        remote_file_path: str,
+        local_destination_path: str
+) -> None:
     """
     Download remote_file_path to local_destination_path using pure Pyo
     Does NOT gunzip: if the URL points to a .gz, the .gz bytes are stored as-is.
@@ -410,8 +412,10 @@ def _download_remote_file(remote_file_path: str,
 
     raise RuntimeError(f"Failed to download {url} -> {dest}") from last_exc
 
-def _get_equiv_id_map_from_sri(node_ids: list[str],
-                               drug_chemical_conflation: bool = False) -> dict[str, str]:
+def _get_equiv_id_map_from_sri(
+        node_ids: list[str],
+        drug_chemical_conflation: bool = False
+) -> dict[str, str]:
     response = requests.post("https://nodenormalization-sri.renci.org/get_normalized_nodes",
                              json={"curies": node_ids,
                                    "conflate": True,
@@ -452,10 +456,12 @@ def _load_value(val: str) -> Any:
         return val
     return val
 
-def _load_column_value(col_value: Any,
-                       col_name: str,
-                       array_properties: set[str],
-                       array_delimiter: str) -> Any:
+def _load_column_value(
+        col_value: Any,
+        col_name: str,
+        array_properties: set[str],
+        array_delimiter: str
+) -> Any:
     # Load lists as actual lists, instead of strings
     if col_name in array_properties:
         return [_load_value(val) for val in col_value.split(array_delimiter)]
@@ -1389,9 +1395,12 @@ class PloverDB:
         return self._get_predicate_id(conglomerate_predicate)
 
     @staticmethod
-    def _get_conglomerate_predicate(qualified_predicate: Optional[str], predicate: Optional[str],
-                                    object_direction: Optional[str], object_aspect: Optional[str]) \
-                                    -> str:
+    def _get_conglomerate_predicate(
+            qualified_predicate: Optional[str],
+            predicate: Optional[str],
+            object_direction: Optional[str],
+            object_aspect: Optional[str]
+    ) -> str:
         # If no qualified predicate is provided, use the regular unqualified predicate
         predicate_to_use = qualified_predicate if qualified_predicate else predicate
         return f"{predicate_to_use}--{object_direction}--{object_aspect}"
@@ -1402,9 +1411,11 @@ class PloverDB:
             self.category_map[category_name] = num_categories
         return self.category_map[category_name]
 
-    def _build_conglomerate_predicate_descendant_index(self,
-                                                       edge_lookup_map: \
-                                                       dict[str, dict[str, Any]]):
+    def _build_conglomerate_predicate_descendant_index(
+            self,
+            edge_lookup_map: \
+            dict[str, dict[str, Any]]
+    ) -> None:
         # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular
         # predicate variations)
         logging.info("Building conglomerate qualified predicate descendant index..")
@@ -1435,9 +1446,11 @@ class PloverDB:
                         self.conglomerate_predicate_descendant_index[ancest].add(conglomerate_pred)
                 conglomerate_predicates_already_seen.add(conglomerate_pred)
 
-    def _get_subclass_edges(self,
-                            subclass_edges_path: Optional[str],
-                            edge_lookup_map: dict[str, dict[str, Any]]) -> list[dict]:
+    def _get_subclass_edges(
+            self,
+            subclass_edges_path: Optional[str],
+            edge_lookup_map: dict[str, dict[str, Any]]
+    ) -> list[dict]:
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edges = [edge for edge in edge_lookup_map.values()
                           if edge[self.edge_predicate_property] in subclass_predicates]
@@ -1488,9 +1501,11 @@ class PloverDB:
 
         return subclass_edges
 
-    def _build_subclass_index(self,
-                              subclass_edges: list[dict],
-                              total_edges_count: int):
+    def _build_subclass_index(
+            self,
+            subclass_edges: list[dict],
+            total_edges_count: int
+    ) -> None:
         logging.info("Building subclass_of index using %s subclass_of edges",
                      len(subclass_edges))
         start = time.time()
