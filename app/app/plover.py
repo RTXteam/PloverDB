@@ -79,21 +79,34 @@ SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILE_PATH = "/var/log/ploverdb.log"
 DEFAULT_TIMEOUT = (4.0, 30.0)
 
-def _add_to_main_index(main_index: dict[str, dict],
-                       node_a_id: str,
-                       node_b_id: str,
-                       node_b_category_ids: set[int],
-                       predicate_id: int,
-                       edge_id: str,
-                       direction: int):
-    # Note: A direction of 1 means forwards, 0 means backwards
-    node_map = main_index.setdefault(node_a_id, {})
-    for category_id in node_b_category_ids:
-        cat_map = node_map.setdefault(category_id, {})
-        pred_map = cat_map.setdefault(predicate_id, ({}, {}))
-        dir_map = pred_map[direction]
-        edge_set = dir_map.setdefault(node_b_id, set())
-        edge_set.add(edge_id)
+def _add_edge_to_main_index_bidir(
+        main_index: dict[str, dict],
+        subject_id: str,
+        object_id: str,
+        subject_category_ids: set[int],
+        object_category_ids: set[int],
+        predicate_id: int,
+        edge_id: str,
+) -> None:
+    main_sd = main_index.setdefault
+
+    # forward (subject -> object), direction=1
+    node_map = main_sd(subject_id, {})
+    node_sd = node_map.setdefault
+    for category_id in object_category_ids:
+        cat_map = node_sd(category_id, {})
+        pred_map = cat_map.setdefault(predicate_id, [{}, {}])
+        dir_map = pred_map[1]
+        dir_map.setdefault(object_id, set()).add(edge_id)
+
+    # backward (object -> subject), direction=0
+    node_map = main_sd(object_id, {})
+    node_sd = node_map.setdefault
+    for category_id in subject_category_ids:
+        cat_map = node_sd(category_id, {})
+        pred_map = cat_map.setdefault(predicate_id, [{}, {}])
+        dir_map = pred_map[0]
+        dir_map.setdefault(subject_id, set()).add(edge_id)
 
 def _pprint_sizes_mb(
     sizes: Mapping[str, int],
@@ -359,7 +372,8 @@ def _download_remote_file(remote_file_path: str,
     retries = 3
     backoff_s = 1.0
 
-    logging.info("Downloading remote file from URL: %s to local file %s", url, local_destination_path)
+    logging.info("Downloading remote file from URL: %s "
+                 "to local file %s", url, local_destination_path)
 
     last_exc: Optional[BaseException] = None
     for attempt in range(1, retries + 1):
@@ -404,7 +418,8 @@ def _get_equiv_id_map_from_sri(node_ids: list[str],
                                    "drug_chemical_conflate": drug_chemical_conflation},
                              timeout=DEFAULT_TIMEOUT)
 
-    equiv_id_map = {node_id: node_id for node_id in node_ids}  # Preferred IDs for nodes are themselves
+    # Preferred IDs for nodes are themselves:
+    equiv_id_map = {node_id: node_id for node_id in node_ids}
     if response.status_code == 200:
         for node_id, normalized_info in response.json().items():
             if normalized_info:  # This means the SRI NN recognized the node ID we asked for
@@ -523,7 +538,8 @@ def _get_descendants(
     Return the transitive descendants of `node_id` using `parent_to_child_map`.
 
     - Uses `parent_to_descendants_map` as a memoization cache (filled in-place).
-    - Detects cycles via a DFS "visiting" set; any node involved in a cycle is added to `problem_nodes`.
+    - Detects cycles via a DFS "visiting" set; any node involved in a cycle is
+      added to `problem_nodes`.
     - Also adds `node_id` to `problem_nodes` if recursion exceeds `max_depth`.
     - Always returns a (possibly empty) set of descendant node IDs.
 
@@ -588,7 +604,8 @@ def _get_descendants(
 class PloverDB:
 
     def __init__(self, config_file_name: str):
-        # Set up logging (when run outside of docker, can't write to /var/log - handle that situation)
+        # Set up logging (when run outside of docker, can't write to /var/log - handle that
+        # situation)
         try:
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
@@ -608,31 +625,42 @@ class PloverDB:
             self.kg_config = json.load(config_file)
         self.endpoint_name = self.kg_config["endpoint_name"]
         self.debug = self.kg_config.get("debug", False)
-        self.sri_test_triples_path = os.path.join(self.parent_dir, f"sri_test_triples_{self.endpoint_name}.json")
-        self.kp_home_html_path = os.path.join(self.parent_dir, f"home_{self.endpoint_name}.html")
-        self.indexes_dir_path = os.path.join(self.parent_dir, f"plover_indexes_{self.endpoint_name}")
+        self.sri_test_triples_path = \
+            os.path.join(self.parent_dir, f"sri_test_triples_{self.endpoint_name}.json")
+        self.kp_home_html_path = \
+            os.path.join(self.parent_dir, f"home_{self.endpoint_name}.html")
+        self.indexes_dir_path = \
+            os.path.join(self.parent_dir, f"plover_indexes_{self.endpoint_name}")
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
         logging.info("Biolink version to use is: %s", self.biolink_version)
         self.trapi_attribute_map = self.load_trapi_attribute_map()
-        self.num_edges_per_answer_cutoff = self.kg_config.get("num_edges_per_answer_cutoff", 1_000_000)
+        self.num_edges_per_answer_cutoff = \
+            self.kg_config.get("num_edges_per_answer_cutoff", 1_000_000)
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
-        self.array_properties = {property_name for zip_info in self.kg_config.get("zip", {}).values()
-                                 for property_name in zip_info["properties"]}.union(set(self.kg_config.get("other_array_properties", [])))
+        zip_properties = {property_name for zip_info \
+                          in self.kg_config.get("zip", {}).values()
+             for property_name in zip_info["properties"]}
+        self.array_properties = \
+            zip_properties.union(set(self.kg_config.get("other_array_properties", [])))
         self.graph_qualified_predicate_property = "qualified_predicate"
         self.graph_object_direction_property = "object_direction_qualifier"
         self.graph_object_aspect_property = "object_aspect_qualifier"
-        self.qedge_qualified_predicate_property = f"biolink:{self.graph_qualified_predicate_property}"
-        self.qedge_object_direction_property = f"biolink:{self.graph_object_direction_property}"
+        self.qedge_qualified_predicate_property = \
+            f"biolink:{self.graph_qualified_predicate_property}"
+        self.qedge_object_direction_property = \
+            f"biolink:{self.graph_object_direction_property}"
         self.qedge_object_aspect_property = f"biolink:{self.graph_object_aspect_property}"
         self.bh = get_biolink_helper(self.biolink_version)
         self.non_biolink_item_id = 9999
         self.category_map: dict[str, int] = {}  # Maps category english name --> int ID
-        self.category_map_reversed: dict[int, str] = {}  # Maps category int ID --> english name
+        # Maps category int ID --> english name:
+        self.category_map_reversed: dict[int, str] = {}
         self.predicate_map: dict[str, int] = {}  # Maps predicate english name --> int ID
-        self.predicate_map_reversed: dict[int, str] = {}  # Maps predicate int ID --> english name
+        # Maps predicate int ID --> english name:
+        self.predicate_map_reversed: dict[int, str] = {}
         self.node_lookup_map: dict[str, dict[str, Any]] = {}
         self.edge_lookup_map: dict[str, dict[str, Any]] = {}
         self.main_index: dict[str, dict] = {}
@@ -640,28 +668,34 @@ class PloverDB:
         self.conglomerate_predicate_descendant_index: dict[str, set[str]] = defaultdict(set)
         self.meta_kg: dict[str, dict[str, dict[str, list[str]]]|list[dict[str, Any]]] = {}
         self.preferred_id_map: dict[str, str] = {}
-        self.supported_qualifiers = {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
-                                     self.qedge_object_aspect_property}
+        self.supported_qualifiers = \
+            {self.qedge_qualified_predicate_property, self.qedge_object_direction_property,
+             self.qedge_object_aspect_property}
         self.core_node_properties = {"name", self.categories_property}
-        self.core_edge_properties = {"subject", "object", "predicate", "primary_knowledge_source", "source_record_urls",
-                                     self.graph_qualified_predicate_property, self.graph_object_direction_property,
+        self.core_edge_properties = \
+            {"subject", "object", "predicate", "primary_knowledge_source",
+             "source_record_urls",
+             self.graph_qualified_predicate_property, self.graph_object_direction_property,
                                      self.graph_object_aspect_property}
-        self.trial_phases_map = {0: "not_provided", 0.5: "pre_clinical_research_phase",
-                                 1: "clinical_trial_phase_1", 2: "clinical_trial_phase_2",
-                                 3: "clinical_trial_phase_3", 4: "clinical_trial_phase_4",
-                                 1.5: "clinical_trial_phase_1_to_2", 2.5: "clinical_trial_phase_2_to_3"}
+        self.trial_phases_map = \
+            {0: "not_provided", 0.5: "pre_clinical_research_phase",
+             1: "clinical_trial_phase_1", 2: "clinical_trial_phase_2",
+             3: "clinical_trial_phase_3", 4: "clinical_trial_phase_4",
+             1.5: "clinical_trial_phase_1_to_2", 2.5: "clinical_trial_phase_2_to_3"}
         self.trial_phases_map_reversed = _reverse_dictionary(self.trial_phases_map)
         self.trial_phase_properties: set[str] = \
-            {property_name for property_name, attribute_shell in self.trapi_attribute_map.items()
+            {property_name for property_name, attribute_shell \
+             in self.trapi_attribute_map.items()
              if attribute_shell.get("value_type_id", "") == "biolink:MaxResearchPhaseEnum"}
-        self.knowledge_source_properties = {"knowledge_source", "primary_knowledge_source",
-                                            "aggregator_knowledge_source", "supporting_data_source"}
+        self.knowledge_source_properties = \
+            {"knowledge_source", "primary_knowledge_source",
+             "aggregator_knowledge_source", "supporting_data_source"}
         self.kp_infores_curie = self.kg_config["kp_infores_curie"]
         self.edge_sources = self._load_edge_sources(self.kg_config)
         self.array_delimiter = self.kg_config.get("array_delimiter", ",")
         self.query_log: list[dict[str, Any]] = []
 
-    # ------------------------------------------ INDEX BUILDING METHODS --------------------------------------------- #
+    # ---------------------------- INDEX BUILDING METHODS ----------------------------- #
 
     def build_indexes(self) -> None:
         logging.info("Starting to build indexes for endpoint %s", self.endpoint_name)
@@ -697,14 +731,17 @@ class PloverDB:
         debug = self.debug
 
         if debug:
-            debug_sample_per = 100  # sample a node or edge (for size estimation) every `debug_sample_per` nodes or edges
+            # sample a node/edge (for size estim.) every `debug_sample_per` nodes/edges
+            debug_sample_per = 100
 
         subclass_edges_path: Optional[str] = None
         if kg_config.get("remote_subclass_edges_file_url"):
-            logging.info("No subclass_of edges detected in the graph. Will download some based on kg_config.")
+            logging.info("No subclass_of edges detected in the graph. "
+                         "Will download some based on kg_config.")
             subclass_edges_remote_file_url = kg_config["remote_subclass_edges_file_url"]
             assert _is_url(subclass_edges_remote_file_url), \
-                f"Subclass edges remote file URL from config file is not a URL: {subclass_edges_remote_file_url}"
+                "Subclass edges remote file URL from config file is not a URL: " \
+                f"{subclass_edges_remote_file_url}"
             subclass_edges_file = _url_basename(subclass_edges_remote_file_url)
             subclass_edges_path = os.path.join(parent_dir,
                                                subclass_edges_file)
@@ -739,7 +776,9 @@ class PloverDB:
                 continue
             for p in props:
                 if p in zip_prop_owner:
-                    raise ValueError(f"two zip specs, {zipped_prop_name} and {zip_prop_owner[p]}, reference the same property: {p}")
+                    raise ValueError(f"two zip specs, {zipped_prop_name} and "
+                                     f"{zip_prop_owner[p]}, reference the same "
+                                     f"property: {p}")
                 zip_prop_owner[p] = zipped_prop_name
             zipped_specs.append((zipped_prop_name, props))
 
@@ -771,7 +810,8 @@ class PloverDB:
             # Remove node properties we don't care about (according to config file)
             for prop_to_ignore in node_properties_to_ignore:
                 node.pop(prop_to_ignore, None)
-            # Record equivalent identifiers (if provided) for each node so we can 'canonicalize' incoming queries
+            # Record equivalent identifiers (if provided) for each node so we
+            # can 'canonicalize' incoming queries
             if convert_input_ids:
                 equivalent_ids = set(
                     node.get("synonym", [])
@@ -784,7 +824,8 @@ class PloverDB:
                     equivalent_ids_in_graph = True
                     for equiv_id in equivalent_ids:
                         preferred_id_map[equiv_id] = node_id
-                    # Then delete no-longer-needed equiv IDs property (these can be huge, faster streaming without)
+                    # Then delete no-longer-needed equiv IDs property (these can be
+                    # huge, faster streaming without)
                     for k in ("equivalent_curies",
                               "equivalent_identifiers",
                               "equivalent_ids",
@@ -796,22 +837,25 @@ class PloverDB:
             # Build a helper map of nodes --> category labels
             categories = _convert_to_set(node[categories_property])
             proper_ancestors_for_each_category = \
-                [set(biolink_helper.get_ancestors(category, include_mixins=False,
-                                                  include_conflations=False)).difference({category})
+                [set(biolink_helper
+                     .get_ancestors(category, include_mixins=False,
+                                    include_conflations=False)).difference({category})
                  for category in categories]
             all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
             most_specific_categories = categories.difference(all_proper_ancestors)
-            node_to_category_labels_map[node_id] = {get_category_id(category_name)
-                                                    for category_name in most_specific_categories}
+            node_to_category_labels_map[node_id] = \
+                {get_category_id(category_name)
+                 for category_name in most_specific_categories}
             node_lookup_map[node_id] = node
 
-            # if config file specifies to normalize input IDs, and if the graph didn't already
-            # supply equivalent node IDs, use the SRI node normalizer to normalize the nodes in
-            # batches
+            # if config file specifies to normalize input IDs, and if the graph
+            # didn't already supply equivalent node IDs, use the SRI node normalizer
+            # to normalize the nodes in batches
             if convert_input_ids and not equivalent_ids_in_graph:
                 if len(node_id_batch) == batch_size:
-                    equiv_id_map_for_batch = _get_equiv_id_map_from_sri(node_id_batch,
-                                                                        drug_chemical_conflation)
+                    equiv_id_map_for_batch = \
+                        _get_equiv_id_map_from_sri(node_id_batch,
+                                                   drug_chemical_conflation)
                     preferred_id_map.update(equiv_id_map_for_batch)
                     node_id_batch = []
                 node_id_batch.append(node_id)
@@ -838,19 +882,25 @@ class PloverDB:
         logging.info("Preferred ID map includes %s equivalent identifiers",
                      len(preferred_id_map))
 
-        # Add a build node for this Plover build (don't want this in the meta KG, so we add it here)
-        plover_build_node = {"name": f"Plover deployment of {self.kp_infores_curie}",
-                             "category": "biolink:InformationContentEntity",
-                             "description": f"This Plover build was done on {datetime.now()} from input files "
-                                            f"'{kg_config['nodes_file']}' and '{kg_config['edges_file']}'. "
-                                            f"Biolink version used was {self.biolink_version}."}
+        # Add a build node for this Plover build (don't want this in the meta KG,
+        # so we add it here)
+        plover_build_node = \
+            {"name": f"Plover deployment of {self.kp_infores_curie}",
+             "category": "biolink:InformationContentEntity",
+             "description": f"This Plover build was done on {datetime.now()} "
+             "from input files "
+             f"'{kg_config['nodes_file']}' and '{kg_config['edges_file']}'. "
+             f"Biolink version used was {self.biolink_version}."}
         node_lookup_map["PloverDB"] = plover_build_node
 
          # Save the node lookup map now that we're done using/modifying it
-        _save_to_pickle_file(node_lookup_map, os.path.join(self.indexes_dir_path, "node_lookup_map.pkl"))
+        _save_to_pickle_file(node_lookup_map,
+                             os.path.join(self.indexes_dir_path,
+                                          "node_lookup_map.pkl"))
         del node_lookup_map
         gc.collect()  # Make sure we free up any memory we can
-        logging.info(*_format_memory_usage("Have deleted the node_lookup_map and run garbage collection. "))
+        logging.info(*_format_memory_usage("Have deleted the node_lookup_map "
+                                           "and run garbage collection. "))
         if debug:
             _print_top_objects(min_mb=100)
 
@@ -868,11 +918,12 @@ class PloverDB:
         edge_sizes_total: dict[str,int] = defaultdict(int)
         normalize = kg_config.get("normalize")
         meta_triples_map: dict[tuple[int, str, int], set[str]] = defaultdict(set)
-        meta_qualifiers_map: dict[tuple[int, str, int], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+        meta_qual_map: dict[tuple[int, str, int], dict[str, set[str]]] = \
+            defaultdict(lambda: defaultdict(set))
         test_triples_map = {}
-        qedge_qualified_predicate_property = self.qedge_qualified_predicate_property
-        qedge_object_direction_property = self.qedge_object_direction_property
-        qedge_object_aspect_property = self.qedge_object_aspect_property
+        qedge_qual_pred_prop = self.qedge_qualified_predicate_property
+        qedge_obj_dir_prop = self.qedge_object_direction_property
+        qedge_obj_aspect_prop = self.qedge_object_aspect_property
 
         # Create reversed category/predicate maps now that we're done building those maps
         self.category_map_reversed = _reverse_dictionary(self.category_map)
@@ -891,7 +942,8 @@ class PloverDB:
 
             # Correct qualified property names (this is really for KG2)
             if "qualified_object_direction" in edge:
-                edge[graph_object_direction_property] = edge.pop("qualified_object_direction")
+                edge[graph_object_direction_property] = \
+                    edge.pop("qualified_object_direction")
             if "qualified_object_aspect" in edge:
                 edge[graph_object_aspect_property] = edge.pop("qualified_object_aspect")
 
@@ -905,9 +957,11 @@ class PloverDB:
                                    f"{e.args[0]} \for {zipped_prop_name}") from e
                 # Zip rows (assumes cols are equal-length sequences)
                 for prop, col in zip(props, cols):
-                    if isinstance(col, (str, bytes, dict, set)) or not isinstance(col, Sequence):
+                    if isinstance(col, (str, bytes, dict, set)) or \
+                       not isinstance(col, Sequence):
                         raise TypeError(f"for edge {edge_id}, zip column {prop} is "
-                                        f"{type(col).__name__}; expected Sequence (non-string)")
+                                        f"{type(col).__name__}; expected Sequence "
+                                        "(non-string)")
                 items: list[dict[str, Any]] = []
                 try:
                     for row in zip(*cols, strict=True):
@@ -938,26 +992,32 @@ class PloverDB:
             # Convert any trial phase property values from int to Biolink enum
             for trial_phase_prop in trial_phase_properties:
                 if trial_phase_prop in edge:
-                    edge[trial_phase_prop] = convert_trial_phase_to_enum(edge[trial_phase_prop])
+                    edge[trial_phase_prop] = \
+                        convert_trial_phase_to_enum(edge[trial_phase_prop])
 
-            # Convert all edge to its canonical predicate form; correct missing biolink prefixes
+            # Convert all edge to its canonical predicate form; correct missing biolink
+            # prefixes
             predicate = edge[edge_predicate_property]
             qualified_predicate = edge.get(graph_qualified_predicate_property)
-            canonical_predicate = biolink_helper.get_canonical_predicates(predicate, print_warnings=False)[0]
+            canonical_predicate = \
+                biolink_helper.get_canonical_predicates(predicate, print_warnings=False)[0]
             canonical_qualified_predicate = \
                 biolink_helper.get_canonical_predicates(qualified_predicate,
-                                                        print_warnings=False)[0] if qualified_predicate else None
+                                                        print_warnings=False)[0] \
+                                                        if qualified_predicate else None
             predicate_is_canonical = canonical_predicate == predicate
             qualified_predicate_is_canonical = canonical_qualified_predicate == qualified_predicate
             if qualified_predicate and \
                     ((predicate_is_canonical and not qualified_predicate_is_canonical) or
                      (not predicate_is_canonical and qualified_predicate_is_canonical)):
-                logging.error("Edge %s has one of [predicate, qualified_predicate] that is in canonical form "
-                              "and one that is not; cannot reconcile",
+                logging.error("Edge %s has one of [predicate, qualified_predicate] that is "
+                              "in canonical form and one that is not; cannot reconcile",
                               edge_id)
                 return  # TODO: look into whether we should raise an exception here
-            if canonical_predicate != predicate:  # Both predicate and qualified_pred must be non-canonical
-                # Flip the edge (because the original predicate must be the canonical predicate's inverse)
+            # Both predicate and qualified_pred must be non-canonical:
+            if canonical_predicate != predicate:
+                # Flip the edge (because the original predicate must be the canonical
+                # predicate's inverse)
                 edge[edge_predicate_property] = canonical_predicate
                 edge[graph_qualified_predicate_property] = canonical_qualified_predicate
                 original_subject = edge["subject"]
@@ -982,7 +1042,8 @@ class PloverDB:
                     for property_name, value in edge.items():
                         if property_name in merged_edge:
                             if isinstance(value, list):
-                                merged_edge[property_name] = merged_edge[property_name] + value
+                                merged_edge[property_name] = \
+                                    merged_edge[property_name] + value
                         else:
                             merged_edge[property_name] = value
                     add_edge = False
@@ -994,24 +1055,26 @@ class PloverDB:
             edge_attribute_names = {k for k in edge if k not in core_edge_properties}
             qualified_predicate = edge.get(graph_qualified_predicate_property)
             object_dir_qualifier = edge.get(graph_object_direction_property)
-            object_aspect_qualifier = edge.get(graph_object_aspect_property)
+            object_aspect_qual = edge.get(graph_object_aspect_property)
             for subj_category in subj_categories:
                 for obj_category in obj_categories:
-                    meta_triple = (subj_category, cast(str, edge["predicate"]), obj_category)
+                    meta_triple = \
+                        (subj_category, cast(str, edge["predicate"]), obj_category)
                     meta_triples_map[meta_triple].update(edge_attribute_names)
                     if qualified_predicate:
-                        meta_qualifiers_map[meta_triple][qedge_qualified_predicate_property].add(qualified_predicate)
+                        meta_qual_map[meta_triple][qedge_qual_pred_prop].add(qualified_predicate)
                     if object_dir_qualifier:
-                        meta_qualifiers_map[meta_triple][qedge_object_direction_property].add(object_dir_qualifier)
-                    if object_aspect_qualifier:
-                        meta_qualifiers_map[meta_triple][qedge_object_aspect_property].add(object_aspect_qualifier)
+                        meta_qual_map[meta_triple][qedge_obj_dir_prop].add(object_dir_qualifier)
+                    if object_aspect_qual:
+                        meta_qual_map[meta_triple][qedge_obj_aspect_prop].add(object_aspect_qual)
                     # Create one test triple for each meta edge (basically an example edge)
                     if meta_triple not in test_triples_map:
-                        test_triples_map[meta_triple] = {"subject_category": category_map_reversed[subj_category],
-                                                         "object_category": category_map_reversed[obj_category],
-                                                         "predicate": edge["predicate"],
-                                                         "subject_id": edge["subject"],
-                                                         "object_id": edge["object"]}
+                        test_triples_map[meta_triple] = \
+                            {"subject_category": category_map_reversed[subj_category],
+                             "object_category": category_map_reversed[obj_category],
+                             "predicate": edge["predicate"],
+                             "subject_id": edge["subject"],
+                             "object_id": edge["object"]}
 
             # store the final edge in the `edge_lookup_map` by its `edge_id` key
             if (not normalize) or add_edge:
@@ -1059,11 +1122,14 @@ class PloverDB:
                                        get_trapi_edge_attribute(attribute_name, None, {})[
                                            "attribute_type_id"],
                                        "constraint_use": True,
-                                       "constraint_name": attribute_name.replace("_", " ")}  # TODO: Do this for real
+                                       # TODO: Do this for real: vvvv
+                                       "constraint_name": attribute_name.replace("_", " ")}  
+                                       # TODO: Do this for real: ^^^^
                                       for attribute_name in attribute_names],
                        "qualifiers": [{"qualifier_type_id": qualifier_property,
                                        "applicable_values": list(qualifier_values)}
-                                      for qualifier_property, qualifier_values in meta_qualifiers_map[triple].items()]}
+                                      for qualifier_property, qualifier_values \
+                                      in meta_qual_map[triple].items()]}
                       for triple, attribute_names in meta_triples_map.items()]
         logging.info("Identified %s different meta edges", len(meta_edges))
         # Then construct meta nodes
@@ -1080,7 +1146,8 @@ class PloverDB:
                              os.path.join(self.indexes_dir_path, "meta_kg.pkl"))
         del self.meta_kg, meta_nodes, meta_edges
         gc.collect()
-        logging.info(*_format_memory_usage("Have deleted the meta maps and run garbage collection. "))
+        logging.info(*_format_memory_usage("Have deleted the meta maps and run garbage "
+                                           "collection. "))
 
         get_conglomerate_predicate_id_from_edge = self._get_conglomerate_predicate_id_from_edge
         # Build our main index (modified/nested adjacency list kind of structure)
@@ -1099,39 +1166,26 @@ class PloverDB:
             subject_category_ids = node_to_category_labels_map[subject_id]
             object_category_ids = node_to_category_labels_map[object_id]
             # Record this edge in the forwards and backwards directions
-            _add_to_main_index(main_index,
-                               subject_id,
-                               object_id,
-                               object_category_ids,
-                               predicate_id,
-                               edge_id,
-                               1)
-            _add_to_main_index(main_index,
-                               object_id,
-                               subject_id,
-                               subject_category_ids,
-                               predicate_id,
-                               edge_id,
-                               0)
-            # Record this edge under its qualified predicate/other properties, if such info is provided
+            _add_edge_to_main_index_bidir(main_index,
+                                          subject_id,
+                                          object_id,
+                                          subject_category_ids,
+                                          object_category_ids,
+                                          predicate_id,
+                                          edge_id)
+            # Record this edge under its qualified predicate/other properties, if such info is
+            # provided
             if edge.get(graph_qualified_predicate_property) or \
                edge.get(graph_object_direction_property) or \
                edge.get(graph_object_aspect_property):
                 conglomerate_predicate_id = get_conglomerate_predicate_id_from_edge(edge)
-                _add_to_main_index(main_index,
-                                   subject_id,
-                                   object_id,
-                                   object_category_ids,
-                                   conglomerate_predicate_id,
-                                   edge_id,
-                                   1)
-                _add_to_main_index(main_index,
-                                   object_id,
-                                   subject_id,
-                                   subject_category_ids,
-                                   conglomerate_predicate_id,
-                                   edge_id,
-                                   0)
+                _add_edge_to_main_index_bidir(main_index,
+                                              subject_id,
+                                              object_id,
+                                              subject_category_ids,
+                                              object_category_ids,
+                                              conglomerate_predicate_id,
+                                              edge_id)
                 qualified_edges_count += 1
             edge_ctr += 1
             if edge_ctr % 1_000_000 == 0:
@@ -1150,10 +1204,16 @@ class PloverDB:
         logging.info("Done building main index; there were %s edges, %s of which "
                      "were qualified.",
                      edge_ctr, qualified_edges_count)
-        _save_to_pickle_file(self.main_index, os.path.join(self.indexes_dir_path, "main_index.pkl"))
+        _save_to_pickle_file(self.main_index, os.path.join(self.indexes_dir_path,
+                                                           "main_index.pkl"))
         del self.main_index, main_index, node_to_category_labels_map
         gc.collect()  # Make sure we free up any memory we can
-        logging.info(*_format_memory_usage(message="Have deleted the main_index and just ran garbage collection. "))
+        logging.info(*_format_memory_usage(
+            message=(
+                "Have deleted the main_index and just ran "
+                "garbage collection. "
+            )
+        ))
 
         logging.info("Starting call to _build_conglomerate_predicate_descendant_index")
         # Record each conglomerate predicate in the KG under its ancestors
@@ -1222,7 +1282,8 @@ class PloverDB:
             json.dump(test_triples_dict, test_triples_file)
         del test_triples_dict
 
-        # Fill out the home page HTML template for this KP with the proper KP endpoint/infores curie
+        # Fill out the home page HTML template for this KP with the proper KP endpoint/infores
+        # curie
         logging.info("Filling out html home template and saving to %s",
                      self.kp_home_html_path)
         kp_home_template_path = os.path.join(parent_dir, "kp_home_template.html")
@@ -1256,17 +1317,29 @@ class PloverDB:
                      self.indexes_dir_path)
         start = time.time()
 
-        self.node_lookup_map = _load_pickle_file(f"{self.indexes_dir_path}/node_lookup_map.pkl")
-        self.edge_lookup_map = _load_pickle_file(f"{self.indexes_dir_path}/edge_lookup_map.pkl")
-        self.main_index = _load_pickle_file(f"{self.indexes_dir_path}/main_index.pkl")
-        self.subclass_index = _load_pickle_file(f"{self.indexes_dir_path}/subclass_index.pkl")
-        self.predicate_map = _load_pickle_file(f"{self.indexes_dir_path}/predicate_map.pkl")
-        self.predicate_map_reversed = _load_pickle_file(f"{self.indexes_dir_path}/predicate_map_reversed.pkl")
-        self.category_map = _load_pickle_file(f"{self.indexes_dir_path}/category_map.pkl")
-        self.category_map_reversed = _load_pickle_file(f"{self.indexes_dir_path}/category_map_reversed.pkl")
-        self.conglomerate_predicate_descendant_index = _load_pickle_file(f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
-        self.meta_kg = _load_pickle_file(f"{self.indexes_dir_path}/meta_kg.pkl")
-        self.preferred_id_map = _load_pickle_file(f"{self.indexes_dir_path}/preferred_id_map.pkl")
+        self.node_lookup_map = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                              "node_lookup_map.pkl"))
+        self.edge_lookup_map = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                              "edge_lookup_map.pkl"))
+        self.main_index = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                         "main_index.pkl"))
+        self.subclass_index = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                             "subclass_index.pkl"))
+        self.predicate_map = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                            "predicate_map.pkl"))
+        self.predicate_map_reversed = \
+            _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                           "predicate_map_reversed.pkl"))
+        self.category_map = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                           "category_map.pkl"))
+        self.category_map_reversed = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                                    "category_map_reversed.pkl"))
+        self.conglomerate_predicate_descendant_index = \
+            _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                           "conglomerate_predicate_descendant_index.pkl"))
+        self.meta_kg = _load_pickle_file(os.path.join(self.indexes_dir_path, "meta_kg.pkl"))
+        self.preferred_id_map = _load_pickle_file(os.path.join(self.indexes_dir_path,
+                                                               "preferred_id_map.pkl"))
         logging.info("Indexes are fully loaded! Took %s minutes.",
                      round((time.time() - start) / 60, 2))
 
@@ -1274,21 +1347,23 @@ class PloverDB:
         # First load the default TRAPI attributes template into map form
         trapi_attribute_template_path = os.path.join(self.parent_dir,
                                                      "trapi_attribute_template.json")
-        with open(trapi_attribute_template_path, "r", encoding="utf-8") as attribute_template_file:
+        with open(trapi_attribute_template_path, "r", encoding="utf-8") \
+             as attribute_template_file:
             attribute_templates = json.load(attribute_template_file)
         trapi_attribute_map = {}
         for item in attribute_templates:
             for property_name in item["property_names"]:
                 if property_name in trapi_attribute_map:
-                    logging.error("More than one item in trapi_attribute_template.json uses the same "
-                                  "property_name: '%s'! Not allowed.",
+                    logging.error("More than one item in trapi_attribute_template.json uses the "
+                                  "same property_name: '%s'! Not allowed.",
                                   property_name)
                     raise ValueError()
                 trapi_attribute_map[property_name] = item["attribute_shell"]
 
         # Then override defaults with any attribute shells provided in the config file
         if self.kg_config.get("trapi_attribute_map"):
-            logging.info("Updating default TRAPI attribute map with config file TRAPI attribute map")
+            logging.info("Updating default TRAPI attribute map with config file TRAPI attribute "
+                         "map")
             trapi_attribute_map.update(self.kg_config["trapi_attribute_map"])
 
         return trapi_attribute_map
@@ -1315,7 +1390,8 @@ class PloverDB:
 
     @staticmethod
     def _get_conglomerate_predicate(qualified_predicate: Optional[str], predicate: Optional[str],
-                                    object_direction: Optional[str], object_aspect: Optional[str]) -> str:
+                                    object_direction: Optional[str], object_aspect: Optional[str]) \
+                                    -> str:
         # If no qualified predicate is provided, use the regular unqualified predicate
         predicate_to_use = qualified_predicate if qualified_predicate else predicate
         return f"{predicate_to_use}--{object_direction}--{object_aspect}"
@@ -1327,27 +1403,37 @@ class PloverDB:
         return self.category_map[category_name]
 
     def _build_conglomerate_predicate_descendant_index(self,
-                                                       edge_lookup_map: dict[str, dict[str, Any]]):
-        # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular predicate variations)
+                                                       edge_lookup_map: \
+                                                       dict[str, dict[str, Any]]):
+        # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular
+        # predicate variations)
         logging.info("Building conglomerate qualified predicate descendant index..")
         conglomerate_predicates_already_seen = set()
         for edge in edge_lookup_map.values():
-            conglomerate_predicate = self._get_conglomerate_predicate_from_edge(edge)
+            conglomerate_pred = self._get_conglomerate_predicate_from_edge(edge)
             qualified_predicate = edge.get(self.graph_qualified_predicate_property)
             qualified_obj_direction = edge.get(self.graph_object_direction_property)
             qualified_obj_aspect = edge.get(self.graph_object_aspect_property)
-            if (qualified_predicate or qualified_obj_direction or qualified_obj_aspect) and conglomerate_predicate not in conglomerate_predicates_already_seen:
-                predicate_variations = [qualified_predicate, edge.get(self.edge_predicate_property)]
+            if (qualified_predicate or qualified_obj_direction or qualified_obj_aspect) \
+               and conglomerate_pred not in conglomerate_predicates_already_seen:
+                predicate_variations = \
+                    [qualified_predicate, edge.get(self.edge_predicate_property)]
                 for predicate in predicate_variations:
                     predicate_ancestors = set(self.bh.get_ancestors(predicate)).union({None})
-                    direction_ancestors = set(self.bh.get_ancestors(qualified_obj_direction)).union({None})
-                    aspect_ancestors = set(self.bh.get_ancestors(qualified_obj_aspect)).union({None})
-                    ancestor_combinations = set(itertools.product(predicate_ancestors, direction_ancestors, aspect_ancestors))
-                    ancestor_conglomerate_predicates = {f"{combination[0]}--{combination[1]}--{combination[2]}"
-                                                        for combination in ancestor_combinations}.difference({"None--None--None"})
-                    for ancestor in ancestor_conglomerate_predicates:
-                        self.conglomerate_predicate_descendant_index[ancestor].add(conglomerate_predicate)
-                conglomerate_predicates_already_seen.add(conglomerate_predicate)
+                    direction_ancestors = \
+                        set(self.bh.get_ancestors(qualified_obj_direction)).union({None})
+                    aspect_ancestors = \
+                        set(self.bh.get_ancestors(qualified_obj_aspect)).union({None})
+                    ancestor_combinations = \
+                        set(itertools.product(predicate_ancestors,
+                                              direction_ancestors,
+                                              aspect_ancestors))
+                    ancestor_conglomerate_predicates = \
+                        {f"{combination[0]}--{combination[1]}--{combination[2]}"
+                         for combination in ancestor_combinations}.difference({"None--None--None"})
+                    for ancest in ancestor_conglomerate_predicates:
+                        self.conglomerate_predicate_descendant_index[ancest].add(conglomerate_pred)
+                conglomerate_predicates_already_seen.add(conglomerate_pred)
 
     def _get_subclass_edges(self,
                             subclass_edges_path: Optional[str],
@@ -1361,10 +1447,12 @@ class PloverDB:
                          len(subclass_edges))
         else:
             if subclass_edges_path:
-                logging.info("Loading subclass edges from %s and filtering out those not involving our nodes",
+                logging.info("Loading subclass edges from %s and filtering out those not "
+                             "involving our nodes",
                              subclass_edges_path)
                 edges_gen = _iter_records(subclass_edges_path, set(), self.array_delimiter)
-                    # TODO: Make smarter... need to be connected, not necessarily directly? and add to preferred id map?
+                    # TODO: Make smarter... need to be connected, not necessarily directly?
+                    # and add to preferred id map?
                 subclass_edges = [edge_obj for edge_obj in edges_gen
                                   if edge_obj["subject"] in self.preferred_id_map
                                   and edge_obj["object"] in self.preferred_id_map]
@@ -1382,15 +1470,18 @@ class PloverDB:
 
         if self.kg_config.get("subclass_sources"):
             subclass_sources = set(self.kg_config["subclass_sources"])
-            logging.info("Filtering subclass edges to only those from sources specified in kg config: %s",
+            logging.info("Filtering subclass edges to only those from sources specified in kg "
+                         "config: %s",
                          subclass_sources)
             subclass_edges = [edge for edge in subclass_edges
                               if edge.get("primary_knowledge_source") in subclass_sources]
 
-        # Deduplicate subclass edges (now primary source doesn't matter since we've already filtered on that)
+        # Deduplicate subclass edges (now primary source doesn't matter since we've already
+        # filtered on that)
         logging.info("Deduplicating subclass edges based on triples..")
-        deduplicated_subclass_edges_map = {f"{edge['subject']}--{edge['predicate']}--{edge['object']}": edge
-                                           for edge in subclass_edges}
+        deduplicated_subclass_edges_map = \
+            {f"{edge['subject']}--{edge['predicate']}--{edge['object']}": edge
+             for edge in subclass_edges}
         subclass_edges = list(deduplicated_subclass_edges_map.values())
         logging.info("In the end, have %s subclass triples to base concept subclass reasoning on",
                      len(subclass_edges))
@@ -1407,15 +1498,20 @@ class PloverDB:
         # Build a map of nodes to their direct 'subclass_of' children
         parent_to_child_dict = defaultdict(set)
         for edge in subclass_edges:
-            parent_node_id = edge["object"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["subject"]
-            child_node_id = edge["subject"] if edge[self.edge_predicate_property] == "biolink:subclass_of" else edge["object"]
+            parent_node_id = \
+                edge["object"] if edge[self.edge_predicate_property] == \
+                "biolink:subclass_of" else edge["subject"]
+            child_node_id = \
+                edge["subject"] if edge[self.edge_predicate_property] == \
+                "biolink:subclass_of" else edge["object"]
             parent_to_child_dict[parent_node_id].add(child_node_id)
         logging.info("A total of %s nodes have child subclasses",
                      len(parent_to_child_dict))
 
         # Then recursively derive all 'subclass_of' descendants for each node
         if parent_to_child_dict:
-            root = "root"  # Need something to act as a parent to all other parents, as a starting point
+            # Need something to act as a parent to all other parents, as a starting point:
+            root = "root"
             parent_to_child_dict[root] = set(parent_to_child_dict)
             parent_to_descendants_dict: dict[str, set[str]] = defaultdict(set)
             problem_nodes: set[str] = set()
@@ -1429,7 +1525,8 @@ class PloverDB:
             del parent_to_descendants_dict["root"]
             node_ids = set(parent_to_descendants_dict)
             for node_id in node_ids:
-                if len(parent_to_descendants_dict[node_id]) > 5000 or node_id.startswith("biolink:"):
+                if len(parent_to_descendants_dict[node_id]) > 5000 or \
+                   node_id.startswith("biolink:"):
                     del parent_to_descendants_dict[node_id]
             deleted_node_ids = node_ids.difference(set(parent_to_descendants_dict))
 
@@ -1438,14 +1535,18 @@ class PloverDB:
             # Print out/save some useful stats
             logging.info("Hit recursion depth for %s nodes. Truncated their lineages",
                          len(problem_nodes))
-            parent_to_num_descendants = {node_id: len(descendants) for node_id, descendants in parent_to_descendants_dict.items()}
+            parent_to_num_descendants = \
+                {node_id: len(descendants) for node_id, descendants \
+                 in parent_to_descendants_dict.items()}
             descendant_counts = list(parent_to_num_descendants.values())
             prefix_counts: dict[str, int] = defaultdict(int)
-            top_50_biggest_parents = sorted(parent_to_num_descendants.items(), key=lambda x: x[1], reverse=True)[:50]
+            top_50_biggest_parents = \
+                sorted(parent_to_num_descendants.items(), key=lambda x: x[1], reverse=True)[:50]
             for node_id in parent_to_descendants_dict:
                 prefix = node_id.split(":")[0]
                 prefix_counts[prefix] += 1
-            sorted_prefix_counts = dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
+            sorted_prefix_counts = \
+                dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
             with open("subclass_report.json", "w+", encoding="utf-8") as report_file:
                 report = {"total_edges_in_kg": total_edges_count,
                           "num_subclass_of_edges_from_approved_sources": len(subclass_edges),
@@ -1472,8 +1573,10 @@ class PloverDB:
                               "curies": list(deleted_node_ids)
                           },
                           "example_mappings": {
-                              "Diabetes mellitus (MONDO:0005015)": list(self.subclass_index.get("MONDO:0005015", [])),
-                              "Adams-Oliver syndrome (MONDO:0007034)": list(self.subclass_index.get("MONDO:0007034", []))
+                              "Diabetes mellitus (MONDO:0005015)": \
+                              list(self.subclass_index.get("MONDO:0005015", [])),
+                              "Adams-Oliver syndrome (MONDO:0007034)": \
+                              list(self.subclass_index.get("MONDO:0007034", []))
                           }
                           }
                 json.dump(report, report_file, indent=2)
@@ -1486,13 +1589,16 @@ class PloverDB:
         counter = 0
         for input_curie, categories_dict in self.main_index.items():
             if counter <= 10:
-                print(f"{input_curie}: #####################################################################")
+                print(f"{input_curie}: ##########################################################")
                 for category_id, predicates_dict in categories_dict.items():
-                    print(f"    {self.category_map_reversed[category_id]}: ------------------------------")
+                    print(f"    {self.category_map_reversed[category_id]}: "
+                          "------------------------------")
                     for predicate_id, directions_tuple in predicates_dict.items():
                         print(f"        {self.predicate_map_reversed[predicate_id]}:")
                         for direction_dict in directions_tuple:
-                            print(f"        {'Forwards' if directions_tuple.index(direction_dict) == 1 else 'Backwards'}:")
+                            dir_str = 'Forwards' if directions_tuple.index(direction_dict) == 1 \
+                                else 'Backwards'
+                            print(f"        {dir_str}:")
                             for output_curie, edge_ids in direction_dict.items():
                                 print(f"            {output_curie}:")
                                 print(f"                {edge_ids}")
@@ -1511,10 +1617,12 @@ class PloverDB:
         response = requests.post("https://nodenormalization-sri.renci.org/get_normalized_nodes",
                                  json={"curies": node_ids,
                                        "conflate": True,
-                                       "drug_chemical_conflate": self.kg_config.get("drug_chemical_conflation", False)},
+                                       "drug_chemical_conflate": \
+                                       self.kg_config.get("drug_chemical_conflation", False)},
                                  timeout=DEFAULT_TIMEOUT)
 
-        equiv_id_map = {node_id: node_id for node_id in node_ids}  # Preferred IDs for nodes are themselves
+        # Preferred IDs for nodes are themselves:
+        equiv_id_map = {node_id: node_id for node_id in node_ids}
         if response.status_code == 200:
             for node_id, normalized_info in response.json().items():
                 if normalized_info:  # This means the SRI NN recognized the node ID we asked for
@@ -1534,20 +1642,23 @@ class PloverDB:
         if sources_template:
             for sources_shells in sources_template.values():
                 for source_shell in sources_shells:
-                    source_shell["resource_id"] = source_shell["resource_id"].replace("{kp_infores_curie}",
-                                                                                      self.kp_infores_curie)
+                    source_shell["resource_id"] = \
+                        source_shell["resource_id"].replace("{kp_infores_curie}",
+                                                            self.kp_infores_curie)
                     if source_shell.get("upstream_resource_ids"):
-                        edited_upstream_ids = [resource_id.replace("{kp_infores_curie}", self.kp_infores_curie)
-                                               for resource_id in source_shell["upstream_resource_ids"]]
+                        edited_upstream_ids = \
+                            [resource_id.replace("{kp_infores_curie}", self.kp_infores_curie)
+                             for resource_id in source_shell["upstream_resource_ids"]]
                         source_shell["upstream_resource_ids"] = edited_upstream_ids
         return sources_template
 
-    # ---------------------------------------- QUERY ANSWERING METHODS ------------------------------------------- #
+    # ------------------------------ QUERY ANSWERING METHODS --------------------------------- #
 
     def answer_query(self, trapi_query: dict) -> dict[str, Any]:
         self.query_log = []  # Clear query log of any prior entries
         # Handle case where someone submits only a query graph (not nested in a 'message')
-        trapi_query = {"message": {"query_graph": trapi_query}} if "nodes" in trapi_query else trapi_query
+        trapi_query = \
+            {"message": {"query_graph": trapi_query}} if "nodes" in trapi_query else trapi_query
         trapi_qg = copy.deepcopy(trapi_query["message"]["query_graph"])
         # Before doing anything else, convert any node ids to equivalents we recognize
         for qnode_key, qnode in trapi_qg["nodes"].items():
@@ -2319,7 +2430,7 @@ class PloverDB:
         return qedge_predicate_ids_dict
 
     def _get_conglomerate_predicates_from_qedge(self, qedge: dict) -> set[str]:
-        qedge_conglomerate_predicates: set[str] = set()
+        qedge_conglomerate_preds: set[str] = set()
         # First get the direct conglomerate predicates for this query edge
         for qualifier_constraint in qedge.get("qualifier_constraints", []):
             qualifier_dict = {qualifier["qualifier_type_id"]: qualifier["qualifier_value"]
@@ -2332,19 +2443,23 @@ class PloverDB:
             predicates = qedge.get("predicates")
             if predicates and not qualified_predicate:
                 # We'll use any regular predicate(s) if no qualified predicate was given
-                new_conglomerate_predicates = {self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
-                                                                                predicate=predicate,
-                                                                                object_direction=object_direction_qualifier,
-                                                                                object_aspect=object_aspect_qualifier)
+                new_conglomerate_predicates = \
+                    {self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
+                                                      predicate=predicate,
+                                                      object_direction=object_direction_qualifier,
+                                                      object_aspect=object_aspect_qualifier)
                                                for predicate in predicates}
-                qedge_conglomerate_predicates = qedge_conglomerate_predicates.union(new_conglomerate_predicates)
+                qedge_conglomerate_preds = qedge_conglomerate_preds.union(new_conglomerate_predicates)
             else:
                 # Use the qualified predicate (is 'None' if not available)
-                qedge_conglomerate_predicates.add(self._get_conglomerate_predicate(qualified_predicate=qualified_predicate,
-                                                                                   predicate=None,
-                                                                                   object_direction=object_direction_qualifier,
-                                                                                   object_aspect=object_aspect_qualifier))
-        return qedge_conglomerate_predicates
+                qedge_conglomerate_preds.add(self._get_conglomerate_predicate(qualified_predicate=\
+                                                                              qualified_predicate,
+                                                                              predicate=None,
+                                                                              object_direction=\
+                                                                              object_direction_qualifier,
+                                                                              object_aspect=\
+                                                                              object_aspect_qualifier))
+        return qedge_conglomerate_preds
 
     def _answer_single_node_query(self, trapi_qg: dict) -> Any:
         # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of TRAPI; just handy)
