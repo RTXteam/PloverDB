@@ -987,19 +987,18 @@ class PloverDB:
                             merged_edge[property_name] = value
                     add_edge = False
                 else:
-                    edge_lookup_map[edge_id] = edge
                     add_edge = True
 
             subj_categories = node_to_category_labels_map[edge["subject"]]
             obj_categories = node_to_category_labels_map[edge["object"]]
-            edge_attribute_names = set(edge.keys()).difference(core_edge_properties)
+            edge_attribute_names = {k for k in edge if k not in core_edge_properties}
             qualified_predicate = edge.get(graph_qualified_predicate_property)
             object_dir_qualifier = edge.get(graph_object_direction_property)
             object_aspect_qualifier = edge.get(graph_object_aspect_property)
             for subj_category in subj_categories:
                 for obj_category in obj_categories:
                     meta_triple = (subj_category, cast(str, edge["predicate"]), obj_category)
-                    meta_triples_map[meta_triple] = meta_triples_map[meta_triple].union(edge_attribute_names)
+                    meta_triples_map[meta_triple].update(edge_attribute_names)
                     if qualified_predicate:
                         meta_qualifiers_map[meta_triple][qedge_qualified_predicate_property].add(qualified_predicate)
                     if object_dir_qualifier:
