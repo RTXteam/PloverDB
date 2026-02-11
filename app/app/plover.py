@@ -1,8 +1,49 @@
-#!/usr/bin/env python3
+"""
+PloverDB: An in-memory, Biolink-compliant, TRAPI-speaking graph database.
+
+This module implements the core PloverDB engine for loading, indexing,
+querying, and serving biomedical knowledge graphs in compliance with
+the Biolink Model and the Translator Reasoner API (TRAPI).
+
+PloverDB supports:
+
+- Streaming ingestion of large node and edge files (TSV/JSONL, optionally gzipped)
+- Canonicalization and normalization of identifiers via the SRI Node Normalizer
+- Construction of optimized in-memory indexes for fast query answering
+- Support for qualified predicates, subclass reasoning, and predicate hierarchies
+- Generation of TRAPI-compliant knowledge graph and result responses
+- Persistent caching of indexes via pickling for fast reloads
+
+The primary entry point is the :class:`PloverDB` class, which manages
+index construction, loading, and query execution for a single
+knowledge-provider endpoint as defined by a configuration file.
+
+This module is intended to be executed and imported as part of the
+``app`` package. It must not be run directly as a standalone script.
+
+Typical usage::
+
+    from app.plover import PloverDB
+
+    plover = PloverDB(config_file_name="config.json")
+    plover.build_indexes()
+    plover.load_indexes()
+    result = plover.answer_query(trapi_query)
+
+Index building is typically performed offline (e.g., during container
+builds or deployment) and reused at runtime.
+
+Note
+----
+Because this module constructs large in-memory data structures, it is
+designed for environments with substantial RAM and includes utilities
+for monitoring and debugging memory usage.
+"""
 from __future__ import annotations
 import copy
 import csv
 import gc
+import inspect
 import itertools
 import json
 from datetime import datetime
@@ -12,26 +53,241 @@ import gzip
 import logging
 import os
 import pickle
+import pprint
 import shutil
 import statistics
 import subprocess
+import sys
 import time
 
 from collections import defaultdict
 from collections.abc import Sequence, Mapping, Set as ABCSet
 from typing import Union, Optional, cast, Iterator, Any
 from pathlib import Path
+from pympler import asizeof
 
 import flask
 import psutil
 import requests
 
-from biolink_helper import get_biolink_helper
+# pylint: disable=wrong-import-position
+if __name__ == "__main__" and __package__ is None:
+    raise SystemExit("ERROR: This module must be run as a package")
+from .biolink_helper import get_biolink_helper
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILE_PATH = "/var/log/ploverdb.log"
 DEFAULT_TIMEOUT = (4.0, 30.0)
-# adding this comment to trigger a rebuild
+#PICKLE_BUFFERING_BYTES = None  # ChatGPT suggested 16 * 1024**2 but it didn't work so well
+
+# :DEBUG: remove if we can show that the new _add_to_main_index (top of module) works:
+def _add_to_main_index(main_index: dict[str, dict],
+                       node_a_id: str,
+                       node_b_id: str,
+                       node_b_category_ids: set[int],
+                       predicate_id: int,
+                       edge_id: str,
+                       direction: int):
+    # Note: A direction of 1 means forwards, 0 means backwards
+    if node_a_id not in main_index:
+        main_index[node_a_id] = {}
+    for category_id in node_b_category_ids:
+        if category_id not in main_index[node_a_id]:
+            main_index[node_a_id][category_id] = {}
+        if predicate_id not in main_index[node_a_id][category_id]:
+            main_index[node_a_id][category_id][predicate_id] = ({}, {})
+        if node_b_id not in main_index[node_a_id][category_id][predicate_id][direction]:
+            main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = set()
+        main_index[node_a_id][category_id][predicate_id][direction][node_b_id].add(edge_id)
+
+def _add_to_main_index_gpt(main_index: dict[str, dict],
+                       node_a_id: str,
+                       node_b_id: str,
+                       node_b_category_ids: set[int],
+                       predicate_id: int,
+                       edge_id: str,
+                       direction: int):
+    node_map = main_index.setdefault(node_a_id, {})
+    for category_id in node_b_category_ids:
+        cat_map = node_map.setdefault(category_id, {})
+        pred_map = cat_map.setdefault(predicate_id, ({}, {}))
+        dir_map = pred_map[direction]
+        edge_set = dir_map.setdefault(node_b_id, set())
+        edge_set.add(edge_id)
+
+def _pprint_sizes_mb(
+    sizes: Mapping[str, int],
+    *,
+    precision: int = 2,
+    multiplier: float = 1.0
+) -> None:
+    """
+    Pretty-print a mapping of sizes in bytes, converted to MB.
+
+    Args:
+        sizes: Mapping from key -> size in bytes
+        precision: Number of decimal places for MB values
+    """
+    mb = 1024 * 1024
+
+    converted = {
+        key: f"{round(multiplier * val / mb, precision)} MB"
+        for key, val in sizes.items()
+    }
+
+    pprint.pprint(converted)
+
+def _sizeof_dict_entries(edge: dict[Any, Any]) -> dict[Any, int]:
+    """
+    Return a dict mapping each key in `edge` to the total memory footprint
+    (in bytes) of that key and its associated value.
+
+    The key is measured shallowly via sys.getsizeof.
+    The value is measured deeply via pympler.asizeof.
+
+    Parameters
+    ----------
+    edge : dict
+        Dictionary whose entries will be sized.
+
+    Returns
+    -------
+    dict
+        Mapping: key -> (sizeof(key) + deep sizeof(value)) in bytes.
+    """
+
+    sizes: dict[Any, int] = {}
+
+    for key, value in edge.items():
+
+        try:
+            key_size = sys.getsizeof(key)
+        except TypeError:
+            key_size = 0
+
+        try:
+            value_size = asizeof.asizeof(value)
+        except (TypeError, ValueError, OverflowError, MemoryError):
+            value_size = 0
+
+        sizes[key] = key_size + value_size
+
+    return sizes
+
+def _get_current_memory_usage() -> tuple[float, float, float]:
+    vm = psutil.virtual_memory()
+
+    proc = psutil.Process()
+
+    return (
+        round(vm.available / 1024**3, 1),            # "system_vm_available_used_gb"
+        round(vm.percent, 1),                        # "system_percent"
+        round(proc.memory_info().rss / 1024**3, 1),  # process_rss_gb
+    )
+
+
+def _format_memory_usage(message: str,
+                         *
+                         args) -> tuple:
+    return (message + "Memory: %sG available; %s%% used; process using %sG",
+            *args,
+            *_get_current_memory_usage())
+
+
+def _print_top_objects(
+    *,
+    limit: int = 30,
+    min_mb: float = 1.0,
+    depth: int = 1,
+) -> None:
+    """
+    Print largest objects from:
+      - caller locals
+      - self attributes (if present)
+      - globals
+
+    De-duplicates shared objects.
+
+    Call from inside a function/method.
+    """
+
+    frame = inspect.currentframe()
+    assert frame is not None
+
+    try:
+        # Walk up to caller frame
+        for _ in range(depth):
+            frame = frame.f_back  # type: ignore[assignment]
+            if frame is None:
+                return
+
+        seen: set[int] = set()
+        results: list[tuple[str, str, int, str]] = []
+        # (source, name, size, type)
+
+        def scan_namespace(
+            source: str,
+            ns: Mapping[str, object],
+        ) -> None:
+            for name, val in ns.items():
+                oid = id(val)
+                if oid in seen:
+                    continue
+                seen.add(oid)
+
+                try:
+                    size = asizeof.asizeof(val)
+                except (TypeError, ValueError, OverflowError, MemoryError):
+                    continue
+
+                size_mb = size / 1024 / 1024
+                if size_mb < min_mb:
+                    continue
+
+                results.append(
+                    (
+                        source,
+                        name,
+                        size,
+                        type(val).__name__,
+                    )
+                )
+
+        # ---- locals ----
+        scan_namespace("local", frame.f_locals)
+
+        # ---- self attrs ----
+        self_obj = frame.f_locals.get("self")
+        if self_obj is not None:
+            try:
+                scan_namespace("self", vars(self_obj))
+            except (TypeError, AttributeError):
+                # TypeError: no __dict__ (e.g., __slots__)
+                # AttributeError: unusual/proxy objects
+                pass
+
+        # ---- globals ----
+        scan_namespace("global", frame.f_globals)
+
+        # ---- sort ----
+        results.sort(key=lambda x: x[2], reverse=True)
+
+        # ---- print ----
+        print(f"\n=== Top Memory Objects (>{min_mb:.1f} MB) ===\n")
+
+        for src, name, size, typ in results[:limit]:
+            print(
+                f"[{src:6s}] "
+                f"{name:30s} "
+                f"{size/1024/1024:8.2f} MB  "
+                f"({typ})"
+            )
+
+        print()
+
+    finally:
+        # Prevent reference cycles
+        del frame
 
 def _convert_to_set(input_item: Any) -> set[str]:
     if isinstance(input_item, str):
@@ -98,13 +354,14 @@ def _load_pickle_file(file_path: str) -> Any:
 def _save_to_pickle_file(item: Any, file_path: str):
     logging.info("Saving data to %s", file_path)
     with open(file_path, "wb") as pickle_file:
-        pickle.dump(item, pickle_file, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump(item, pickle_file,
+                    protocol=pickle.HIGHEST_PROTOCOL)
     logging.info("Done saving data to %s", file_path)
 
 def _download_remote_file(remote_file_path: str,
                           local_destination_path: str) -> None:
     """
-    Download remote_file_path to local_destination_path using pure Python streaming I/O.
+    Download remote_file_path to local_destination_path using pure Pyo
     Does NOT gunzip: if the URL points to a .gz, the .gz bytes are stored as-is.
     """
     url = remote_file_path
@@ -118,7 +375,7 @@ def _download_remote_file(remote_file_path: str,
     headers = {"Accept-Encoding": "identity"}
 
     timeout = DEFAULT_TIMEOUT          # (connect timeout, read timeout) seconds
-    chunk_size = 1024 * 1024           # 1 MiB buffer
+    chunk_size = 1024**2               # 1 MiB buffer
     retries = 3
     backoff_s = 1.0
 
@@ -127,7 +384,10 @@ def _download_remote_file(remote_file_path: str,
     last_exc: Optional[BaseException] = None
     for attempt in range(1, retries + 1):
         try:
-            with requests.get(url, stream=True, headers=headers, timeout=timeout, allow_redirects=True) as r:
+            with requests.get(url, stream=True,
+                              headers=headers,
+                              timeout=timeout,
+                              allow_redirects=True) as r:
                 r.raise_for_status()
 
                 # Ensure we write the raw wire bytes.
@@ -156,6 +416,28 @@ def _download_remote_file(remote_file_path: str,
 
     raise RuntimeError(f"Failed to download {url} -> {dest}") from last_exc
 
+def _get_equiv_id_map_from_sri(node_ids: list[str],
+                               drug_chemical_conflation: bool = False) -> dict[str, str]:
+    response = requests.post("https://nodenormalization-sri.renci.org/get_normalized_nodes",
+                             json={"curies": node_ids,
+                                   "conflate": True,
+                                   "drug_chemical_conflate": drug_chemical_conflation},
+                             timeout=DEFAULT_TIMEOUT)
+
+    equiv_id_map = {node_id: node_id for node_id in node_ids}  # Preferred IDs for nodes are themselves
+    if response.status_code == 200:
+        for node_id, normalized_info in response.json().items():
+            if normalized_info:  # This means the SRI NN recognized the node ID we asked for
+                equiv_nodes = normalized_info["equivalent_identifiers"]
+                for equiv_node in equiv_nodes:
+                    equiv_id = equiv_node["identifier"]
+                    equiv_id_map[equiv_id] = node_id
+    else:
+        logging.warning("Request for batch of node IDs sent to SRI NodeNormalizer failed "
+                        "(status: %s). Input identifier synonymization may not work properly.",
+                        response.status_code)
+
+    return equiv_id_map
 
 def _reverse_dictionary(some_dict: dict) -> dict:
     return {value: key for key, value in some_dict.items()}
@@ -333,24 +615,28 @@ class PloverDB:
                                 handlers=[logging.StreamHandler(),
                                           logging.FileHandler(LOG_FILE_PATH)])
         except OSError:
+            alt_log_file_path = os.path.join(SCRIPT_DIR, "ploverdb.log")
             logging.basicConfig(level=logging.INFO,
                                 format='%(asctime)s %(levelname)s: %(message)s',
                                 handlers=[logging.StreamHandler(),
-                                          logging.FileHandler(f"{SCRIPT_DIR}/ploverdb.log")])
+                                          logging.FileHandler(alt_log_file_path)])
 
         self.config_file_name = config_file_name
-        with open(f"{SCRIPT_DIR}/../{self.config_file_name}", encoding="utf-8") as config_file:
+        self.parent_dir = os.path.dirname(SCRIPT_DIR)
+        config_file_path = os.path.join(self.parent_dir, self.config_file_name)
+        with open(config_file_path, encoding="utf-8") as config_file:
             self.kg_config = json.load(config_file)
         self.endpoint_name = self.kg_config["endpoint_name"]
-        self.sri_test_triples_path = f"{SCRIPT_DIR}/../sri_test_triples_{self.endpoint_name}.json"
-        self.kp_home_html_path = f"{SCRIPT_DIR}/../home_{self.endpoint_name}.html"
-        self.indexes_dir_path = f"{SCRIPT_DIR}/../plover_indexes_{self.endpoint_name}"
+        self.debug = self.kg_config.get("debug", False)
+        self.sri_test_triples_path = os.path.join(self.parent_dir, f"sri_test_triples_{self.endpoint_name}.json")
+        self.kp_home_html_path = os.path.join(self.parent_dir, f"home_{self.endpoint_name}.html")
+        self.indexes_dir_path = os.path.join(self.parent_dir, f"plover_indexes_{self.endpoint_name}")
 
         self.is_test = self.kg_config.get("is_test")
         self.biolink_version = self.kg_config["biolink_version"]
         logging.info("Biolink version to use is: %s", self.biolink_version)
         self.trapi_attribute_map = self.load_trapi_attribute_map()
-        self.num_edges_per_answer_cutoff = self.kg_config.get("num_edges_per_answer_cutoff", 1000000)
+        self.num_edges_per_answer_cutoff = self.kg_config.get("num_edges_per_answer_cutoff", 1_000_000)
         self.edge_predicate_property = self.kg_config["labels"]["edges"]
         self.categories_property = self.kg_config["labels"]["nodes"]
         self.array_properties = {property_name for zip_info in self.kg_config.get("zip", {}).values()
@@ -417,23 +703,31 @@ class PloverDB:
         else:
             edges_file = edges_file_or_url
 
+        parent_dir = self.parent_dir
         if _is_basename(nodes_file):
-            nodes_path = os.path.abspath(os.path.join(SCRIPT_DIR, "..", nodes_file))
+            nodes_path = os.path.abspath(os.path.join(parent_dir, nodes_file))
         else:
             nodes_path = nodes_file
         if _is_basename(edges_file):
-            edges_path = os.path.abspath(os.path.join(SCRIPT_DIR, "..", edges_file))
+            edges_path = os.path.abspath(os.path.join(parent_dir, edges_file))
         else:
             edges_path = edges_file
 
-        subclass_edges_path: str
-        if self.kg_config.get("remote_subclass_edges_file_url"):
+        kg_config = self.kg_config
+        debug = self.debug
+
+        if debug:
+            debug_sample_per = 100  # sample a node or edge (for size estimation) every `debug_sample_per` nodes or edges
+
+        subclass_edges_path: Optional[str] = None
+        if kg_config.get("remote_subclass_edges_file_url"):
             logging.info("No subclass_of edges detected in the graph. Will download some based on kg_config.")
-            subclass_edges_remote_file_url = self.kg_config["remote_subclass_edges_file_url"]
+            subclass_edges_remote_file_url = kg_config["remote_subclass_edges_file_url"]
             assert _is_url(subclass_edges_remote_file_url), \
                 f"Subclass edges remote file URL from config file is not a URL: {subclass_edges_remote_file_url}"
             subclass_edges_file = _url_basename(subclass_edges_remote_file_url)
-            subclass_edges_path = f"{SCRIPT_DIR}/../{subclass_edges_file}"
+            subclass_edges_path = os.path.join(parent_dir,
+                                               subclass_edges_file)
             download_subclass_edges = True
         else:
             download_subclass_edges = False
@@ -447,6 +741,8 @@ class PloverDB:
             _download_remote_file(edges_file_or_url, edges_path)
 
         if download_subclass_edges:
+            assert isinstance(subclass_edges_path, str), \
+                f"invalid type for subclass_edges_path: {type(subclass_edges_path)}"
             _download_remote_file(subclass_edges_remote_file_url, subclass_edges_path)
 
         # Load the files into a KG, depending on file type
@@ -454,7 +750,7 @@ class PloverDB:
         edges_gen = _iter_records(edges_path, self.array_properties, self.array_delimiter)
 
         # Precompute zip config into a convenient structure
-        zip_prop_map = self.kg_config.get("zip") or {}
+        zip_prop_map = kg_config.get("zip") or {}
         zipped_specs: list[tuple[str, list[str]]] = []
         zip_prop_owner: dict[str, str] = {}
         for zipped_prop_name, info in zip_prop_map.items():
@@ -469,18 +765,143 @@ class PloverDB:
 
         is_empty = _is_empty
 
+        # Create basic node lookup map
+        logging.info("Streaming nodes from file %s", nodes_path)
+        nodes_gen = _iter_records(nodes_path, self.array_properties, self.array_delimiter)
+        logging.info("Building basic node/edge lookup maps")
+        logging.info("Loading node lookup map")
+        node_to_category_labels_map: dict[str, set[int]] = {}
+        node_lookup_map: dict[str, dict[str, Any]] = {}
+        node_properties_to_ignore = kg_config.get("ignore_node_properties", [])
+        convert_input_ids = kg_config.get("convert_input_ids")
+        preferred_id_map = self.preferred_id_map
+        categories_property = self.categories_property
+        biolink_helper = self.bh
+        get_category_id = self._get_category_id
+        node_ctr = 0
+        start_nodes = time.time()
+        drug_chemical_conflation = kg_config.get("drug_chemical_conflation", False)
+        node_id_batch: list[str] = []
+        batch_size = 1_000  # suggested max batch size
+        equivalent_ids_in_graph = False
+        node_sizes_total: dict[str,int] = defaultdict(int)
+        for node in nodes_gen:
+            node_id = cast(str, node['id'])
+
+            # Remove node properties we don't care about (according to config file)
+            for prop_to_ignore in node_properties_to_ignore:
+                node.pop(prop_to_ignore, None)
+            # Record equivalent identifiers (if provided) for each node so we can 'canonicalize' incoming queries
+            if convert_input_ids:
+                equivalent_ids = set(
+                    node.get("synonym", [])
+                    + node.get("equivalent_identifiers", [])
+                    + node.get("equivalent_ids", [])
+                    + node.get("equivalent_curies", [])
+                )
+
+                if equivalent_ids:
+                    equivalent_ids_in_graph = True
+                    for equiv_id in equivalent_ids:
+                        preferred_id_map[equiv_id] = node_id
+                    # Then delete no-longer-needed equiv IDs property (these can be huge, faster streaming without)
+                    for k in ("equivalent_curies",
+                              "equivalent_identifiers",
+                              "equivalent_ids",
+                              "synonym"):
+                        node.pop(k, None)
+
+            node.pop("id", None)  # Don't need this anymore since it's now the key
+
+            # Build a helper map of nodes --> category labels
+            categories = _convert_to_set(node[categories_property])
+            proper_ancestors_for_each_category = \
+                [set(biolink_helper.get_ancestors(category, include_mixins=False,
+                                                  include_conflations=False)).difference({category})
+                 for category in categories]
+            all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
+            most_specific_categories = categories.difference(all_proper_ancestors)
+            node_to_category_labels_map[node_id] = {get_category_id(category_name)
+                                                    for category_name in most_specific_categories}
+            node_lookup_map[node_id] = node
+
+            # if config file specifies to normalize input IDs, and if the graph didn't already
+            # supply equivalent node IDs, use the SRI node normalizer to normalize the nodes in
+            # batches
+            if convert_input_ids and not equivalent_ids_in_graph:
+                if len(node_id_batch) == batch_size:
+                    equiv_id_map_for_batch = _get_equiv_id_map_from_sri(node_id_batch,
+                                                                        drug_chemical_conflation)
+                    preferred_id_map.update(equiv_id_map_for_batch)
+                    node_id_batch = []
+                node_id_batch.append(node_id)
+
+            node_ctr += 1
+
+            if debug:
+                if node_ctr % debug_sample_per == 0:
+                    node_sizes = _sizeof_dict_entries(node)
+                    for k, c in node_sizes.items():
+                        node_sizes_total[k] += c
+
+            if node_ctr % 1_000_000 == 0:
+                logging.info("Processed %s nodes in %s seconds",
+                             f"{node_ctr:,}", round(time.time() - start_nodes, 1))
+
+        if debug:
+            _pprint_sizes_mb(node_sizes_total, multiplier=float(debug_sample_per))
+
+        logging.info(*_format_memory_usage("Have loaded %s nodes in %s seconds. ",
+                                           format(len(node_to_category_labels_map), ","),
+                                           round(time.time() - start_nodes, 1)))
+
+        logging.info("Preferred ID map includes %s equivalent identifiers",
+                     len(preferred_id_map))
+
+        # Add a build node for this Plover build (don't want this in the meta KG, so we add it here)
+        plover_build_node = {"name": f"Plover deployment of {self.kp_infores_curie}",
+                             "category": "biolink:InformationContentEntity",
+                             "description": f"This Plover build was done on {datetime.now()} from input files "
+                                            f"'{kg_config['nodes_file']}' and '{kg_config['edges_file']}'. "
+                                            f"Biolink version used was {self.biolink_version}."}
+        node_lookup_map["PloverDB"] = plover_build_node
+
+         # Save the node lookup map now that we're done using/modifying it
+        _save_to_pickle_file(node_lookup_map, os.path.join(self.indexes_dir_path, "node_lookup_map.pkl"))
+        del node_lookup_map
+        gc.collect()  # Make sure we free up any memory we can
+        logging.info(*_format_memory_usage(message="Have just run garbage collection. "))
+
+        logging.info(*_format_memory_usage("Have deleted the node_lookup_map and run garbage collection. "))
+        if debug:
+            _print_top_objects(min_mb=100)
+
         graph_object_direction_property = self.graph_object_direction_property
         graph_object_aspect_property = self.graph_object_aspect_property
         trial_phase_properties: set[str] = self.trial_phase_properties
-        edge_properties_to_ignore = self.kg_config.get("ignore_edge_properties") or []
-        edge_ctr = 0
+        core_edge_properties = self.core_edge_properties
+        edge_properties_to_ignore = kg_config.get("ignore_edge_properties") or []
         convert_trial_phase_to_enum = self._convert_trial_phase_to_enum
-        self.edge_lookup_map = {}
-        edge_lookup_map = self.edge_lookup_map
+        edge_lookup_map: dict[str, dict[str, Any]] = {}
+        edge_predicate_property = self.edge_predicate_property
+        graph_qualified_predicate_property = self.graph_qualified_predicate_property
+        edge_ctr = 0
+        start_edges = time.time()
+        edge_sizes_total: dict[str,int] = defaultdict(int)
+        normalize = kg_config.get("normalize")
+        meta_triples_map: dict[tuple[int, str, int], set[str]] = defaultdict(set)
+        meta_qualifiers_map: dict[tuple[int, str, int], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+        test_triples_map = {}
+        qedge_qualified_predicate_property = self.qedge_qualified_predicate_property
+        qedge_object_direction_property = self.qedge_object_direction_property
+        qedge_object_aspect_property = self.qedge_object_aspect_property
+
+        # Create reversed category/predicate maps now that we're done building those maps
+        self.category_map_reversed = _reverse_dictionary(self.category_map)
+        self.predicate_map_reversed = _reverse_dictionary(self.predicate_map)
+        category_map_reversed = self.category_map_reversed
 
         for edge in edges_gen:
-            edge_ctr += 1
-
             try:
                 edge_id = str(edge["id"])
             except KeyError as e:
@@ -502,11 +923,13 @@ class PloverDB:
                 try:
                     cols = [edge[p] for p in props]
                 except KeyError as e:
-                    raise KeyError(f"for edge {edge_id}, missing zip column {e.args[0]} for {zipped_prop_name}") from e
+                    raise KeyError(f"for edge {edge_id}, missing zip column "
+                                   f"{e.args[0]} \for {zipped_prop_name}") from e
                 # Zip rows (assumes cols are equal-length sequences)
                 for prop, col in zip(props, cols):
                     if isinstance(col, (str, bytes, dict, set)) or not isinstance(col, Sequence):
-                        raise TypeError(f"for edge {edge_id}, zip column {prop} is {type(col).__name__}; expected Sequence (non-string)")
+                        raise TypeError(f"for edge {edge_id}, zip column {prop} is "
+                                        f"{type(col).__name__}; expected Sequence (non-string)")
                 items: list[dict[str, Any]] = []
                 try:
                     for row in zip(*cols, strict=True):
@@ -523,121 +946,29 @@ class PloverDB:
                         if obj:
                             items.append(obj)
                 except ValueError as e:
-                    raise ValueError(f"for edge {edge_id}, zip length mismatch for {zipped_prop_name} in {edges_path}") from e
+                    raise ValueError(f"for edge {edge_id}, zip length mismatch for "
+                                     f"{zipped_prop_name} in {edges_path}") from e
                 edge[zipped_prop_name] = items
                 for p in props:
                     edge.pop(p, None)
 
             # delete any remaining top-level properties that are empty
-            edge = {k: v for k, v in edge.items() if not is_empty(v)}
+            to_del = [k for k, v in edge.items() if is_empty(v)]
+            for k in to_del:
+                edge.pop(k, None)
 
             # Convert any trial phase property values from int to Biolink enum
             for trial_phase_prop in trial_phase_properties:
                 if trial_phase_prop in edge:
                     edge[trial_phase_prop] = convert_trial_phase_to_enum(edge[trial_phase_prop])
 
-            edge_lookup_map[edge_id] = edge
-
-            if edge_ctr % 1_000_000 == 0:
-                logging.info("Processed %s edges in %s seconds",
-                             f"{edge_ctr:,}", round(time.time() - start, 1))
-
-        logging.info("Have loaded %s edges in %s seconds", edge_ctr,
-                     round(time.time() - start, 1))
-
-        gc.collect()  # Make sure we free up any memory we can
-        memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
-        logging.info("Memory usage is currently %s%% (%sG)", memory_usage_percent, memory_usage_gb)
-
-        # Create basic node lookup map
-        logging.info("Streaming nodes from file %s", nodes_path)
-        nodes_gen = _iter_records(nodes_path, self.array_properties, self.array_delimiter)
-        logging.info("Building basic node/edge lookup maps")
-        logging.info("Loading node lookup map")
-        self.node_lookup_map = {cast(str, node["id"]): node for node in nodes_gen}
-        logging.info("Have loaded %s nodes", len(self.node_lookup_map))
-        node_properties_to_ignore = self.kg_config.get("ignore_node_properties", [])
-        for node_key, node in self.node_lookup_map.items():
-            # Remove node properties we don't care about (according to config file)
-            for prop_to_ignore in node_properties_to_ignore:
-                if prop_to_ignore in node:
-                    del node[prop_to_ignore]
-            # Record equivalent identifiers (if provided) for each node so we can 'canonicalize' incoming queries
-            if self.kg_config.get("convert_input_ids"):
-                equivalent_ids = set(
-                    node.get("synonym", [])
-                    + node.get("equivalent_identifiers", [])
-                    + node.get("equivalent_ids", [])
-                    + node.get("equivalent_curies", [])
-                )
-
-                if equivalent_ids:
-                    for equiv_id in equivalent_ids:
-                        self.preferred_id_map[equiv_id] = node_key
-                    # Then delete no-longer-needed equiv IDs property (these can be huge, faster streaming without..)
-                    if "equivalent_curies" in node:
-                        del node["equivalent_curies"]
-                    if "equivalent_identifiers" in node:
-                        del node["equivalent_identifiers"]
-                    if "equivalent_ids" in node:
-                        del node["equivalent_ids"]
-                    if "synonym" in node:
-                        del node["synonym"]
-            del node["id"]  # Don't need this anymore since it's now the key
-        memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
-        logging.info("Done loading node lookup map; there are %s nodes. "
-                     "Memory usage is currently %s%% (%sG)",
-                     len(self.node_lookup_map), memory_usage_percent, memory_usage_gb)
-
-        # Use the SRI NodeNormalizer to determine equivalent identifiers if none were provided in the nodes file
-        if self.kg_config.get("convert_input_ids") and not self.preferred_id_map:
-            logging.info("Looking up equivalent identifiers in SRI NodeNormalizer (will cache for later use)")
-            all_node_ids = list(self.node_lookup_map)
-            batch_size = 1000  # This is the suggested max batch size from Chris Bizon (in Translator slack..)
-            node_id_batches = [all_node_ids[batch_start:batch_start + batch_size]
-                               for batch_start in range(0, len(all_node_ids), batch_size)]
-            for node_id_batch in node_id_batches:
-                equiv_id_map_for_batch = self._get_equiv_id_map_from_sri(node_id_batch)
-                self.preferred_id_map.update(equiv_id_map_for_batch)
-        logging.info("Preferred ID map includes %s equivalent identifiers",
-                     len(self.preferred_id_map))
-
-        if self.kg_config.get("normalize"):
-            # Normalize the graph so it only uses one node ID per distinct concept
-            # Note don't need to remap nodes; all equivalent nodes will still be present there
-            deduplicated_edges_map: dict[str, dict[str, Any]] = {}
-            for edge in self.edge_lookup_map.values():
-                edge["subject"] = self.preferred_id_map[edge["subject"]]
-                edge["object"] = self.preferred_id_map[edge["object"]]
-                edge_key = (f'{edge["subject"]}--{edge["predicate"]}--{edge["object"]}--'
-                            f'{edge.get("primary_knowledge_source", "")}')
-                if edge_key in deduplicated_edges_map:
-                    # Add this edge's array properties to the existing merged edge
-                    merged_edge = deduplicated_edges_map[edge_key]
-                    for property_name, value in edge.items():
-                        if property_name in merged_edge:
-                            if isinstance(value, list):
-                                merged_edge[property_name] = merged_edge[property_name] + value
-                        else:
-                            merged_edge[property_name] = value
-                else:
-                    deduplicated_edges_map[edge_key] = edge
-            # Then eliminate any potential redundant study objs
-            for deduplicated_edge in deduplicated_edges_map.values():
-                if deduplicated_edge.get("supporting_studies"):
-                    study_objs_by_nctids = {study_obj["nctid"]: study_obj
-                                            for study_obj in deduplicated_edge["supporting_studies"]}
-                    deduplicated_edge["supporting_studies"] = list(study_objs_by_nctids.values())
-            self.edge_lookup_map = deduplicated_edges_map
-
-        # Convert all edges to their canonical predicate form; correct missing biolink prefixes
-        logging.info("Converting edges to their canonical form")
-        for edge_id, edge in self.edge_lookup_map.items():
-            predicate = edge[self.edge_predicate_property]
-            qualified_predicate = edge.get(self.graph_qualified_predicate_property)
-            canonical_predicate = self.bh.get_canonical_predicates(predicate, print_warnings=False)[0]
-            canonical_qualified_predicate = self.bh.get_canonical_predicates(qualified_predicate,
-                                                                             print_warnings=False)[0] if qualified_predicate else None
+            # Convert all edge to its canonical predicate form; correct missing biolink prefixes
+            predicate = edge[edge_predicate_property]
+            qualified_predicate = edge.get(graph_qualified_predicate_property)
+            canonical_predicate = biolink_helper.get_canonical_predicates(predicate, print_warnings=False)[0]
+            canonical_qualified_predicate = \
+                biolink_helper.get_canonical_predicates(qualified_predicate,
+                                                        print_warnings=False)[0] if qualified_predicate else None
             predicate_is_canonical = canonical_predicate == predicate
             qualified_predicate_is_canonical = canonical_qualified_predicate == qualified_predicate
             if qualified_predicate and \
@@ -646,142 +977,112 @@ class PloverDB:
                 logging.error("Edge %s has one of [predicate, qualified_predicate] that is in canonical form "
                               "and one that is not; cannot reconcile",
                               edge_id)
-                return
+                return  # TODO: look into whether we should raise an exception here
             if canonical_predicate != predicate:  # Both predicate and qualified_pred must be non-canonical
                 # Flip the edge (because the original predicate must be the canonical predicate's inverse)
-                edge[self.edge_predicate_property] = canonical_predicate
-                edge[self.graph_qualified_predicate_property] = canonical_qualified_predicate
+                edge[edge_predicate_property] = canonical_predicate
+                edge[graph_qualified_predicate_property] = canonical_qualified_predicate
                 original_subject = edge["subject"]
                 edge["subject"] = edge["object"]
                 edge["object"] = original_subject
 
-        if self.is_test:
-            # Narrow down our test file to exclude orphan edges
-            logging.info("Narrowing down test edges file to make sure node IDs used by edges appear in nodes dict")
-            edge_lookup_map_trimmed = {edge_id: edge for edge_id, edge in self.edge_lookup_map.items() if
-                                       edge["subject"] in self.node_lookup_map and edge["object"] in self.node_lookup_map}
-            self.edge_lookup_map = edge_lookup_map_trimmed
-            logging.info("After narrowing down test file, node_lookup_map contains %s nodes, "
-                         "edge_lookup_map contains %s edges",
-                         len(self.node_lookup_map), len(self.edge_lookup_map))
+            add_edge = None
 
-        # Build a helper map of nodes --> category labels
-        logging.info("Determining nodes' category labels (most specific Biolink categories)..")
-        node_to_category_labels_map: dict[str, set[int]] = {}
-        for node_id, node in self.node_lookup_map.items():
-            categories = _convert_to_set(node[self.categories_property])
-            proper_ancestors_for_each_category = [set(self.bh.get_ancestors(category, include_mixins=False, include_conflations=False)).difference({category})
-                                                  for category in categories]
-            all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
-            most_specific_categories = categories.difference(all_proper_ancestors)
-            node_to_category_labels_map[node_id] = {self._get_category_id(category_name)
-                                                    for category_name in most_specific_categories}
+            if normalize:
+                edge["subject"] = preferred_id_map[edge["subject"]]
+                edge["object"] = preferred_id_map[edge["object"]]
+                edge_id = (f'{edge["subject"]}--{edge["predicate"]}--{edge["object"]}--'
+                           f'{edge.get("primary_knowledge_source", "")}')
+                edge["id"] = edge_id
+                if edge.get("supporting_studies"):
+                    study_objs_by_nctids = {study_obj["nctid"]: study_obj
+                                            for study_obj in edge["supporting_studies"]}
+                    edge["supporting_studies"] = list(study_objs_by_nctids.values())
+                if edge_id in edge_lookup_map:
+                    # Add this edge's array properties to the existing merged edge
+                    merged_edge = edge_lookup_map[edge_id]
+                    for property_name, value in edge.items():
+                        if property_name in merged_edge:
+                            if isinstance(value, list):
+                                merged_edge[property_name] = merged_edge[property_name] + value
+                        else:
+                            merged_edge[property_name] = value
+                    add_edge = False
+                else:
+                    edge_lookup_map[edge_id] = edge
+                    add_edge = True
 
-        # Build our main index (modified/nested adjacency list kind of structure)
-        logging.info("Building main index..")
-        edges_count = 0
-        qualified_edges_count = 0
-        total = len(self.edge_lookup_map)
-        max_allowed_percent_memory_usage = 90
-        for edge_id, edge in self.edge_lookup_map.items():
-            subject_id = edge["subject"]
-            object_id = edge["object"]
-            predicate = edge[self.edge_predicate_property]
-            predicate_id = self._get_predicate_id(predicate)
-            subject_category_ids = node_to_category_labels_map[subject_id]
-            object_category_ids = node_to_category_labels_map[object_id]
-            # Record this edge in the forwards and backwards directions
-            self._add_to_main_index(subject_id, object_id, object_category_ids, predicate_id, edge_id, 1)
-            self._add_to_main_index(object_id, subject_id, subject_category_ids, predicate_id, edge_id, 0)
-            # Record this edge under its qualified predicate/other properties, if such info is provided
-            if edge.get(self.graph_qualified_predicate_property) or edge.get(self.graph_object_direction_property) or edge.get(self.graph_object_aspect_property):
-                conglomerate_predicate_id = self._get_conglomerate_predicate_id_from_edge(edge)
-                self._add_to_main_index(subject_id, object_id, object_category_ids, conglomerate_predicate_id, edge_id, 1)
-                self._add_to_main_index(object_id, subject_id, subject_category_ids, conglomerate_predicate_id, edge_id, 0)
-                qualified_edges_count += 1
-            edges_count += 1
-            if edges_count % 1000000 == 0:
-                memory_usage_gb, memory_usage_percent = self._get_current_memory_usage()
-                logging.info("  Have processed %s edges (%s%%), "
-                             "%s of which were qualified edges. Memory usage is currently "
-                             "%s%% (%s)",
-                             edges_count, round((edges_count / total) * 100), qualified_edges_count,
-                             memory_usage_percent, memory_usage_gb)
-                if memory_usage_percent > max_allowed_percent_memory_usage:
-                    raise MemoryError(f"Main index size is greater than {max_allowed_percent_memory_usage}%;"
-                                      f" terminating.")
-        logging.info("Done building main index; there were %s edges, %s of which "
-                     "were qualified.",
-                     edges_count, qualified_edges_count)
-        _save_to_pickle_file(self.main_index, f"{self.indexes_dir_path}/main_index.pkl")
-        del self.main_index
-        gc.collect()
-
-        # Record each conglomerate predicate in the KG under its ancestors
-        self._build_conglomerate_predicate_descendant_index()
-        _save_to_pickle_file(self.conglomerate_predicate_descendant_index,
-                                  f"{self.indexes_dir_path}/conglomerate_predicate_descendant_index.pkl")
-        del self.conglomerate_predicate_descendant_index
-
-        # Build the subclass_of index
-        subclass_edges = self._get_subclass_edges(subclass_edges_path)
-        self._build_subclass_index(subclass_edges)
-        del subclass_edges
-        _save_to_pickle_file(self.subclass_index, f"{self.indexes_dir_path}/subclass_index.pkl")
-        del self.subclass_index
-        gc.collect()
-
-        # Save the preferred ID map now that we're done using it
-        _save_to_pickle_file(self.preferred_id_map, f"{self.indexes_dir_path}/preferred_id_map.pkl")
-        del self.preferred_id_map
-        gc.collect()
-
-        # Create reversed category/predicate maps now that we're done building those maps
-        self.category_map_reversed = _reverse_dictionary(self.category_map)
-        self.predicate_map_reversed = _reverse_dictionary(self.predicate_map)
-
-        # Save regular category/predicate maps now that we're done using those
-        _save_to_pickle_file(self.category_map, f"{self.indexes_dir_path}/category_map.pkl")
-        del self.category_map
-        _save_to_pickle_file(self.predicate_map, f"{self.indexes_dir_path}/predicate_map.pkl")
-        del self.predicate_map
-
-        # Build the meta knowledge graph and SRI test triples
-        logging.info("Starting to build meta knowledge graph and SRI test triples..")
-        # First identify unique meta edges
-        meta_triples_map: dict[tuple[int, str, int], set[str]] = defaultdict(set)
-        meta_qualifiers_map: dict[tuple[int, str, int], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
-        test_triples_map = {}
-        for edge in self.edge_lookup_map.values():
             subj_categories = node_to_category_labels_map[edge["subject"]]
             obj_categories = node_to_category_labels_map[edge["object"]]
-            edge_attribute_names = set(edge.keys()).difference(self.core_edge_properties)
-            qualified_predicate = edge.get(self.graph_qualified_predicate_property)
-            object_dir_qualifier = edge.get(self.graph_object_direction_property)
-            object_aspect_qualifier = edge.get(self.graph_object_aspect_property)
+            edge_attribute_names = set(edge.keys()).difference(core_edge_properties)
+            qualified_predicate = edge.get(graph_qualified_predicate_property)
+            object_dir_qualifier = edge.get(graph_object_direction_property)
+            object_aspect_qualifier = edge.get(graph_object_aspect_property)
             for subj_category in subj_categories:
                 for obj_category in obj_categories:
                     meta_triple = (subj_category, cast(str, edge["predicate"]), obj_category)
                     meta_triples_map[meta_triple] = meta_triples_map[meta_triple].union(edge_attribute_names)
                     if qualified_predicate:
-                        meta_qualifiers_map[meta_triple][self.qedge_qualified_predicate_property].add(qualified_predicate)
+                        meta_qualifiers_map[meta_triple][qedge_qualified_predicate_property].add(qualified_predicate)
                     if object_dir_qualifier:
-                        meta_qualifiers_map[meta_triple][self.qedge_object_direction_property].add(object_dir_qualifier)
+                        meta_qualifiers_map[meta_triple][qedge_object_direction_property].add(object_dir_qualifier)
                     if object_aspect_qualifier:
-                        meta_qualifiers_map[meta_triple][self.qedge_object_aspect_property].add(object_aspect_qualifier)
+                        meta_qualifiers_map[meta_triple][qedge_object_aspect_property].add(object_aspect_qualifier)
                     # Create one test triple for each meta edge (basically an example edge)
                     if meta_triple not in test_triples_map:
-                        test_triples_map[meta_triple] = {"subject_category": self.category_map_reversed[subj_category],
-                                                         "object_category": self.category_map_reversed[obj_category],
+                        test_triples_map[meta_triple] = {"subject_category": category_map_reversed[subj_category],
+                                                         "object_category": category_map_reversed[obj_category],
                                                          "predicate": edge["predicate"],
                                                          "subject_id": edge["subject"],
                                                          "object_id": edge["object"]}
-        meta_edges = [{"subject": self.category_map_reversed[triple[0]],
+
+            # store the final edge in the `edge_lookup_map` by its `edge_id` key
+            if (not normalize) or add_edge:
+                edge_lookup_map[edge_id] = edge
+
+            edge_ctr += 1
+            if edge_ctr % 1_000_000 == 0:
+                logging.info("Processed %s edges in %s seconds",
+                             f"{edge_ctr:,}", round(time.time() - start_edges, 1))
+
+            if debug:
+                if edge_ctr % debug_sample_per == 0:
+                    edge_sizes = _sizeof_dict_entries(edge)
+                    for k, c in edge_sizes.items():
+                        edge_sizes_total[k] += c
+
+        if debug:
+            _pprint_sizes_mb(edge_sizes_total, multiplier=float(debug_sample_per))
+
+        if debug:
+            _print_top_objects(min_mb=100)
+
+        logging.info("Have loaded %s edges in %s seconds", format(edge_ctr, ","),
+                     round(time.time() - start_edges, 1))
+
+
+        if self.is_test:
+            # Narrow down our test file to exclude orphan edges
+            logging.info("Narrowing down test edges file to make sure node "
+                         "IDs used by edges appear in nodes dict")
+            edge_lookup_map = {edge_id: edge for edge_id, edge in edge_lookup_map.items() if
+                               edge["subject"] in node_to_category_labels_map and \
+                               edge["object"] in node_to_category_labels_map}
+            logging.info("After narrowing down test file, node_lookup_map contains %s nodes, "
+                         "edge_lookup_map contains %s edges",
+                         len(node_to_category_labels_map), len(edge_lookup_map))
+
+        # Build the meta knowledge graph and SRI test triples
+        logging.info("Starting to build meta knowledge graph and SRI test triples")
+        get_trapi_edge_attribute=self._get_trapi_edge_attribute
+        meta_edges = [{"subject": category_map_reversed[triple[0]],
                        "predicate": triple[1],
-                       "object": self.category_map_reversed[triple[2]],
-                       "attributes": [{"attribute_type_id": self._get_trapi_edge_attribute(attribute_name, None, {})["attribute_type_id"],
+                       "object": category_map_reversed[triple[2]],
+                       "attributes": [{"attribute_type_id": \
+                                       get_trapi_edge_attribute(attribute_name, None, {})[
+                                           "attribute_type_id"],
                                        "constraint_use": True,
-                                       "constraint_name": attribute_name.replace("_", " ")}  # TODO: Do this for real..
+                                       "constraint_name": attribute_name.replace("_", " ")}  # TODO: Do this for real
                                       for attribute_name in attribute_names],
                        "qualifiers": [{"qualifier_type_id": qualifier_property,
                                        "applicable_values": list(qualifier_values)}
@@ -794,18 +1095,144 @@ class PloverDB:
             prefix = node_key.split(":")[0]
             for category in categories_int:
                 category_to_prefixes_map[category].add(prefix)
-        meta_nodes = {self.category_map_reversed[category]: {"id_prefixes": list(prefixes)}
+        meta_nodes = {category_map_reversed[category]: {"id_prefixes": list(prefixes)}
                       for category, prefixes in category_to_prefixes_map.items()}
         logging.info("Identified %s different meta nodes", len(meta_nodes))
         self.meta_kg = {"nodes": meta_nodes, "edges": meta_edges}
-        _save_to_pickle_file(self.meta_kg, f"{self.indexes_dir_path}/meta_kg.pkl")
-        del self.meta_kg, meta_nodes, meta_edges, node_to_category_labels_map
+        _save_to_pickle_file(self.meta_kg,
+                             os.path.join(self.indexes_dir_path, "meta_kg.pkl"))
+        del self.meta_kg, meta_nodes, meta_edges
         gc.collect()
 
+        get_conglomerate_predicate_id_from_edge = self._get_conglomerate_predicate_id_from_edge
+        # Build our main index (modified/nested adjacency list kind of structure)
+        logging.info("Building main index")
+        main_index = self.main_index
+        edge_ctr = 0
+        qualified_edges_count = 0
+        total = len(edge_lookup_map)
+        max_allowed_percent_memory_usage = 90
+        get_predicate_id = self._get_predicate_id
+        for edge_id, edge in edge_lookup_map.items():
+            subject_id = edge["subject"]
+            object_id = edge["object"]
+            predicate = edge[edge_predicate_property]
+            predicate_id = get_predicate_id(predicate)
+            subject_category_ids = node_to_category_labels_map[subject_id]
+            object_category_ids = node_to_category_labels_map[object_id]
+            # Record this edge in the forwards and backwards directions
+            _add_to_main_index(main_index,
+                               subject_id,
+                               object_id,
+                               object_category_ids,
+                               predicate_id,
+                               edge_id,
+                               1)
+            _add_to_main_index(main_index,
+                               object_id,
+                               subject_id,
+                               subject_category_ids,
+                               predicate_id,
+                               edge_id,
+                               0)
+            # Record this edge under its qualified predicate/other properties, if such info is provided
+            if edge.get(graph_qualified_predicate_property) or \
+               edge.get(graph_object_direction_property) or \
+               edge.get(graph_object_aspect_property):
+                conglomerate_predicate_id = get_conglomerate_predicate_id_from_edge(edge)
+                _add_to_main_index(main_index,
+                                   subject_id,
+                                   object_id,
+                                   object_category_ids,
+                                   conglomerate_predicate_id,
+                                   edge_id,
+                                   1)
+                _add_to_main_index(main_index,
+                                   object_id,
+                                   subject_id,
+                                   subject_category_ids,
+                                   conglomerate_predicate_id,
+                                   edge_id,
+                                   0)
+                qualified_edges_count += 1
+            edge_ctr += 1
+            if edge_ctr % 1_000_000 == 0:
+                memory_args = _format_memory_usage("  Have processed %s edges (%s%%), "
+                                                   "%s of which were qualified edges. ",
+                                                   edge_ctr,
+                                                   round((edge_ctr / total) * 100),
+                                                   qualified_edges_count)
+                logging.info(*memory_args)
+                memory_usage_percent = memory_args[5]
+                if memory_usage_percent > max_allowed_percent_memory_usage:
+                    raise MemoryError(f"Memory usage percent ({memory_usage_percent}%) "
+                                      f"is greater than {max_allowed_percent_memory_usage}%;"
+                                      " terminating.")
+
+        logging.info("Done building main index; there were %s edges, %s of which "
+                     "were qualified.",
+                     edge_ctr, qualified_edges_count)
+        _save_to_pickle_file(self.main_index, os.path.join(self.indexes_dir_path, "main_index.pkl"))
+        del self.main_index, node_to_category_labels_map
+        gc.collect()  # Make sure we free up any memory we can
+        logging.info(*_format_memory_usage(message="Have just run garbage collection. "))
+
+        logging.info("Starting call to _build_conglomerate_predicate_descendant_index")
+        # Record each conglomerate predicate in the KG under its ancestors
+        self._build_conglomerate_predicate_descendant_index(edge_lookup_map)
+        logging.info("Saving conglomerate_predicate_descendant_index")
+        _save_to_pickle_file(self.conglomerate_predicate_descendant_index,
+                             os.path.join(self.indexes_dir_path,
+                                          "conglomerate_predicate_descendant_index.pkl"))
+        del self.conglomerate_predicate_descendant_index
+
+        # Build the subclass_of index
+        logging.info("Getting subclass edges")
+        subclass_edges = self._get_subclass_edges(subclass_edges_path, edge_lookup_map)
+        logging.info("Building index of subclass edges")
+        self._build_subclass_index(subclass_edges, len(edge_lookup_map))
+        del subclass_edges
+
+        logging.info("Saving index of subclass edges")
+        _save_to_pickle_file(self.subclass_index,
+                             os.path.join(self.indexes_dir_path, "subclass_index.pkl"))
+        del self.subclass_index
+
+        logging.info("Saving edge_lookup_map")
+        # Save the edge lookup map now that we're done with it
+        _save_to_pickle_file(edge_lookup_map,
+                             os.path.join(self.indexes_dir_path,
+                                          "edge_lookup_map.pkl"))
+        del edge_lookup_map
+        gc.collect()  # Make sure we free up any memory we can
+        logging.info(*_format_memory_usage(message="Have just run garbage collection. "))
+
+        logging.info("Saving preferred_id_map")
+        # Save the preferred ID map now that we're done using it
+        _save_to_pickle_file(self.preferred_id_map,
+                             os.path.join(self.indexes_dir_path, "preferred_id_map.pkl"))
+        del self.preferred_id_map
+
+        logging.info("Saving category_map")
+        # Save regular category/predicate maps now that we're done using those
+        _save_to_pickle_file(self.category_map,
+                             os.path.join(self.indexes_dir_path, "category_map.pkl"))
+        del self.category_map
+
+        logging.info("Saving predicate_map")
+        _save_to_pickle_file(self.predicate_map,
+                             os.path.join(self.indexes_dir_path, "predicate_map.pkl"))
+        del self.predicate_map
+
+        logging.info("Saving category_map_reversed")
         # Save some other indexes we're done using/modifying
-        _save_to_pickle_file(self.category_map_reversed, f"{self.indexes_dir_path}/category_map_reversed.pkl")
+        _save_to_pickle_file(self.category_map_reversed,
+                             os.path.join(self.indexes_dir_path, "category_map_reversed.pkl"))
         del self.category_map_reversed
-        _save_to_pickle_file(self.predicate_map_reversed, f"{self.indexes_dir_path}/predicate_map_reversed.pkl")
+
+        logging.info("Saving predicate_map_reversed")
+        _save_to_pickle_file(self.predicate_map_reversed,
+                             os.path.join(self.indexes_dir_path, "predicate_map_reversed.pkl"))
         del self.predicate_map_reversed
 
         # Then save test triples file
@@ -817,28 +1244,11 @@ class PloverDB:
             json.dump(test_triples_dict, test_triples_file)
         del test_triples_dict
 
-        # Add a build node for this Plover build (don't want this in the meta KG, so we add it here)
-        plover_build_node = {"name": f"Plover deployment of {self.kp_infores_curie}",
-                             "category": "biolink:InformationContentEntity",
-                             "description": f"This Plover build was done on {datetime.now()} from input files "
-                                            f"'{self.kg_config['nodes_file']}' and '{self.kg_config['edges_file']}'. "
-                                            f"Biolink version used was {self.biolink_version}."}
-        self.node_lookup_map["PloverDB"] = plover_build_node
-
-        # Save the node lookup map now that we're done using/modifying it
-        _save_to_pickle_file(self.node_lookup_map, f"{self.indexes_dir_path}/node_lookup_map.pkl")
-        del self.node_lookup_map
-        gc.collect()
-
-        # Save the edge lookup map now that we're done with it
-        _save_to_pickle_file(self.edge_lookup_map, f"{self.indexes_dir_path}/edge_lookup_map.pkl")
-        del self.edge_lookup_map
-        gc.collect()
-
         # Fill out the home page HTML template for this KP with the proper KP endpoint/infores curie
         logging.info("Filling out html home template and saving to %s",
                      self.kp_home_html_path)
-        with open(f"{SCRIPT_DIR}/../kp_home_template.html", "r", encoding="utf-8") as template_file:
+        kp_home_template_path = os.path.join(parent_dir, "kp_home_template.html")
+        with open(kp_home_template_path, "r", encoding="utf-8") as template_file:
             html_string = template_file.read()
         revised_html = html_string.replace("{{kp_infores_curie}}",
                                            self.kp_infores_curie).replace("{{kp_endpoint_name}}",
@@ -847,7 +1257,7 @@ class PloverDB:
             kp_home_file.write(revised_html)
 
         if not self.is_test:
-            logging.info("Removing local unzipped nodes/edges files from the image now that index building is done")
+            logging.info("Removing local files from the image now that index building is done")
             subprocess.call(["rm", "-f", nodes_path])
             subprocess.call(["rm", "-f", edges_path])
 
@@ -884,7 +1294,9 @@ class PloverDB:
 
     def load_trapi_attribute_map(self) -> dict[str, Any]:
         # First load the default TRAPI attributes template into map form
-        with open(f"{SCRIPT_DIR}/../trapi_attribute_template.json", "r", encoding="utf-8") as attribute_template_file:
+        trapi_attribute_template_path = os.path.join(self.parent_dir,
+                                                     "trapi_attribute_template.json")
+        with open(trapi_attribute_template_path, "r", encoding="utf-8") as attribute_template_file:
             attribute_templates = json.load(attribute_template_file)
         trapi_attribute_map = {}
         for item in attribute_templates:
@@ -902,26 +1314,6 @@ class PloverDB:
             trapi_attribute_map.update(self.kg_config["trapi_attribute_map"])
 
         return trapi_attribute_map
-
-    def _add_to_main_index(self,
-                           node_a_id: str,
-                           node_b_id: str,
-                           node_b_category_ids: set[int],
-                           predicate_id: int,
-                           edge_id: str,
-                           direction: int):
-        # Note: A direction of 1 means forwards, 0 means backwards
-        main_index = self.main_index
-        if node_a_id not in main_index:
-            main_index[node_a_id] = {}
-        for category_id in node_b_category_ids:
-            if category_id not in main_index[node_a_id]:
-                main_index[node_a_id][category_id] = {}
-            if predicate_id not in main_index[node_a_id][category_id]:
-                main_index[node_a_id][category_id][predicate_id] = ({}, {})
-            if node_b_id not in main_index[node_a_id][category_id][predicate_id][direction]:
-                main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = set()
-            main_index[node_a_id][category_id][predicate_id][direction][node_b_id].add(edge_id)
 
     def _get_conglomerate_predicate_from_edge(self, edge: dict) -> str:
         qualified_predicate = edge.get(self.graph_qualified_predicate_property)
@@ -956,11 +1348,12 @@ class PloverDB:
             self.category_map[category_name] = num_categories
         return self.category_map[category_name]
 
-    def _build_conglomerate_predicate_descendant_index(self):
+    def _build_conglomerate_predicate_descendant_index(self,
+                                                       edge_lookup_map: dict[str, dict[str, Any]]):
         # Record each conglomerate predicate in the KG under its ancestors (inc. None and regular predicate variations)
         logging.info("Building conglomerate qualified predicate descendant index..")
         conglomerate_predicates_already_seen = set()
-        for edge in self.edge_lookup_map.values():
+        for edge in edge_lookup_map.values():
             conglomerate_predicate = self._get_conglomerate_predicate_from_edge(edge)
             qualified_predicate = edge.get(self.graph_qualified_predicate_property)
             qualified_obj_direction = edge.get(self.graph_object_direction_property)
@@ -978,9 +1371,11 @@ class PloverDB:
                         self.conglomerate_predicate_descendant_index[ancestor].add(conglomerate_predicate)
                 conglomerate_predicates_already_seen.add(conglomerate_predicate)
 
-    def _get_subclass_edges(self, subclass_edges_path: str) -> list[dict]:
+    def _get_subclass_edges(self,
+                            subclass_edges_path: Optional[str],
+                            edge_lookup_map: dict[str, dict[str, Any]]) -> list[dict]:
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
-        subclass_edges = [edge for edge in self.edge_lookup_map.values()
+        subclass_edges = [edge for edge in edge_lookup_map.values()
                           if edge[self.edge_predicate_property] in subclass_predicates]
         if subclass_edges:
             logging.info("Found %s subclass_of edges in the graph. Will use these for concept "
@@ -1024,7 +1419,9 @@ class PloverDB:
 
         return subclass_edges
 
-    def _build_subclass_index(self, subclass_edges: list[dict]):
+    def _build_subclass_index(self,
+                              subclass_edges: list[dict],
+                              total_edges_count: int):
         logging.info("Building subclass_of index using %s subclass_of edges",
                      len(subclass_edges))
         start = time.time()
@@ -1072,7 +1469,7 @@ class PloverDB:
                 prefix_counts[prefix] += 1
             sorted_prefix_counts = dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
             with open("subclass_report.json", "w+", encoding="utf-8") as report_file:
-                report = {"total_edges_in_kg": len(self.edge_lookup_map),
+                report = {"total_edges_in_kg": total_edges_count,
                           "num_subclass_of_edges_from_approved_sources": len(subclass_edges),
                           "num_nodes_with_descendants": {
                               "total": len(parent_to_descendants_dict),
@@ -1124,14 +1521,6 @@ class PloverDB:
             else:
                 break
             counter += 1
-
-    @staticmethod
-    def _get_current_memory_usage():
-        # Thanks https://www.geeksforgeeks.org/how-to-get-current-cpu-and-ram-usage-in-python/
-        virtual_mem_usage_info = psutil.virtual_memory()
-        memory_percent_used = virtual_mem_usage_info[2]
-        memory_used_in_gb = virtual_mem_usage_info[3] / 10**9
-        return round(memory_used_in_gb, 1), memory_percent_used
 
     def _convert_trial_phase_to_enum(self, phase_value: Any) -> Any:
         if phase_value in self.trial_phases_map:
