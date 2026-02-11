@@ -18,8 +18,8 @@ The primary entry point is the :class:`PloverDB` class, which manages
 index construction, loading, and query execution for a single
 knowledge-provider endpoint as defined by a configuration file.
 
-This module is intended to be executed and imported as part of the
-``app`` package. It must not be run directly as a standalone script.
+This module is intended to be executed and imported as a Python package. 
+It must not be run directly as a standalone script.
 
 Typical usage::
 
