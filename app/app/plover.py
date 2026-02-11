@@ -78,9 +78,7 @@ from .biolink_helper import get_biolink_helper
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 LOG_FILE_PATH = "/var/log/ploverdb.log"
 DEFAULT_TIMEOUT = (4.0, 30.0)
-#PICKLE_BUFFERING_BYTES = None  # ChatGPT suggested 16 * 1024**2 but it didn't work so well
 
-# :DEBUG: remove if we can show that the new _add_to_main_index (top of module) works:
 def _add_to_main_index(main_index: dict[str, dict],
                        node_a_id: str,
                        node_b_id: str,
@@ -89,24 +87,6 @@ def _add_to_main_index(main_index: dict[str, dict],
                        edge_id: str,
                        direction: int):
     # Note: A direction of 1 means forwards, 0 means backwards
-    if node_a_id not in main_index:
-        main_index[node_a_id] = {}
-    for category_id in node_b_category_ids:
-        if category_id not in main_index[node_a_id]:
-            main_index[node_a_id][category_id] = {}
-        if predicate_id not in main_index[node_a_id][category_id]:
-            main_index[node_a_id][category_id][predicate_id] = ({}, {})
-        if node_b_id not in main_index[node_a_id][category_id][predicate_id][direction]:
-            main_index[node_a_id][category_id][predicate_id][direction][node_b_id] = set()
-        main_index[node_a_id][category_id][predicate_id][direction][node_b_id].add(edge_id)
-
-def _add_to_main_index_gpt(main_index: dict[str, dict],
-                       node_a_id: str,
-                       node_b_id: str,
-                       node_b_category_ids: set[int],
-                       predicate_id: int,
-                       edge_id: str,
-                       direction: int):
     node_map = main_index.setdefault(node_a_id, {})
     for category_id in node_b_category_ids:
         cat_map = node_map.setdefault(category_id, {})
@@ -870,8 +850,6 @@ class PloverDB:
         _save_to_pickle_file(node_lookup_map, os.path.join(self.indexes_dir_path, "node_lookup_map.pkl"))
         del node_lookup_map
         gc.collect()  # Make sure we free up any memory we can
-        logging.info(*_format_memory_usage(message="Have just run garbage collection. "))
-
         logging.info(*_format_memory_usage("Have deleted the node_lookup_map and run garbage collection. "))
         if debug:
             _print_top_objects(min_mb=100)
@@ -1103,6 +1081,7 @@ class PloverDB:
                              os.path.join(self.indexes_dir_path, "meta_kg.pkl"))
         del self.meta_kg, meta_nodes, meta_edges
         gc.collect()
+        logging.info(*_format_memory_usage("Have deleted the meta maps and run garbage collection. "))
 
         get_conglomerate_predicate_id_from_edge = self._get_conglomerate_predicate_id_from_edge
         # Build our main index (modified/nested adjacency list kind of structure)
@@ -1173,9 +1152,9 @@ class PloverDB:
                      "were qualified.",
                      edge_ctr, qualified_edges_count)
         _save_to_pickle_file(self.main_index, os.path.join(self.indexes_dir_path, "main_index.pkl"))
-        del self.main_index, node_to_category_labels_map
+        del self.main_index, main_index, node_to_category_labels_map
         gc.collect()  # Make sure we free up any memory we can
-        logging.info(*_format_memory_usage(message="Have just run garbage collection. "))
+        logging.info(*_format_memory_usage(message="Have deleted the main_index and just ran garbage collection. "))
 
         logging.info("Starting call to _build_conglomerate_predicate_descendant_index")
         # Record each conglomerate predicate in the KG under its ancestors
