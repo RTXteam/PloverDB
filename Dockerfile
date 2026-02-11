@@ -45,7 +45,8 @@ ENV UWSGI_CHEAPER=8
 
 # Build indexes (as plover user to ensure correct ownership)
 USER plover
-RUN python /app/app/build_indexes.py
+WORKDIR=/app
+RUN python -m app.build_indexes
 
 # Expose port
 EXPOSE 80
