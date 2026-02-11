@@ -346,10 +346,12 @@ def _load_pickle_file(file_path: str) -> Any:
 
 def _save_to_pickle_file(item: Any, file_path: str):
     logging.info("Saving data to %s", file_path)
+    start = time.time()
     with open(file_path, "wb") as pickle_file:
         pickle.dump(item, pickle_file,
                     protocol=pickle.HIGHEST_PROTOCOL)
-    logging.info("Done saving data to %s", file_path)
+    logging.info("Done saving data to %s. Took %s seconds",
+                 file_path, round(time.time() - start, 1))
 
 def _download_remote_file(
         remote_file_path: str,
