@@ -2529,14 +2529,3 @@ class PloverDB:
         if code:
             log_entry["code"] = code
         self.query_log.append(log_entry)
-
-
-def main():
-    # TODO: Update to pass in config file name as arg...
-    plover = PloverDB(config_file_name="config.json")
-    plover.build_indexes()
-    plover.load_indexes()
-
-
-if __name__ == "__main__":
-    main()
