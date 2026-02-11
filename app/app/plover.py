@@ -336,8 +336,8 @@ def _is_url(some_string: str) -> bool:
         return False
 
 def _load_pickle_file(file_path: str) -> Any:
-    start = time.time()
     logging.info("Loading %s into memory", file_path)
+    start = time.time()
     with open(file_path, "rb") as pickle_file:
         contents = pickle.load(pickle_file)
     logging.info("Done loading %s into memory. Took %s seconds",
