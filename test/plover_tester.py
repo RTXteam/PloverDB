@@ -26,7 +26,9 @@ class PloverTester:
     def run_query(self, trapi_qg: dict, should_produce_results: bool = True, should_produce_error: bool = False) -> dict:
         trapi_query = {"message": {"query_graph": trapi_qg}, "submitter": "ploverdb-test-suite"}
         is_edgeless_query = False if len(trapi_qg.get("edges", {})) else True
-        response = requests.post(f"{self.endpoint_url}/query", json=trapi_query, headers={'accept': 'application/json'})
+        response = requests.post(f"{self.endpoint_url}/query",
+                                 json=trapi_query,
+                                 headers={'accept': 'application/json'})
         if should_produce_error:
             assert not response.ok
 
