@@ -19,11 +19,9 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-# import plover
 from . import plover
 
-SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = flask.Flask(__name__)
 cors = CORS(app)
@@ -111,8 +109,6 @@ def instrument(flask_app):
         excluded_urls="docs,get_logs,logs,code_version,debug,healthcheck"
     )
 
-
-instrument(app)
 
 
 @app.get("/")
@@ -589,4 +585,9 @@ if __name__ == "__main__":
     # Dev/test server only. In production use uWSGI/gunicorn.
     port = int(os.environ.get("PLOVER_PORT", "9990"))
     host = os.environ.get("PLOVER_HOST", "0.0.0.0")
+    do_otel = os.environ.get("PLOVER_OTEL", "false")
+    if do_otel == "true":
+        instrument(app)
     app.run(host=host, port=port, debug=False, use_reloader=False)
+else:
+    instrument(app)
