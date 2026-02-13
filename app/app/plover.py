@@ -2510,7 +2510,8 @@ class PloverDB:
                                                          output_qnode_key="",
                                                          qedge_key="",
                                                          trapi_qg=trapi_qg,
-                                                         descendant_to_query_id_map=descendant_to_query_id_map)
+                                                         descendant_to_query_id_map=\
+                                                         descendant_to_query_id_map)
         log_message = f"Done with query, returning TRAPI response ({len(response['message']['results'])} results)"
         self.log_trapi("INFO", log_message)
         return response
