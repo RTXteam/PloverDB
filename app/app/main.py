@@ -570,8 +570,13 @@ def run_get_logs():
         handle_internal_error(e)
 
 
+# Reserved path segments — must not be treated as KP endpoint names
+_RESERVED_PATHS = frozenset({"debug", "get_logs", "logs", "code_version", "healthcheck"})
+
 @app.get("/<kp_endpoint_name>")
 def get_kp_home_page(kp_endpoint_name: str):
+    if kp_endpoint_name in _RESERVED_PATHS:
+        flask.abort(404, f"404 ERROR: Use the full path (e.g. /{kp_endpoint_name}) not as an endpoint name.")
     if kp_endpoint_name in plover_objs_map:
         logging.info(f"{kp_endpoint_name}: Going to homepage.")
         return send_file(plover_objs_map[kp_endpoint_name].kp_home_html_path, as_attachment=False)
