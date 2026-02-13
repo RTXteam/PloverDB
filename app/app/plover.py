@@ -2334,9 +2334,13 @@ class PloverDB:
         most_curies = 0
         for qnode_key, qnode in qnodes.items():
             ids_property = "ids" if "ids" in qnode else "id"
-            qnode_ids_property_list = cast(list[str], qnode[ids_property])
-            num_qnode_ids_curies = len(qnode_ids_property_list)
-            if qnode.get(ids_property) and num_qnode_ids_curies > most_curies:
+            qnode_ids = qnode.get(ids_property)
+            if not qnode_ids:
+                continue
+            if isinstance(qnode_ids, str):
+                qnode_ids = [qnode_ids]
+            num_qnode_ids_curies = len(qnode_ids)
+            if num_qnode_ids_curies > most_curies:
                 most_curies = num_qnode_ids_curies
                 qnode_key_with_most_curies = qnode_key
         return qnode_key_with_most_curies
