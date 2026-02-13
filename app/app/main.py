@@ -19,19 +19,26 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import plover
+# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# import plover
+from . import plover
 
 SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
 
 app = flask.Flask(__name__)
 cors = CORS(app)
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s %(levelname)s: %(message)s',
-                    handlers=[logging.StreamHandler(),
-                              logging.FileHandler(plover.LOG_FILE_PATH)])
-
+try:
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s %(levelname)s: %(message)s',
+                        handlers=[logging.StreamHandler(),
+                                  logging.FileHandler(plover.LOG_FILE_PATH)])
+except OSError:
+        alt_log_file_path = os.path.join(SCRIPT_DIR, "ploverdb.log")
+        logging.basicConfig(level=logging.INFO,
+                            format='%(asctime)s %(levelname)s: %(message)s',
+                            handlers=[logging.StreamHandler(),
+                                      logging.FileHandler(alt_log_file_path)])
 
 def load_plovers() -> Tuple[dict, str]:
     # Load a Plover for each KP (each KP has its own Plover config file - e.g., 'config_kg2c.json')
@@ -577,3 +584,9 @@ def get_kp_home_page(kp_endpoint_name: str):
         return send_file(plover_objs_map[kp_endpoint_name].kp_home_html_path, as_attachment=False)
     else:
         flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+
+if __name__ == "__main__":
+    # Dev/test server only. In production use uWSGI/gunicorn.
+    port = int(os.environ.get("PLOVER_PORT", "9990"))
+    host = os.environ.get("PLOVER_HOST", "0.0.0.0")
+    app.run(host=host, port=port, debug=False, use_reloader=False)
