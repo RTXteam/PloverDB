@@ -47,7 +47,7 @@ def test_simple():
        }
     }
     response = tester.run_query(query)
-
+    assert response
 
 def test_unconstrained_output_node():
     query = {
@@ -358,7 +358,7 @@ def test_canonical_predicate_handling():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:54758501"]
+                "ids": ["UNII:CHL9B67L95"]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -379,7 +379,7 @@ def test_canonical_predicate_handling():
         },
         "nodes": {
             "n00": {
-                "ids": ["PUBCHEM.COMPOUND:54758501"]
+                "ids": ["UNII:CHL9B67L95"]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -753,7 +753,6 @@ def test_version():
         }
     }
     response = tester.run_query(query)
-    print(response["message"]["knowledge_graph"]["nodes"])
 
 
 if __name__ == "__main__":
