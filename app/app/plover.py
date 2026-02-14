@@ -78,6 +78,10 @@ from .biolink_helper import get_biolink_helper
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE_PATH = "/var/log/ploverdb.log"
 DEFAULT_TIMEOUT = (4.0, 30.0)
+equivalent_curies_property_tuple = ("equivalent_curies",
+                                    "equivalent_identifiers",
+                                    "equivalent_ids",
+                                    "same_as")
 
 def _add_edge_to_main_index_bidir(
         main_index: dict[str, dict],
@@ -818,26 +822,23 @@ class PloverDB:
             # Remove node properties we don't care about (according to config file)
             for prop_to_ignore in node_properties_to_ignore:
                 node.pop(prop_to_ignore, None)
+
             # Record equivalent identifiers (if provided) for each node so we
             # can 'canonicalize' incoming queries
-            if convert_input_ids:
-                equivalent_ids = set(
-                    node.get("synonym", [])
-                    + node.get("equivalent_identifiers", [])
-                    + node.get("equivalent_ids", [])
-                    + node.get("equivalent_curies", [])
-                )
-
+            if self.kg_config.get("convert_input_ids"):
+                equivalent_ids = {
+                    curie
+                    for p in equivalent_curies_property_tuple
+                    for curie in node.get(p, [])
+                }
                 if equivalent_ids:
                     equivalent_ids_in_graph = True
                     for equiv_id in equivalent_ids:
                         preferred_id_map[equiv_id] = node_id
+
                     # Then delete no-longer-needed equiv IDs property (these can be
                     # huge, faster streaming without)
-                    for k in ("equivalent_curies",
-                              "equivalent_identifiers",
-                              "equivalent_ids",
-                              "synonym"):
+                    for k in equivalent_curies_property_tuple:
                         node.pop(k, None)
 
             node.pop("id", None)  # Don't need this anymore since it's now the key
@@ -877,8 +878,9 @@ class PloverDB:
                         node_sizes_total[k] += c
 
             if node_ctr % 1_000_000 == 0:
-                logging.info("Processed %s nodes in %s seconds",
-                             f"{node_ctr:,}", round(time.time() - start_nodes, 1))
+                logging.info(*_format_memory_usage("  Processed %s nodes in %s seconds. ",
+                                                   f"{node_ctr:,}",
+                                                   round(time.time() - start_nodes, 1)))
 
         if debug:
             _pprint_sizes_mb(node_sizes_total, multiplier=float(debug_sample_per))
@@ -935,7 +937,13 @@ class PloverDB:
 
         # Create reversed category/predicate maps now that we're done building those maps
         self.category_map_reversed = _reverse_dictionary(self.category_map)
-        self.predicate_map_reversed = _reverse_dictionary(self.predicate_map)
+
+        logging.info("Pickling category_map and deleting it from memory")
+        # Save regular category/predicate maps now that we're done using those
+        _save_to_pickle_file(self.category_map,
+                             os.path.join(self.indexes_dir_path, "category_map.pkl"))
+        del self.category_map
+
         category_map_reversed = self.category_map_reversed
 
         for edge in edges_gen:
@@ -1090,8 +1098,10 @@ class PloverDB:
 
             edge_ctr += 1
             if edge_ctr % 1_000_000 == 0:
-                logging.info("Processed %s edges in %s seconds",
-                             f"{edge_ctr:,}", round(time.time() - start_edges, 1))
+                logging.info(
+                    *_format_memory_usage("  Processed %s edges in %s seconds. ",
+                                          f"{edge_ctr:,}",
+                                          round(time.time() - start_edges, 1)))
 
             if debug:
                 if edge_ctr % debug_sample_per == 0:
@@ -1107,7 +1117,6 @@ class PloverDB:
 
         logging.info("Have loaded %s edges in %s seconds", format(edge_ctr, ","),
                      round(time.time() - start_edges, 1))
-
 
         if self.is_test:
             # Narrow down our test file to exclude orphan edges
@@ -1170,6 +1179,8 @@ class PloverDB:
             subject_id = edge["subject"]
             object_id = edge["object"]
             predicate = edge[edge_predicate_property]
+            # add `predicate` to the `self.predicate_map` as a key, with the value
+            # being a sequentially- and automatically-assigned integer predicate ID:
             predicate_id = get_predicate_id(predicate)
             subject_category_ids = node_to_category_labels_map[subject_id]
             object_category_ids = node_to_category_labels_map[object_id]
@@ -1197,7 +1208,7 @@ class PloverDB:
                 qualified_edges_count += 1
             edge_ctr += 1
             if edge_ctr % 1_000_000 == 0:
-                memory_args = _format_memory_usage("  Have processed %s edges (%s%%), "
+                memory_args = _format_memory_usage("  Processed %s edges (%s%%), "
                                                    "%s of which were qualified edges. ",
                                                    edge_ctr,
                                                    round((edge_ctr / total) * 100),
@@ -1222,6 +1233,24 @@ class PloverDB:
                 "garbage collection. "
             )
         ))
+
+        logging.info("Constructing predicate_map_reversed from predicate_map")
+        self.predicate_map_reversed = _reverse_dictionary(self.predicate_map)
+        logging.info("Pickling predicate_map_reversed and deleting it from memory")
+        _save_to_pickle_file(self.predicate_map_reversed,
+                             os.path.join(self.indexes_dir_path, "predicate_map_reversed.pkl"))
+        del self.predicate_map_reversed
+
+        logging.info("Pickling predicate_map and deleting it from memory")
+        _save_to_pickle_file(self.predicate_map,
+                             os.path.join(self.indexes_dir_path, "predicate_map.pkl"))
+        del self.predicate_map
+
+        logging.info("Pickling category_map_reversed and deleting it from memory")
+        # Save some other indexes we're done using/modifying
+        _save_to_pickle_file(self.category_map_reversed,
+                             os.path.join(self.indexes_dir_path, "category_map_reversed.pkl"))
+        del self.category_map_reversed
 
         logging.info("Starting call to _build_conglomerate_predicate_descendant_index")
         # Record each conglomerate predicate in the KG under its ancestors
@@ -1258,28 +1287,6 @@ class PloverDB:
         _save_to_pickle_file(self.preferred_id_map,
                              os.path.join(self.indexes_dir_path, "preferred_id_map.pkl"))
         del self.preferred_id_map
-
-        logging.info("Saving category_map")
-        # Save regular category/predicate maps now that we're done using those
-        _save_to_pickle_file(self.category_map,
-                             os.path.join(self.indexes_dir_path, "category_map.pkl"))
-        del self.category_map
-
-        logging.info("Saving predicate_map")
-        _save_to_pickle_file(self.predicate_map,
-                             os.path.join(self.indexes_dir_path, "predicate_map.pkl"))
-        del self.predicate_map
-
-        logging.info("Saving category_map_reversed")
-        # Save some other indexes we're done using/modifying
-        _save_to_pickle_file(self.category_map_reversed,
-                             os.path.join(self.indexes_dir_path, "category_map_reversed.pkl"))
-        del self.category_map_reversed
-
-        logging.info("Saving predicate_map_reversed")
-        _save_to_pickle_file(self.predicate_map_reversed,
-                             os.path.join(self.indexes_dir_path, "predicate_map_reversed.pkl"))
-        del self.predicate_map_reversed
 
         # Then save test triples file
         test_triples_dict = {"edges": list(test_triples_map.values())}
