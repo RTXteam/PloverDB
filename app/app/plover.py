@@ -760,7 +760,7 @@ class PloverDB:
             download_subclass_edges = True
         else:
             download_subclass_edges = False
-
+        logging.info(f"After checking the config, have set: download_subclass_edges: {download_subclass_edges}")
         # download any required remote files up-front, so we can fail early if
         # one of the URLs is incorrect or download is failing for some reason
         if download_nodes:
@@ -1486,7 +1486,7 @@ class PloverDB:
                     edge["object"] = self.preferred_id_map[edge["object"]]
                 subprocess.call(["rm", "-f", subclass_edges_path])
             else:
-                logging.warning("No url to a subclass edges file provided in %s. Will proceed "
+                logging.warning("No URL to a subclass edges file provided in %s. Will proceed "
                                 "without subclass concept reasoning",
                                 self.config_file_name)
 
@@ -1542,7 +1542,7 @@ class PloverDB:
             _ = _get_descendants(root,
                                  parent_to_child_dict,
                                  parent_to_descendants_dict,
-                                 max_depth=0,
+                                 max_depth=20,
                                  problem_nodes=problem_nodes)
 
             # Filter out some unhelpful nodes (too many descendants and/or not useful)
