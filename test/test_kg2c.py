@@ -358,7 +358,7 @@ def test_canonical_predicate_handling():
         },
         "nodes": {
             "n00": {
-                "ids": ["UNII:CHL9B67L95"]
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -379,7 +379,7 @@ def test_canonical_predicate_handling():
         },
         "nodes": {
             "n00": {
-                "ids": ["UNII:CHL9B67L95"]
+                "ids": ["PUBCHEM.COMPOUND:54758501"]
             },
             "n01": {
                 "categories": ["biolink:Disease"]
@@ -460,7 +460,6 @@ def test_query_id_mapping_in_results():
     response = tester.run_query(query)
     assert tester.get_num_distinct_concepts(response, "n00") == 2
     assert DIABETES_T1_CURIE in response["message"]["knowledge_graph"]["nodes"]
-
     for result in response["message"]["results"]:
         for qnode_key, node_bindings in result["node_bindings"].items():
             for node_binding in node_bindings:
