@@ -5,7 +5,7 @@ from typing import List, Set, Optional
 import pytest
 import requests
 
-SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 class PloverTester:
