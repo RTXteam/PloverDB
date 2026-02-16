@@ -19,3 +19,4 @@ vulture==2.14
 pylint==4.0.4
 mypy==1.19.1
 ruff==0.15.0
+setuptools==81.0.0
