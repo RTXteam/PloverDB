@@ -486,6 +486,11 @@ def _open_maybe_gzip(path: Path):
         return gzip.open(path, "rt", encoding="utf-8", newline="")
     return open(path, "rt", encoding="utf-8", newline="")
 
+def _raise_http_error(http_code: int, err_message: str):
+    detail_message = f"{http_code} ERROR: {err_message}"
+    logging.error(detail_message)
+    flask.abort(http_code, detail_message)
+
 def _iter_records(fname: str,
                   array_properties: set[str],
                   array_delimiter: str) -> Iterator[dict[str, Any]]:
@@ -931,7 +936,8 @@ class PloverDB:
         convert_trial_phase_to_enum = self._convert_trial_phase_to_enum
         edge_lookup_map: dict[str, dict[str, Any]] = {}
         edge_predicate_property = self.edge_predicate_property
-        graph_qualified_predicate_property = self.graph_qualified_predicate_property
+        graph_qualified_predicate_property = \
+            self.graph_qualified_predicate_property
         edge_ctr = 0
         start_edges = time.time()
         edge_sizes_total: dict[str,int] = defaultdict(int)
@@ -944,13 +950,15 @@ class PloverDB:
         qedge_obj_dir_prop = self.qedge_object_direction_property
         qedge_obj_aspect_prop = self.qedge_object_aspect_property
 
-        # Create reversed category/predicate maps now that we're done building those maps
+        # Create reversed category/predicate maps now that we're done building
+        # those maps
         self.category_map_reversed = _reverse_dictionary(self.category_map)
 
         logging.info("Pickling category_map and deleting it from memory")
         # Save regular category/predicate maps now that we're done using those
         _save_to_pickle_file(self.category_map,
-                             os.path.join(self.indexes_dir_path, "category_map.pkl"))
+                             os.path.join(self.indexes_dir_path,
+                                          "category_map.pkl"))
         del self.category_map
 
         category_map_reversed = self.category_map_reversed
@@ -963,11 +971,13 @@ class PloverDB:
                 try:
                     edge_id = str(edge["id"])
                 except KeyError as e:
-                    raise KeyError(f"edge missing required 'id' field in {edges_path}") from e
+                    raise KeyError("edge missing required 'id' field in "
+                                   f"{edges_path}") from e
             else:
                 edge_id = "urn:uuid:" + str(uuid.uuid4())
 
-            # remove edge properties that are on the "ignore" list from the config file
+            # remove edge properties that are on the "ignore" list from the
+            # config file
             for prop_to_ignore in edge_properties_to_ignore:
                 edge.pop(prop_to_ignore, None)
 
@@ -976,11 +986,13 @@ class PloverDB:
                 edge[graph_object_direction_property] = \
                     edge.pop("qualified_object_direction")
             if "qualified_object_aspect" in edge:
-                edge[graph_object_aspect_property] = edge.pop("qualified_object_aspect")
+                edge[graph_object_aspect_property] = \
+                    edge.pop("qualified_object_aspect")
 
              # ---- Zip up specified columns into list-of-dicts ----
             for zipped_prop_name, props in zipped_specs:
-                # Get the column arrays; if any are missing, skip or raise (choose behavior)
+                # Get the column arrays; if any are missing, skip or raise
+                # (choose behavior)
                 try:
                     cols = [edge[p] for p in props]
                 except KeyError as e:
@@ -1110,11 +1122,17 @@ class PloverDB:
                             (subj_category, cast(str, edge["predicate"]), obj_category)
                         meta_triples_map[meta_triple].update(edge_attribute_names)
                         if qualified_predicate:
-                            meta_qual_map[meta_triple][qedge_qual_pred_prop].add(qualified_predicate)
+                            meta_qual_map[meta_triple][qedge_qual_pred_prop].add(
+                                qualified_predicate
+                            )
                         if object_dir_qualifier:
-                            meta_qual_map[meta_triple][qedge_obj_dir_prop].add(object_dir_qualifier)
+                            meta_qual_map[meta_triple][qedge_obj_dir_prop].add(
+                                object_dir_qualifier
+                            )
                         if object_aspect_qual:
-                            meta_qual_map[meta_triple][qedge_obj_aspect_prop].add(object_aspect_qual)
+                            meta_qual_map[meta_triple][qedge_obj_aspect_prop].add(
+                                object_aspect_qual
+                            )
                         # Create one test triple for each meta edge (basically an example edge)
                         if meta_triple not in test_triples_map:
                             test_triples_map[meta_triple] = \
@@ -1710,8 +1728,11 @@ class PloverDB:
         for qnode_key, qnode in trapi_qg["nodes"].items():
             qnode_ids = qnode.get("ids")
             if qnode_ids:
-                self.log_trapi("INFO", f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we recognize")
-                qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) for input_id in qnode_ids})
+                self.log_trapi("INFO",
+                               f"Converting qnode {qnode_key}'s 'ids' to equivalent ids we "
+                               "recognize")
+                qnode["ids"] = list({self.preferred_id_map.get(input_id, input_id) \
+                                     for input_id in qnode_ids})
 
         # Handle single-node queries (not part of TRAPI, but handy)
         if not trapi_qg.get("edges"):
@@ -1720,7 +1741,7 @@ class PloverDB:
         if len(trapi_qg["edges"]) > 1:
             err_message = (f"Bad Request. Can only answer single-edge queries. Your QG has "
                            f"{len(trapi_qg['edges'])} edges.")
-            self.raise_http_error(400, err_message)
+            _raise_http_error(400, err_message)
         # Make sure at least one qnode has a curie
         qedge_key = next(qedge_key for qedge_key in trapi_qg["edges"])
         qedge = trapi_qg["edges"][qedge_key]
@@ -1729,8 +1750,9 @@ class PloverDB:
         subject_qnode = trapi_qg["nodes"][subject_qnode_key]
         object_qnode = trapi_qg["nodes"][object_qnode_key]
         if "ids" not in subject_qnode and "ids" not in object_qnode:
-            err_message = "Bad Request. Can only answer queries where at least one QNode has 'ids' specified."
-            self.raise_http_error(400, err_message)
+            err_message = "Bad Request. Can only answer queries where at least one QNode has " \
+                " 'ids' specified."
+            _raise_http_error(400, err_message)
         # Make sure there aren't any qualifiers we don't support
         for qualifier_constraint in qedge.get("qualifier_constraints", []):
             for qualifier in qualifier_constraint.get("qualifier_set"):
@@ -1738,7 +1760,7 @@ class PloverDB:
                     err_message = (f"Forbidden. Unsupported qedge qualifier encountered: "
                                    f"{qualifier['qualifier_type_id']}. Supported qualifiers are: "
                                    f"{self.supported_qualifiers}")
-                    self.raise_http_error(403, err_message)
+                    _raise_http_error(403, err_message)
 
         # Expand qnode ids to descendant concepts and record original query IDs
         descendant_to_query_id_map: dict[str, dict[str, set[str]]] = \
@@ -1755,7 +1777,8 @@ class PloverDB:
                         descendant_to_query_id_map[subject_qnode_key][descendant].add(query_curie)
                 subject_qnode_curies_with_descendants += descendants
             subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
-            log_message = f"After expansion to descendant concepts, subject qnode has {len(subject_qnode['ids'])} ids"
+            log_message = "After expansion to descendant concepts, subject qnode has " \
+                f"{len(subject_qnode['ids'])} ids"
             self.log_trapi("INFO", log_message)
         if object_qnode.get("ids"):
             object_qnode_curies_with_descendants = []
@@ -1768,44 +1791,58 @@ class PloverDB:
                         descendant_to_query_id_map[object_qnode_key][descendant].add(query_curie)
                 object_qnode_curies_with_descendants += descendants
             object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
-            log_message = f"After expansion to descendant concepts, object qnode has {len(object_qnode['ids'])} ids"
+            log_message = "After expansion to descendant concepts, object qnode has " \
+                f"{len(object_qnode['ids'])} ids"
             self.log_trapi("INFO", log_message)
 
         # Actually answer the query
         input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
         output_qnode_key = list(set(trapi_qg["nodes"]).difference({input_qnode_key}))[0]
         self.log_trapi("INFO", "Looking up answers to query..")
-        input_qnode_answers, output_qnode_answers, qedge_answers = self._lookup_answers(input_qnode_key,
-                                                                                        output_qnode_key,
-                                                                                        trapi_qg)
+        input_qnode_answers, output_qnode_answers, qedge_answers = \
+            self._lookup_answers(input_qnode_key,
+                                 output_qnode_key,
+                                 trapi_qg)
 
-        # Temporarily keeping the 'include_metadata' option to make Plover backwards-compatible for pathfinder
+        # Temporarily keeping the 'include_metadata' option to make Plover backwards-compatible for
+        # pathfinder:
         if trapi_qg.get("include_metadata"):
             # TODO: Delete after Pathfinder is updated for Plover2.0
-            self.log_trapi("INFO", f"Done with query, returning {qedge_answers} edges (slim format)")
-            return {"nodes": {input_qnode_key: {node_id: self.get_node_as_tuple(node_id) +
-                                                (list(descendant_to_query_id_map[input_qnode_key].get(node_id, set())),)
-                                                for node_id in input_qnode_answers},
-                     output_qnode_key: {node_id: self.get_node_as_tuple(node_id) +
-                                        (list(descendant_to_query_id_map[output_qnode_key].get(node_id, set())),)
-                                        for node_id in output_qnode_answers}},
-                    "edges": {qedge_key: {edge_id: self.get_edge_as_tuple(edge_id) for edge_id in qedge_answers}}}
+            self.log_trapi("INFO",
+                           f"Done with query, returning {qedge_answers} edges (slim format)")
+            ret_dict = \
+                {"nodes":
+                 {input_qnode_key:
+                  {node_id: self.get_node_as_tuple(node_id) +
+                   (list(descendant_to_query_id_map[input_qnode_key].get(node_id, set())),)
+                                    for node_id in input_qnode_answers},
+                  output_qnode_key:
+                  {node_id: self.get_node_as_tuple(node_id) +
+                   (list(descendant_to_query_id_map[output_qnode_key].get(node_id, set())),)
+                                     for node_id in output_qnode_answers}},
+                 "edges": {qedge_key:
+                           {edge_id: self.get_edge_as_tuple(edge_id) for edge_id in qedge_answers}}}
+            return ret_dict
         if trapi_qg.get("include_metadata") is False:
             # TODO: Delete after Pathfinder is updated for Plover2.0
-            self.log_trapi("INFO", f"Done with query, returning {qedge_answers} edges (ids-only format)")
+            self.log_trapi("INFO",
+                           f"Done with query, returning {qedge_answers} edges (ids-only format)")
             return {"nodes": {input_qnode_key: list(input_qnode_answers),
                               output_qnode_key: list(output_qnode_answers)},
                     "edges": {qedge_key: list(qedge_answers)}}
         # Form final TRAPI response
-        trapi_response = self._create_response_from_answer_ids(input_qnode_answers,
-                                                               output_qnode_answers,
-                                                               qedge_answers,
-                                                               input_qnode_key,
-                                                               output_qnode_key,
-                                                               qedge_key,
-                                                               trapi_query["message"]["query_graph"],
-                                                               descendant_to_query_id_map)
-        log_message = f"Done with query, returning TRAPI response ({len(trapi_response['message']['results'])} results)"
+        trapi_response = \
+            self._create_response_from_answer_ids(input_qnode_answers,
+                                                  output_qnode_answers,
+                                                  qedge_answers,
+                                                  input_qnode_key,
+                                                  output_qnode_key,
+                                                  qedge_key,
+                                                  trapi_query["message"]["query_graph"],
+                                                  descendant_to_query_id_map)
+        log_message = \
+            "Done with query, returning TRAPI response " \
+            f"({len(trapi_response['message']['results'])} results)"
         self.log_trapi("INFO", log_message)
         return trapi_response
 
@@ -1818,13 +1855,17 @@ class PloverDB:
         # TODO: Delete after Pathfinder is updated for Plover2.0
         edge = self.edge_lookup_map[edge_id]
         return (edge["subject"], edge["object"], edge[self.edge_predicate_property],
-                edge.get("primary_knowledge_source"), edge.get(self.graph_qualified_predicate_property, ""),
-                edge.get(self.graph_object_direction_property, ""), edge.get(self.graph_object_aspect_property, ""),
-                "False")  # Silly to have these in strings, but that's the old format... will delete eventually
+                edge.get("primary_knowledge_source"),
+                edge.get(self.graph_qualified_predicate_property, ""),
+                edge.get(self.graph_object_direction_property, ""),
+                edge.get(self.graph_object_aspect_property, ""),
+                "False")  
+        # Silly to have these in strings, but that's the old format... will delete eventually
 
     def get_edges(self, node_pairs: list[list[str]]) -> dict:
         """
-        Finds edges between the specified node pairs. Does *not* currently do concept subclass reasoning.
+        Finds edges between the specified node pairs. Does *not* currently do concept subclass
+        reasoning.
         """
         # Loop through pairs
         qg_template: dict[str, dict[str, dict[str, Any]]] = \
@@ -1846,7 +1887,8 @@ class PloverDB:
             # Find answers for this pair (NO SUBCLASS REASONING)
             qg_template["nodes"]["na"]["ids"] = [node_id_a_preferred]
             qg_template["nodes"]["nb"]["ids"] = [node_id_b_preferred]
-            input_node_ids, output_node_ids, edge_ids = self._lookup_answers("na", "nb", qg_template)
+            input_node_ids, output_node_ids, edge_ids = \
+                self._lookup_answers("na", "nb", qg_template)
 
             # Record answers for this pair
             pair_key = f"{node_id_a}--{node_id_b}"
@@ -1868,7 +1910,9 @@ class PloverDB:
                      self.endpoint_name, len(kg['edges']), len(kg['nodes']))
         return {"pairs_to_edge_ids": node_pairs_to_edge_ids, "knowledge_graph": kg}
 
-    def get_neighbors(self, node_ids: list[str], categories: list[str], predicates: list[str]) -> dict:
+    def get_neighbors(
+            self, node_ids: list[str], categories: list[str], predicates: list[str]
+    ) -> dict:
         """
         Finds neighbors for input nodes. Does *not* do subclass reasoning currently.
         """
@@ -1895,7 +1939,12 @@ class PloverDB:
                      self.endpoint_name, len(neighbors_map))
         return neighbors_map
 
-    def _lookup_answers(self, input_qnode_key: str, output_qnode_key: str, trapi_qg: dict) -> tuple[set, set, set]:
+    def _lookup_answers(
+            self,
+            input_qnode_key: str,
+            output_qnode_key: str,
+            trapi_qg: dict
+    ) -> tuple[set, set, set]:
         qedge = next(qedge for qedge in trapi_qg["edges"].values())
         # Convert to canonical predicates in the QG as needed
         self._force_qedge_to_canonical_predicates(qedge)
@@ -1903,7 +1952,8 @@ class PloverDB:
         # Load the query and do any necessary transformations to categories/predicates
         input_curies = _convert_to_set(trapi_qg["nodes"][input_qnode_key]["ids"])
         output_curies = _convert_to_set(trapi_qg["nodes"][output_qnode_key].get("ids"))
-        output_categories_expanded = self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
+        output_categories_expanded = \
+            self._get_expanded_output_category_ids(output_qnode_key, trapi_qg)
         qedge_predicates_expanded = self._get_expanded_qedge_predicates(qedge)
 
         # Use our main index to find results to the query
@@ -1915,38 +1965,77 @@ class PloverDB:
             answer_edge_ids = []
             # Stop looking for further answers if we've reached our edge limit
             if input_curie in main_index:
-                # Consider ALL output categories if none were provided or if output curies were specified
+                # Consider ALL output categories if none were provided or if output curies were
+                # specified
                 categories_present = set(main_index[input_curie])
-                categories_to_inspect = output_categories_expanded.intersection(categories_present) if output_categories_expanded and not output_curies else categories_present
+                categories_to_inspect = \
+                    output_categories_expanded.intersection(categories_present) \
+                    if output_categories_expanded and not output_curies else categories_present
                 for output_category in categories_to_inspect:
                     if output_category in main_index[input_curie]:
                         predicates_present = set(main_index[input_curie][output_category])
-                        predicates_to_inspect = set(qedge_predicates_expanded).intersection(predicates_present)
-                        # Loop through each QG predicate (and their descendants), looking up answers as we go
+                        predicates_to_inspect = \
+                            set(qedge_predicates_expanded).intersection(predicates_present)
+                        # Loop through each QG predicate (and their descendants), looking up
+                        # answers as we go
                         for predicate in predicates_to_inspect:
                             if len(final_qedge_answers) >= self.num_edges_per_answer_cutoff:
                                 err_message = (f"Forbidden. Your query will produce more than "
-                                               f"{self.num_edges_per_answer_cutoff} answer edges. You need to make "
-                                               f"your query smaller by reducing the number of input node IDs and/or "
+                                               f"{self.num_edges_per_answer_cutoff} answer edges. "
+                                               "You need to make "
+                                               f"your query smaller by reducing the number of "
+                                               "input node IDs and/or "
                                                f"using more specific categories/predicates.")
-                                self.raise_http_error(403, err_message)
+                                _raise_http_error(403, err_message)
                             else:
                                 consider_bidirectional = qedge_predicates_expanded.get(predicate)
                                 if consider_bidirectional:
                                     directions = {0, 1}
                                 else:
-                                    # 1 means we'll look for edges recorded in 'forwards' direction, 0 means 'backwards'
-                                    directions = {1} if input_qnode_key == qedge["subject"] else {0}
+                                    # 1 means we'll look for edges recorded in 'forwards'
+                                    # direction, 0 means 'backwards'
+                                    directions = {1} \
+                                        if input_qnode_key == qedge["subject"] else {0}
                                 if output_curies:
                                     # We need to look for the matching output node(s)
                                     for direction in directions:
-                                        curies_present = set(main_index[input_curie][output_category][predicate][direction])
-                                        matching_output_curies = output_curies.intersection(curies_present)
+                                        curies_present = \
+                                            set(main_index[
+                                                input_curie
+                                            ][
+                                                output_category
+                                            ][
+                                                predicate
+                                            ][
+                                                direction
+                                            ])
+                                        matching_output_curies = \
+                                            output_curies.intersection(curies_present)
                                         for output_curie in matching_output_curies:
-                                            answer_edge_ids += list(main_index[input_curie][output_category][predicate][direction][output_curie])
+                                            answer_edge_ids += \
+                                                list(main_index[
+                                                    input_curie
+                                                ][
+                                                    output_category
+                                                ][
+                                                    predicate
+                                                ][
+                                                    direction
+                                                ][
+                                                    output_curie
+                                                ])
                                 else:
                                     for direction in directions:
-                                        answer_edge_ids += list(set().union(*main_index[input_curie][output_category][predicate][direction].values()))
+                                        answer_edge_ids += \
+                                            list(set().union(*main_index[
+                                                input_curie
+                                            ][
+                                                output_category
+                                            ][
+                                                predicate
+                                            ][
+                                                direction
+                                            ].values()))
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
@@ -1969,27 +2058,37 @@ class PloverDB:
                                          trapi_qg: dict,
                                          descendant_to_query_id_map: dict) -> dict:
         log_message = (f"Found {len(final_input_qnode_answers)} input node answers, "
-                       f"{len(final_output_qnode_answers)} output node answers, {len(final_qedge_answers)} edges")
+                       f"{len(final_output_qnode_answers)} output node answers, "
+                       f"{len(final_qedge_answers)} edges")
         self.log_trapi("INFO", log_message)
         self.log_trapi("INFO", "Beginning to transform answers to TRAPI format..")
 
         # Handle any attribute constraints on the query edge
         edges = {edge_id: self._convert_edge_to_trapi_format(self.edge_lookup_map[edge_id])
                  for edge_id in final_qedge_answers}
-        qedge_attribute_constraints = trapi_qg["edges"][qedge_key].get("attribute_constraints") if trapi_qg.get("edges") else []
+        qedge_attribute_constraints = \
+            trapi_qg["edges"][qedge_key].get("attribute_constraints") \
+            if trapi_qg.get("edges") else []
         if qedge_attribute_constraints:
-            log_message = f"Detected {len(qedge_attribute_constraints)} attribute constraints on qedge {qedge_key}"
+            log_message = f"Detected {len(qedge_attribute_constraints)} " \
+                f"attribute constraints on qedge {qedge_key}"
             self.log_trapi("INFO", log_message)
             edges = self._filter_edges_by_attribute_constraints(edges, qedge_attribute_constraints)
             final_qedge_answers = set(edges)
 
             # Remove any nodes orphaned by attribute constraint handling
-            node_ids_used_by_edges = {edge["subject"] for edge in edges.values()}.union({edge["object"] for edge in edges.values()})
-            final_input_qnode_answers = final_input_qnode_answers.intersection(node_ids_used_by_edges)
-            final_output_qnode_answers = final_output_qnode_answers.intersection(node_ids_used_by_edges)
+            node_ids_used_by_edges = \
+                {edge["subject"] for edge in edges.values()}.union({edge["object"] \
+                                                                    for edge in edges.values()})
+            final_input_qnode_answers = \
+                final_input_qnode_answers.intersection(node_ids_used_by_edges)
+            final_output_qnode_answers = \
+                final_output_qnode_answers.intersection(node_ids_used_by_edges)
 
-            log_message = (f"After constraint handling, have {len(final_input_qnode_answers)} input node answers, "
-                           f"{len(final_output_qnode_answers)} output node answers, {len(final_qedge_answers)} edges")
+            log_message = (f"After constraint handling, have {len(final_input_qnode_answers)} "
+                           "input node answers, "
+                           f"{len(final_output_qnode_answers)} output node answers, "
+                           f"{len(final_qedge_answers)} edges")
             self.log_trapi("INFO", log_message)
             self.log_trapi("INFO", "Continuing transformation of answers to TRAPI format..")
 
@@ -1998,8 +2097,10 @@ class PloverDB:
             "message": {
                 "query_graph": trapi_qg,
                 "knowledge_graph": {
-                    "nodes": {node_id: self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
-                              for node_id in final_input_qnode_answers.union(final_output_qnode_answers)},
+                    "nodes": {node_id: \
+                              self._convert_node_to_trapi_format(self.node_lookup_map[node_id])
+                              for node_id \
+                              in final_input_qnode_answers.union(final_output_qnode_answers)},
                     "edges": edges
                 },
                 "results": self._get_trapi_results(final_input_qnode_answers,
@@ -2021,13 +2122,15 @@ class PloverDB:
             "categories": _convert_to_list(node_biolink[self.categories_property]),
             "attributes": [self._get_trapi_node_attribute(property_name, value)
                            for property_name, value in node_biolink.items()
-                           if property_name not in self.core_node_properties]  # Will be empty list if none (required)
+                           if property_name not in self.core_node_properties]
+                           # Will be empty list if none (required)
         }
         return trapi_node
 
     def _convert_edge_to_trapi_format(self, edge_biolink: dict) -> dict:
         if self.kg_config.get("sources_template"):
-            sources_template = copy.deepcopy(self.edge_sources)  # Need to copy because source urls change per edge
+            # Need to copy because source urls change per edge:
+            sources_template = copy.deepcopy(self.edge_sources)
             if edge_biolink["predicate"] in sources_template:
                 sources = sources_template[edge_biolink["predicate"]]
             else:
@@ -2047,7 +2150,8 @@ class PloverDB:
             sources = [source_primary, source_kp]
 
         if edge_biolink.get("source_record_urls"):
-            source_kp = next(source for source in sources if source["resource_id"] == self.kp_infores_curie)
+            source_kp = \
+                next(source for source in sources if source["resource_id"] == self.kp_infores_curie)
             source_kp["source_record_urls"] = edge_biolink["source_record_urls"]
 
         trapi_edge = {
@@ -2081,12 +2185,16 @@ class PloverDB:
         return trapi_edge
 
     def _get_trapi_node_attribute(self, property_name: str, value: Any) -> dict:
-        # Just use a default attribute for any properties/attributes not yet defined in kg_config.json
-        attribute = copy.deepcopy(self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name}))
+        # Just use a default attribute for any properties/attributes not yet defined in
+        # kg_config.json
+        attribute = \
+            copy.deepcopy(self.trapi_attribute_map.get(property_name,
+                                                       {"attribute_type_id": property_name}))
         attribute["value"] = value
         if attribute.get("attribute_source"):
-            attribute["attribute_source"] = attribute["attribute_source"].replace("{kp_infores_curie}",
-                                                                                  self.kp_infores_curie)
+            attribute["attribute_source"] = \
+                attribute["attribute_source"].replace("{kp_infores_curie}",
+                                                      self.kp_infores_curie)
         if attribute.get("value_url"):
             attribute["value_url"] = attribute["value_url"].replace("{value}", value)
         return attribute
@@ -2098,12 +2206,14 @@ class PloverDB:
             value = edge_biolink[property_name]
             if property_name in self.kg_config.get("zip", {}):
                 # Handle special 'zipped' properties (e.g., supporting_studies)
-                # Create an attribute for each item in this zipped up list, giving it subattributes as appropriate
+                # Create an attribute for each item in this zipped up list, giving it subattributes
+                # as appropriate
                 leader_property_name = self.kg_config["zip"][property_name]["leader"]
                 for zipped_obj in value:
-                    leader_attribute = self._get_trapi_edge_attribute(leader_property_name,
-                                                                      zipped_obj[leader_property_name],
-                                                                      edge_biolink)
+                    leader_attribute = \
+                        self._get_trapi_edge_attribute(leader_property_name,
+                                                       zipped_obj[leader_property_name],
+                                                       edge_biolink)
                     leader_attribute["attributes"] = []
                     for zipped_property_name, zipped_value in zipped_obj.items():
                         if zipped_property_name != leader_property_name:
@@ -2114,12 +2224,21 @@ class PloverDB:
                     attributes.append(leader_attribute)
             else:
                 # Otherwise this is just a regular attribute (no subattributes)
-                attributes.append(self._get_trapi_edge_attribute(property_name, value, edge_biolink))
+                attributes.append(self._get_trapi_edge_attribute(property_name,
+                                                                 value, edge_biolink))
         return attributes
 
-    def _get_trapi_edge_attribute(self, property_name: str, value: Any, edge_biolink: dict) -> dict:
-        # Just use a default attribute for any properties/attributes not yet defined in kg_config.json
-        attribute = copy.deepcopy(self.trapi_attribute_map.get(property_name, {"attribute_type_id": property_name}))
+    def _get_trapi_edge_attribute(
+            self,
+            property_name: str,
+            value: Any,
+            edge_biolink: dict
+    ) -> dict:
+        # Just use a default attribute for any properties/attributes not yet defined in
+        # kg_config.json
+        attribute = \
+            copy.deepcopy(self.trapi_attribute_map.get(property_name,
+                                                       {"attribute_type_id": property_name}))
         attribute["value"] = value
         if attribute.get("attribute_source"):
             source_property_name = attribute["attribute_source"].strip("{").strip("}")
@@ -2151,7 +2270,9 @@ class PloverDB:
                 # Figure out which is the input vs. output node
                 subject_id = edge["subject"]
                 object_id = edge["object"]
-                fulfilled_forwards = subject_id in final_input_qnode_answers and object_id in final_output_qnode_answers
+                fulfilled_forwards = \
+                    subject_id in final_input_qnode_answers and object_id \
+                    in final_output_qnode_answers
                 input_node_id = subject_id if fulfilled_forwards else object_id
                 output_node_id = object_id if fulfilled_forwards else subject_id
                 # Determine the proper hash key for each node
@@ -2166,20 +2287,28 @@ class PloverDB:
             # Then form actual results based on our result groups
             results = []
             for result_hash_key, result_edges in edge_groups.items():
+                input_qnode_val = \
+                    [self._create_trapi_node_binding(
+                        input_node_id,
+                        descendant_to_query_id_map[input_qnode_key].get(input_node_id))
+                     for input_node_id in input_node_groups[result_hash_key]]
+                output_qnode_val = \
+                    [self._create_trapi_node_binding(
+                        output_node_id,
+                        descendant_to_query_id_map[output_qnode_key].get(output_node_id))
+                     for output_node_id in output_node_groups[result_hash_key]]
+                # Attributes must be empty list if none:
+                qedge_val = [{"id": edge_id, "attributes": []}
+                             for edge_id in result_edges]
                 result = {
                     "node_bindings": {
-                        input_qnode_key: [self._create_trapi_node_binding(input_node_id,
-                                                                          descendant_to_query_id_map[input_qnode_key].get(input_node_id))
-                                          for input_node_id in input_node_groups[result_hash_key]],
-                        output_qnode_key: [self._create_trapi_node_binding(output_node_id,
-                                                                           descendant_to_query_id_map[output_qnode_key].get(output_node_id))
-                                           for output_node_id in output_node_groups[result_hash_key]]
+                        input_qnode_key: input_qnode_val,
+                        output_qnode_key: output_qnode_val
                     },
                     "analyses": [
                         {
                             "edge_bindings": {
-                                qedge_key: [{"id": edge_id, "attributes": []}  # Attributes must be empty list if none
-                                            for edge_id in result_edges]
+                                qedge_key: qedge_val
                             },
                             "resource_id": self.kp_infores_curie
                         }
@@ -2189,13 +2318,17 @@ class PloverDB:
                 results.append(result)
         else:
             # Handle single-node queries
+            input_qnode_val = \
+                [
+                    self._create_trapi_node_binding(
+                        node_id,
+                        descendant_to_query_id_map[input_qnode_key].get(node_id))
+                    for node_id in final_input_qnode_answers
+                ]
             results = [
                 {
                     "node_bindings": {
-                        input_qnode_key: [
-                            self._create_trapi_node_binding(node_id,
-                                                            descendant_to_query_id_map[input_qnode_key].get(node_id))
-                            for node_id in final_input_qnode_answers],
+                        input_qnode_key: input_qnode_val,
                     },
                     "analyses": [{"edge_bindings": {}, "attributes": []}],
                     "resource_id": self.kp_infores_curie
@@ -2207,36 +2340,45 @@ class PloverDB:
     def _create_trapi_node_binding(node_id: str, query_ids: Optional[set[str]]) -> dict:
         node_binding = {"id": node_id, "attributes": []}  # Attributes must be empty list if none
         if query_ids:
-            query_id = next(query_id for query_id in query_ids)  # TRAPI/translator isn't set up to handle multiple yet
+            # TRAPI/translator isn't set up to handle multiple yet:
+            query_id = next(query_id for query_id in query_ids)
             if node_id != query_id:
                 node_binding["query_id"] = query_id
         return node_binding
 
-    def _filter_edges_by_attribute_constraints(self, trapi_edges: dict[str, dict],
-                                               qedge_attribute_constraints: list[dict]) -> dict[str, dict]:
-        constraints_dict = {f"{constraint['id']}--{constraint['operator']}--{constraint['value']}--{constraint.get('not')}": constraint
+    def _filter_edges_by_attribute_constraints(
+            self, trapi_edges: dict[str, dict],
+            qedge_attribute_constraints: list[dict]
+    ) -> dict[str, dict]:
+        constraints_dict = \
+            {f"{constraint['id']}--{constraint['operator']}--{constraint['value']}--"
+             f"{constraint.get('not')}": constraint
                             for constraint in qedge_attribute_constraints}
         constraints_set = set(constraints_dict)
         edge_keys_to_delete = set()
         for edge_key, edge in trapi_edges.items():
             fulfilled = False
             # First try to fulfill all constraints via top-level attributes on this edge
-            # Pretend that edge sources are attributes too, to allow filtering based on sources via attr constraints
+            # Pretend that edge sources are attributes too, to allow filtering based on sources via
+            # attr constraints
             sources_attrs = [{"attribute_type_id": source["resource_role"],
                               "value": source["resource_id"]} for source in edge["sources"]]
-            fulfilled_top = {constraint_key for constraint_key, constraint in constraints_dict.items()
-                             if any(self._meets_constraint(attribute=attribute,
-                                                           constraint=constraint)
-                                    for attribute in edge["attributes"] + sources_attrs)}
+            fulfilled_top = \
+                {constraint_key for constraint_key, constraint in constraints_dict.items()
+                 if any(self._meets_constraint(attribute=attribute,
+                                               constraint=constraint)
+                        for attribute in edge["attributes"] + sources_attrs)}
 
             # If any constraints remain unfulfilled, see if we can fulfill them using subattributes
             remaining_constraints = constraints_set.difference(fulfilled_top)
             if remaining_constraints:
-                # NOTE: All remaining constraints must be fulfilled by subattributes on the *same* attribute to count
+                # NOTE: All remaining constraints must be fulfilled by subattributes on the *same*
+                # attribute to count
                 for attribute in edge["attributes"]:
-                    fulfilled_nested = {constraint_key for constraint_key in remaining_constraints
-                                        if any(self._meets_constraint(attribute=subattribute,
-                                                                      constraint=constraints_dict[constraint_key])
+                    fulfilled_nested = \
+                        {constraint_key for constraint_key in remaining_constraints
+                         if any(self._meets_constraint(attribute=subattribute,
+                                                       constraint=constraints_dict[constraint_key])
                                                for subattribute in attribute.get("attributes", []))}
                     if fulfilled_nested == remaining_constraints:
                         fulfilled = True
@@ -2249,7 +2391,9 @@ class PloverDB:
 
         # Then actually delete the edges
         if edge_keys_to_delete:
-            log_message = f"Deleting {len(edge_keys_to_delete)} edges that do not meet qedge attribute constraints"
+            log_message = \
+                f"Deleting {len(edge_keys_to_delete)} edges that do not meet qedge attribute " \
+                "constraints"
             self.log_trapi("INFO", log_message)
             for edge_key in edge_keys_to_delete:
                 del trapi_edges[edge_key]
@@ -2260,7 +2404,8 @@ class PloverDB:
         constraint_id = constraint["id"]
         attribute_id = attribute["attribute_type_id"]
         if constraint_id == "knowledge_source" and attribute_id in self.knowledge_source_properties:
-            attribute_id = "knowledge_source"  # Allow sub-source types to fulfill higher level 'knowledge_source'
+            # Allow sub-source types to fulfill higher level 'knowledge_source':
+            attribute_id = "knowledge_source"
         if attribute_id != constraint_id:
             return False
 
@@ -2274,23 +2419,28 @@ class PloverDB:
         constraint_val_is_list = isinstance(constraint_value, list)
         # Convert clinical trial phase enum to numbers (internally) for easier comparison
         if attribute_val_is_list:
-            attribute_value = [self.trial_phases_map_reversed.get(val, val) for val in attribute_value]
+            attribute_value = \
+                [self.trial_phases_map_reversed.get(val, val) for val in attribute_value]
         else:
             attribute_value = self.trial_phases_map_reversed.get(attribute_value, attribute_value)
         if constraint_val_is_list:
-            constraint_value = [self.trial_phases_map_reversed.get(val, val) for val in constraint_value]
+            constraint_value = \
+                [self.trial_phases_map_reversed.get(val, val) for val in constraint_value]
             constraint_value = [_load_value(val) for val in constraint_value]
         else:
-            constraint_value = self.trial_phases_map_reversed.get(constraint_value, constraint_value)
+            constraint_value = \
+                self.trial_phases_map_reversed.get(constraint_value, constraint_value)
             constraint_value = _load_value(constraint_value)
 
         try:
             # TODO: Add 'matches'?
             meets_constraint = True
-            # Now figure out whether the attribute meets the constraint, ignoring the 'not' property on the constraint
+            # Now figure out whether the attribute meets the constraint, ignoring the 'not'
+            # property on the constraint:
             if operator == "==":
                 if attribute_val_is_list and constraint_val_is_list:
-                    meets_constraint = set(attribute_value).intersection(set(constraint_value)) != set()
+                    meets_constraint = \
+                        set(attribute_value).intersection(set(constraint_value)) != set()
                 elif attribute_val_is_list:
                     meets_constraint = constraint_value in attribute_value
                 elif constraint_val_is_list:
@@ -2299,48 +2449,63 @@ class PloverDB:
                     meets_constraint = attribute_value == constraint_value
             elif operator == "<":
                 if attribute_val_is_list and constraint_val_is_list:
-                    meets_constraint = any(attribute_val < constraint_val for attribute_val in attribute_value
-                                           for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_val < constraint_val for attribute_val in attribute_value
+                            for constraint_val in constraint_value)
                 elif attribute_val_is_list:
-                    meets_constraint = any(attribute_val < constraint_value for attribute_val in attribute_value)
+                    meets_constraint = \
+                        any(attribute_val < constraint_value for attribute_val in attribute_value)
                 elif constraint_val_is_list:
-                    meets_constraint = any(attribute_value < constraint_val for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_value < constraint_val for constraint_val in constraint_value)
                 else:
                     meets_constraint = attribute_value < constraint_value
             elif operator == ">":
                 if attribute_val_is_list and constraint_val_is_list:
-                    meets_constraint = any(attribute_val > constraint_val for attribute_val in attribute_value
-                                           for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_val > constraint_val for attribute_val in attribute_value
+                            for constraint_val in constraint_value)
                 elif attribute_val_is_list:
-                    meets_constraint = any(attribute_val > constraint_value for attribute_val in attribute_value)
+                    meets_constraint = \
+                        any(attribute_val > constraint_value for attribute_val in attribute_value)
                 elif constraint_val_is_list:
-                    meets_constraint = any(attribute_value > constraint_val for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_value > constraint_val for constraint_val in constraint_value)
                 else:
                     meets_constraint = attribute_value > constraint_value
             elif operator == "<=":
                 if attribute_val_is_list and constraint_val_is_list:
-                    meets_constraint = any(attribute_val <= constraint_val for attribute_val in attribute_value
-                                           for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_val <= constraint_val for attribute_val in attribute_value
+                            for constraint_val in constraint_value)
                 elif attribute_val_is_list:
-                    meets_constraint = any(attribute_val <= constraint_value for attribute_val in attribute_value)
+                    meets_constraint = \
+                        any(attribute_val <= constraint_value for attribute_val in attribute_value)
                 elif constraint_val_is_list:
-                    meets_constraint = any(attribute_value <= constraint_val for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_value <= \
+                            constraint_val for constraint_val in constraint_value)
                 else:
                     meets_constraint = attribute_value <= constraint_value
             elif operator == ">=":
                 if attribute_val_is_list and constraint_val_is_list:
-                    meets_constraint = any(attribute_val >= constraint_val for attribute_val in attribute_value
-                                           for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_val >= constraint_val for attribute_val in attribute_value
+                            for constraint_val in constraint_value)
                 elif attribute_val_is_list:
-                    meets_constraint = any(attribute_val >= constraint_value for attribute_val in attribute_value)
+                    meets_constraint = \
+                        any(attribute_val >= constraint_value for attribute_val in attribute_value)
                 elif constraint_val_is_list:
-                    meets_constraint = any(attribute_value >= constraint_val for constraint_val in constraint_value)
+                    meets_constraint = \
+                        any(attribute_value >= \
+                            constraint_val for constraint_val in constraint_value)
                 else:
                     meets_constraint = attribute_value >= constraint_value
             elif operator == "===":
                 meets_constraint = attribute_value == constraint_value
             else:
-                log_message = (f"Encountered unsupported operator: {operator}. Don't know how to handle; "
+                log_message = (f"Encountered unsupported operator: {operator}. Don't know how to "
+                               "handle; "
                                f"will ignore this constraint.")
                 self.log_trapi("WARNING", log_message)
         except (TypeError, KeyError):
@@ -2357,8 +2522,11 @@ class PloverDB:
         return list(descendants)
 
     @staticmethod
-    def _determine_input_qnode_key(qnodes: dict[str, dict[str, Union[str, list[str], None]]]) -> str:
-        # The input qnode should be the one with the larger number of curies (way more efficient for our purposes)
+    def _determine_input_qnode_key(
+            qnodes: dict[str, dict[str, Union[str, list[str], None]]]
+    ) -> str:
+        # The input qnode should be the one with the larger number of curies (way more efficient
+        # for our purposes)
         qnode_key_with_most_curies = ""
         most_curies = 0
         for qnode_key, qnode in qnodes.items():
@@ -2375,39 +2543,50 @@ class PloverDB:
         return qnode_key_with_most_curies
 
     def _get_expanded_output_category_ids(self, output_qnode_key: str, trapi_qg: dict) -> set[int]:
-        output_category_names_raw = _convert_to_set(trapi_qg["nodes"][output_qnode_key].get("categories"))
-        output_category_names_raw = {self.bh.get_root_category()} if not output_category_names_raw else output_category_names_raw
-        output_category_names = self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
-        output_categories_with_descendants = self.bh.get_descendants(output_category_names, include_mixins=False)
-        output_category_ids = {self.category_map.get(category, self.non_biolink_item_id) for category in output_categories_with_descendants}
+        output_category_names_raw = \
+            _convert_to_set(trapi_qg["nodes"][output_qnode_key].get("categories"))
+        output_category_names_raw = \
+            {self.bh.get_root_category()} if not output_category_names_raw \
+            else output_category_names_raw
+        output_category_names = \
+            self.bh.replace_mixins_with_direct_mappings(output_category_names_raw)
+        output_categories_with_descendants = \
+            self.bh.get_descendants(output_category_names, include_mixins=False)
+        output_category_ids = \
+            {self.category_map.get(category, self.non_biolink_item_id) \
+             for category in output_categories_with_descendants}
         return output_category_ids
 
     def _consider_bidirectional(self, predicate: str, direct_qg_predicates: set[str]) -> bool:
         """
-        This function determines whether or not QEdge direction should be ignored for a particular predicate or
-        'conglomerate' predicate based on the Biolink model and QG parameters.
+        This function determines whether or not QEdge direction should be ignored for a particular
+        predicate or 'conglomerate' predicate based on the Biolink model and QG parameters.
         """
         if "--" in predicate:  # Means it's a 'conglomerate' predicate
             predicate = self._get_used_predicate(predicate)
         # Make sure we extract the true predicate/qualified predicate from conglomerate predicates
-        direct_qg_predicates = {self._get_used_predicate(direct_predicate) for direct_predicate in direct_qg_predicates}
+        direct_qg_predicates = \
+            {self._get_used_predicate(direct_predicate) \
+             for direct_predicate in direct_qg_predicates}
 
         if predicate in direct_qg_predicates:
             return self.bh.is_symmetric(predicate)
         if all(self.bh.is_symmetric(direct_predicate) for direct_predicate in direct_qg_predicates):
             return True
         # Figure out which predicate(s) in the QG this descendant predicate corresponds to
-        ancestor_predicates = set(self.bh.get_ancestors(predicate, include_mixins=True)).difference({predicate})
+        ancestor_predicates = \
+            set(self.bh.get_ancestors(predicate, include_mixins=True)).difference({predicate})
         ancestor_predicates_in_qg = ancestor_predicates.intersection(direct_qg_predicates)
-        if any(self.bh.is_symmetric(qg_predicate_ancestor) for qg_predicate_ancestor in ancestor_predicates_in_qg):
+        if any(self.bh.is_symmetric(qg_predicate_ancestor) \
+               for qg_predicate_ancestor in ancestor_predicates_in_qg):
             return True
         return self.bh.is_symmetric(predicate)
 
     @staticmethod
     def _get_used_predicate(conglomerate_predicate: str) -> str:
         """
-        This extracts the predicate used as part of the conglomerate predicate (which could be either the qualified
-        predicate or regular predicate).
+        This extracts the predicate used as part of the conglomerate predicate (which could be
+        either the qualified predicate or regular predicate).
         """
         return conglomerate_predicate.split("--")[0]
 
@@ -2415,7 +2594,8 @@ class PloverDB:
         user_qual_predicates = self._get_qualified_predicates_from_qedge(qedge)
         user_regular_predicates = _convert_to_set(qedge.get("predicates"))
         user_predicates = user_qual_predicates if user_qual_predicates else user_regular_predicates
-        canonical_predicates = set(self.bh.get_canonical_predicates(user_predicates, print_warnings=False))
+        canonical_predicates = \
+            set(self.bh.get_canonical_predicates(user_predicates, print_warnings=False))
         user_non_canonical_predicates = user_predicates.difference(canonical_predicates)
         user_canonical_predicates = user_predicates.intersection(canonical_predicates)
         if user_non_canonical_predicates and not user_canonical_predicates:
@@ -2427,9 +2607,11 @@ class PloverDB:
                 # Flip all of the qualified predicates
                 for qualifier_constraint in qedge.get("qualifier_constraints", []):
                     for qualifier in qualifier_constraint.get("qualifier_set"):
-                        if qualifier["qualifier_type_id"] == self.qedge_qualified_predicate_property:
-                            canonical_qual_predicate = self.bh.get_canonical_predicates(qualifier["qualifier_value"],
-                                                                                        print_warnings=False)[0]
+                        if qualifier["qualifier_type_id"] == \
+                           self.qedge_qualified_predicate_property:
+                            canonical_qual_predicate = \
+                                self.bh.get_canonical_predicates(qualifier["qualifier_value"],
+                                                                 print_warnings=False)[0]
                             qualifier["qualifier_value"] = canonical_qual_predicate
             else:
                 # Otherwise just flip all of the regular predicates
@@ -2437,9 +2619,10 @@ class PloverDB:
         elif user_non_canonical_predicates and user_canonical_predicates:
             err_message = (f"QueryGraph uses both canonical and non-canonical "
                            f"{'qualified ' if user_qual_predicates else ''}predicates. Canonical: "
-                           f"{user_canonical_predicates}, Non-canonical: {user_non_canonical_predicates}. "
+                           f"{user_canonical_predicates}, Non-canonical: "
+                           f"{user_non_canonical_predicates}. "
                            f"You must use either all canonical or all non-canonical predicates.")
-            self.raise_http_error(400, err_message)
+            _raise_http_error(400, err_message)
 
     def _get_qualified_predicates_from_qedge(self, qedge: dict) -> set[str]:
         qualified_predicates = set()
@@ -2451,28 +2634,38 @@ class PloverDB:
 
     def _get_expanded_qedge_predicates(self, qedge: dict) -> dict[int, bool]:
         """
-        This function returns a qedge's "conglomerate" predicates for qualified qedges (where the qualified info is kind
-        of flattened or conglomerated into one derived predicate string), or its regular predicates when no qualified
-        info is available. It also returns descendants of the predicates/conglomerate predicates.
+        This function returns a qedge's "conglomerate" predicates for qualified qedges (where the
+        qualified info is kind of flattened or conglomerated into one derived predicate string), or
+        its regular predicates when no qualified info is available. It also returns descendants of
+        the predicates/conglomerate predicates.
         """
         # Use 'conglomerate' predicates if the query has any qualifier constraints
         if qedge.get("qualifier_constraints"):
             qedge_conglomerate_predicates = self._get_conglomerate_predicates_from_qedge(qedge)
-            # Now find all descendant versions of our conglomerate predicates (pre-computed during index-building)
-            qedge_conglomerate_predicates_expanded = {descendant for conglomerate_predicate in qedge_conglomerate_predicates
-                                                      for descendant in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
+            # Now find all descendant versions of our conglomerate predicates (pre-computed during
+            # index-building):
+            qedge_conglomerate_predicates_expanded = \
+                {descendant for conglomerate_predicate in qedge_conglomerate_predicates
+                 for descendant \
+                 in self.conglomerate_predicate_descendant_index.get(conglomerate_predicate, set())}
             qedge_predicates = qedge_conglomerate_predicates
             qedge_predicates_expanded = qedge_conglomerate_predicates_expanded
         # Otherwise we'll use the regular predicates if no qualified predicates were given
         else:
             qedge_predicates_raw = _convert_to_set(qedge.get("predicates"))
-            qedge_predicates_raw = {self.bh.get_root_predicate()} if not qedge_predicates_raw else qedge_predicates_raw
-            # Include both proper and mixin predicates, but also map mixins to their proper predicates (if any exist)
-            qedge_predicates_proper = self.bh.replace_mixins_with_direct_mappings(qedge_predicates_raw)
+            qedge_predicates_raw = \
+                {self.bh.get_root_predicate()} if not qedge_predicates_raw else qedge_predicates_raw
+            # Include both proper and mixin predicates, but also map mixins to their proper
+            # predicates (if any exist):
+            qedge_predicates_proper = \
+                self.bh.replace_mixins_with_direct_mappings(qedge_predicates_raw)
             qedge_predicates = qedge_predicates_raw.union(qedge_predicates_proper)
-            qedge_predicates_expanded = {descendant_predicate for qg_predicate in qedge_predicates
-                                         for descendant_predicate in self.bh.get_descendants(qg_predicate, include_mixins=True)}
-        # Convert english categories/predicates/conglomerate predicates into integer IDs (helps save space)
+            qedge_predicates_expanded = \
+                {descendant_predicate for qg_predicate in qedge_predicates
+                 for descendant_predicate \
+                 in self.bh.get_descendants(qg_predicate, include_mixins=True)}
+        # Convert english categories/predicates/conglomerate predicates into integer IDs (helps save
+        # space):
         qedge_predicate_ids_dict = {self.predicate_map.get(predicate, self.non_biolink_item_id):
                                         self._consider_bidirectional(predicate, qedge_predicates)
                                     for predicate in qedge_predicates_expanded}
@@ -2499,28 +2692,32 @@ class PloverDB:
                                                       object_direction=object_direction_qualifier,
                                                       object_aspect=object_aspect_qualifier)
                                                for predicate in predicates}
-                qedge_conglomerate_preds = qedge_conglomerate_preds.union(new_conglomerate_predicates)
+                qedge_conglomerate_preds = \
+                    qedge_conglomerate_preds.union(new_conglomerate_predicates)
             else:
                 # Use the qualified predicate (is 'None' if not available)
-                qedge_conglomerate_preds.add(self._get_conglomerate_predicate(qualified_predicate=\
-                                                                              qualified_predicate,
-                                                                              predicate=None,
-                                                                              object_direction=\
-                                                                              object_direction_qualifier,
-                                                                              object_aspect=\
-                                                                              object_aspect_qualifier))
+                qedge_conglomerate_preds.add(
+                    self._get_conglomerate_predicate(qualified_predicate=\
+                                                     qualified_predicate,
+                                                     predicate=None,
+                                                     object_direction=\
+                                                     object_direction_qualifier,
+                                                     object_aspect=\
+                                                     object_aspect_qualifier))
         return qedge_conglomerate_preds
 
     def _answer_single_node_query(self, trapi_qg: dict) -> Any:
-        # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of TRAPI; just handy)
+        # When no qedges are involved, we only fulfill qnodes that have a curie (this isn't part of
+        # TRAPI; just handy):
         if len(trapi_qg["nodes"]) > 1:
             err_message = (f"Bad Request. Edgeless queries can only involve a single query node. "
                            f"Your QG has {len(trapi_qg['nodes'])} nodes.")
-            self.raise_http_error(400, err_message)
+            _raise_http_error(400, err_message)
         qnode_key = list(trapi_qg["nodes"].keys())[0]
         if not trapi_qg["nodes"][qnode_key].get("ids"):
-            err_message = "Bad Request. For qnode-only queries, the qnode must have 'ids' specified."
-            self.raise_http_error(400, err_message)
+            err_message = \
+                "Bad Request. For qnode-only queries, the qnode must have 'ids' specified."
+            _raise_http_error(400, err_message)
 
         self.log_trapi("INFO", "Answering single-node query...")
         qnode = trapi_qg["nodes"][qnode_key]
@@ -2545,17 +2742,12 @@ class PloverDB:
                                                          trapi_qg=trapi_qg,
                                                          descendant_to_query_id_map=\
                                                          descendant_to_query_id_map)
-        log_message = f"Done with query, returning TRAPI response ({len(response['message']['results'])} results)"
+        log_message = f"Done with query, returning TRAPI response " \
+            f"({len(response['message']['results'])} results)"
         self.log_trapi("INFO", log_message)
         return response
 
-    # ----------------------------------------- GENERAL HELPER METHODS ---------------------------------------------- #
-
-    @staticmethod
-    def raise_http_error(http_code: int, err_message: str):
-        detail_message = f"{http_code} ERROR: {err_message}"
-        logging.error(detail_message)
-        flask.abort(http_code, detail_message)
+    # -------------------------------- GENERAL HELPER METHODS ------------------------------------ #
 
     def _get_file_names_to_use(self) -> tuple[str, str]:
         nodes_file = self.kg_config["nodes_file"]
