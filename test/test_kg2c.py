@@ -2,7 +2,6 @@ import json
 import os
 import sys
 from collections import defaultdict
-
 import pytest
 import requests
 from typing import Dict, Union, List
@@ -741,17 +740,25 @@ def test_get_neighbors():
     response_2 = tester.run_get_neighbors(query)
 
 
-def test_version():
-    # Print out the version of the KG2c being tested
+def test_subclass_reasoning():
     query = {
-        "edges": {},
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01"
+            }
+        },
         "nodes": {
             "n00": {
-                "ids": ["RTX:KG2c"]
+                "ids": [DIABETES_CURIE]
+            },
+            "n01": {
+                "ids": ["CHEBI:17761"]
             }
         }
     }
     response = tester.run_query(query)
+    assert DIABETES_T1_CURIE in response["message"]["knowledge_graph"]["nodes"]
 
 
 if __name__ == "__main__":
