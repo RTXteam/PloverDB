@@ -46,6 +46,7 @@ import gc
 import inspect
 import itertools
 import json
+import uuid
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -347,6 +348,12 @@ def _load_pickle_file(file_path: str) -> Any:
     logging.info("Done loading %s into memory. Took %s seconds",
                  file_path, round(time.time() - start, 1))
     return contents
+
+def _save_to_json_file(item: Any,
+                       file_path: str,
+                       indent: Optional[int] = 4):
+    with open(file_path, 'w', encoding='utf-8') as fo:
+        json.dump(item, fo, indent=indent)
 
 def _save_to_pickle_file(item: Any, file_path: str):
     logging.info("Saving data to %s", file_path)
@@ -748,19 +755,21 @@ class PloverDB:
 
         subclass_edges_path: Optional[str] = None
         if kg_config.get("remote_subclass_edges_file_url"):
-            logging.info("No subclass_of edges detected in the graph. "
-                         "Will download some based on kg_config.")
             subclass_edges_remote_file_url = kg_config["remote_subclass_edges_file_url"]
             assert _is_url(subclass_edges_remote_file_url), \
                 "Subclass edges remote file URL from config file is not a URL: " \
                 f"{subclass_edges_remote_file_url}"
+            logging.info("Config file specified remote_subclass_edges_file_url: %s; "
+                         "Will download some based on kg_config.",
+                         subclass_edges_remote_file_url)
             subclass_edges_file = _url_basename(subclass_edges_remote_file_url)
             subclass_edges_path = os.path.join(parent_dir,
                                                subclass_edges_file)
             download_subclass_edges = True
         else:
             download_subclass_edges = False
-        logging.info(f"After checking the config, have set: download_subclass_edges: {download_subclass_edges}")
+        logging.info("After checking the config, have set: download_subclass_edges: %s",
+                     download_subclass_edges)
         # download any required remote files up-front, so we can fail early if
         # one of the URLs is incorrect or download is failing for some reason
         if download_nodes:
@@ -945,12 +954,18 @@ class PloverDB:
         del self.category_map
 
         category_map_reversed = self.category_map_reversed
+        is_test = self.is_test
+        assign_new_edge_ids = kg_config.get('assign_new_edge_ids', False)
+        logging.info("Value for assign_new_edge_ids: %s", assign_new_edge_ids)
 
         for edge in edges_gen:
-            try:
-                edge_id = str(edge["id"])
-            except KeyError as e:
-                raise KeyError(f"edge missing required 'id' field in {edges_path}") from e
+            if not assign_new_edge_ids:
+                try:
+                    edge_id = str(edge["id"])
+                except KeyError as e:
+                    raise KeyError(f"edge missing required 'id' field in {edges_path}") from e
+            else:
+                edge_id = "urn:uuid:" + str(uuid.uuid4())
 
             # remove edge properties that are on the "ignore" list from the config file
             for prop_to_ignore in edge_properties_to_ignore:
@@ -1005,14 +1020,13 @@ class PloverDB:
             for k in to_del:
                 edge.pop(k, None)
 
-            # Convert any trial phase property values from int to Biolink enum
+            # Convert any clinical trial phase property values from int to Biolink enum
             for trial_phase_prop in trial_phase_properties:
                 if trial_phase_prop in edge:
                     edge[trial_phase_prop] = \
                         convert_trial_phase_to_enum(edge[trial_phase_prop])
 
-            # Convert all edge to its canonical predicate form; correct missing biolink
-            # prefixes
+            # Convert edge to its canonical predicate form:
             predicate = edge[edge_predicate_property]
             qualified_predicate = edge.get(graph_qualified_predicate_property)
             canonical_predicate = \
@@ -1040,7 +1054,7 @@ class PloverDB:
                 edge["subject"] = edge["object"]
                 edge["object"] = original_subject
 
-            add_edge = None
+            add_edge = True
 
             if normalize:
                 edge["subject"] = preferred_id_map[edge["subject"]]
@@ -1063,37 +1077,53 @@ class PloverDB:
                         else:
                             merged_edge[property_name] = value
                     add_edge = False
-                else:
-                    add_edge = True
 
-            subj_categories = node_to_category_labels_map[edge["subject"]]
-            obj_categories = node_to_category_labels_map[edge["object"]]
-            edge_attribute_names = {k for k in edge if k not in core_edge_properties}
-            qualified_predicate = edge.get(graph_qualified_predicate_property)
-            object_dir_qualifier = edge.get(graph_object_direction_property)
-            object_aspect_qual = edge.get(graph_object_aspect_property)
-            for subj_category in subj_categories:
-                for obj_category in obj_categories:
-                    meta_triple = \
-                        (subj_category, cast(str, edge["predicate"]), obj_category)
-                    meta_triples_map[meta_triple].update(edge_attribute_names)
-                    if qualified_predicate:
-                        meta_qual_map[meta_triple][qedge_qual_pred_prop].add(qualified_predicate)
-                    if object_dir_qualifier:
-                        meta_qual_map[meta_triple][qedge_obj_dir_prop].add(object_dir_qualifier)
-                    if object_aspect_qual:
-                        meta_qual_map[meta_triple][qedge_obj_aspect_prop].add(object_aspect_qual)
-                    # Create one test triple for each meta edge (basically an example edge)
-                    if meta_triple not in test_triples_map:
-                        test_triples_map[meta_triple] = \
-                            {"subject_category": category_map_reversed[subj_category],
-                             "object_category": category_map_reversed[obj_category],
-                             "predicate": edge["predicate"],
-                             "subject_id": edge["subject"],
-                             "object_id": edge["object"]}
+            subj_categories = node_to_category_labels_map.get(edge["subject"], None)
+            if add_edge and subj_categories is None:
+                if is_test:
+                    add_edge = False
+                else:
+                    raise ValueError(f"for edge {edge['id']}, "
+                                     f"subject CURIE {edge['subject']} "
+                                     "is not in the nodes map")
+
+            obj_categories = node_to_category_labels_map.get(edge["object"], None)
+            if add_edge and obj_categories is None:
+                if is_test:
+                    add_edge = False
+                else:
+                    raise ValueError(f"for edge {edge['id']}, "
+                                     f"object CURIE {edge['object']} "
+                                     "is not in the nodes map")
 
             # store the final edge in the `edge_lookup_map` by its `edge_id` key
-            if (not normalize) or add_edge:
+            if add_edge:
+                edge_attribute_names = {k for k in edge if k not in core_edge_properties}
+                qualified_predicate = edge.get(graph_qualified_predicate_property)
+                object_dir_qualifier = edge.get(graph_object_direction_property)
+                object_aspect_qual = edge.get(graph_object_aspect_property)
+                assert subj_categories is not None
+                assert obj_categories is not None
+                for subj_category in subj_categories:
+                    for obj_category in obj_categories:
+                        meta_triple = \
+                            (subj_category, cast(str, edge["predicate"]), obj_category)
+                        meta_triples_map[meta_triple].update(edge_attribute_names)
+                        if qualified_predicate:
+                            meta_qual_map[meta_triple][qedge_qual_pred_prop].add(qualified_predicate)
+                        if object_dir_qualifier:
+                            meta_qual_map[meta_triple][qedge_obj_dir_prop].add(object_dir_qualifier)
+                        if object_aspect_qual:
+                            meta_qual_map[meta_triple][qedge_obj_aspect_prop].add(object_aspect_qual)
+                        # Create one test triple for each meta edge (basically an example edge)
+                        if meta_triple not in test_triples_map:
+                            test_triples_map[meta_triple] = \
+                                {"subject_category": category_map_reversed[subj_category],
+                                 "object_category": category_map_reversed[obj_category],
+                                 "predicate": edge["predicate"],
+                                 "subject_id": edge["subject"],
+                                 "object_id": edge["object"]}
+
                 edge_lookup_map[edge_id] = edge
 
             edge_ctr += 1
@@ -1118,16 +1148,17 @@ class PloverDB:
         logging.info("Have loaded %s edges in %s seconds", format(edge_ctr, ","),
                      round(time.time() - start_edges, 1))
 
-        if self.is_test:
-            # Narrow down our test file to exclude orphan edges
-            logging.info("Narrowing down test edges file to make sure node "
-                         "IDs used by edges appear in nodes dict")
-            edge_lookup_map = {edge_id: edge for edge_id, edge in edge_lookup_map.items() if
-                               edge["subject"] in node_to_category_labels_map and \
-                               edge["object"] in node_to_category_labels_map}
-            logging.info("After narrowing down test file, node_lookup_map contains %s nodes, "
-                         "edge_lookup_map contains %s edges",
-                         len(node_to_category_labels_map), len(edge_lookup_map))
+        # Build the subclass_of index
+        logging.info("Getting subclass edges")
+        subclass_edges = self._get_subclass_edges(subclass_edges_path, edge_lookup_map)
+        logging.info("Building index of subclass edges")
+        self._build_subclass_index(subclass_edges, len(edge_lookup_map))
+        del subclass_edges
+
+        logging.info("Saving index of subclass edges")
+        _save_to_pickle_file(self.subclass_index,
+                             os.path.join(self.indexes_dir_path, "subclass_index.pkl"))
+        del self.subclass_index
 
         # Build the meta knowledge graph and SRI test triples
         logging.info("Starting to build meta knowledge graph and SRI test triples")
@@ -1261,18 +1292,6 @@ class PloverDB:
                                           "conglomerate_predicate_descendant_index.pkl"))
         del self.conglomerate_predicate_descendant_index
 
-        # Build the subclass_of index
-        logging.info("Getting subclass edges")
-        subclass_edges = self._get_subclass_edges(subclass_edges_path, edge_lookup_map)
-        logging.info("Building index of subclass edges")
-        self._build_subclass_index(subclass_edges, len(edge_lookup_map))
-        del subclass_edges
-
-        logging.info("Saving index of subclass edges")
-        _save_to_pickle_file(self.subclass_index,
-                             os.path.join(self.indexes_dir_path, "subclass_index.pkl"))
-        del self.subclass_index
-
         logging.info("Saving edge_lookup_map")
         # Save the edge lookup map now that we're done with it
         _save_to_pickle_file(edge_lookup_map,
@@ -1293,8 +1312,9 @@ class PloverDB:
         logging.info("Saving test triples file to %s; includes "
                      "%s test triples",
                      self.sri_test_triples_path, len(test_triples_dict['edges']))
-        with open(self.sri_test_triples_path, "w+", encoding="utf-8") as test_triples_file:
-            json.dump(test_triples_dict, test_triples_file)
+        _save_to_json_file(test_triples_dict,
+                           self.sri_test_triples_path,
+                           indent=None)
         del test_triples_dict
 
         # Fill out the home page HTML template for this KP with the proper KP endpoint/infores
@@ -1571,39 +1591,41 @@ class PloverDB:
                 prefix_counts[prefix] += 1
             sorted_prefix_counts = \
                 dict(sorted(prefix_counts.items(), key=lambda count: count[1], reverse=True))
-            with open("subclass_report.json", "w+", encoding="utf-8") as report_file:
-                report = {"total_edges_in_kg": total_edges_count,
-                          "num_subclass_of_edges_from_approved_sources": len(subclass_edges),
-                          "num_nodes_with_descendants": {
-                              "total": len(parent_to_descendants_dict),
-                              "by_prefix": sorted_prefix_counts
-                          },
-                          "num_descendants_per_node": {
-                              "mean": round(statistics.mean(descendant_counts), 3),
-                              "max": max(descendant_counts),
-                              "median": statistics.median(descendant_counts),
-                              "mode": statistics.mode(descendant_counts)
-                          },
-                          "problem_nodes": {
-                              "count": len(problem_nodes),
-                              "curies": list(problem_nodes)
-                          },
-                          "top_50_biggest_parents": {
-                              "counts": {item[0]: item[1] for item in top_50_biggest_parents},
-                              "curies": [item[0] for item in top_50_biggest_parents]
-                          },
-                          "deleted_nodes": {
-                              "count": len(deleted_node_ids),
-                              "curies": list(deleted_node_ids)
-                          },
-                          "example_mappings": {
-                              "Diabetes mellitus (MONDO:0005015)": \
-                              list(self.subclass_index.get("MONDO:0005015", [])),
-                              "Adams-Oliver syndrome (MONDO:0007034)": \
-                              list(self.subclass_index.get("MONDO:0007034", []))
-                          }
-                          }
-                json.dump(report, report_file, indent=2)
+            report = {
+                "total_edges_in_kg": total_edges_count,
+                "num_subclass_of_edges_from_approved_sources": len(subclass_edges),
+                "num_nodes_with_descendants": {
+                    "total": len(parent_to_descendants_dict),
+                    "by_prefix": sorted_prefix_counts
+                },
+                "num_descendants_per_node": {
+                    "mean": round(statistics.mean(descendant_counts), 3),
+                    "max": max(descendant_counts),
+                    "median": statistics.median(descendant_counts),
+                    "mode": statistics.mode(descendant_counts)
+                },
+                "problem_nodes": {
+                    "count": len(problem_nodes),
+                    "curies": list(problem_nodes)
+                },
+                "top_50_biggest_parents": {
+                    "counts": {item[0]: item[1] for item in top_50_biggest_parents},
+                    "curies": [item[0] for item in top_50_biggest_parents]
+                },
+                "deleted_nodes": {
+                    "count": len(deleted_node_ids),
+                    "curies": list(deleted_node_ids)
+                },
+                "example_mappings": {
+                    "Diabetes mellitus (MONDO:0005015)": \
+                    list(self.subclass_index.get("MONDO:0005015", [])),
+                    "Adams-Oliver syndrome (MONDO:0007034)": \
+                    list(self.subclass_index.get("MONDO:0007034", []))
+                }
+            }
+            _save_to_json_file(report,
+                               "subclass_report.json",
+                               indent=4)
 
         logging.info("Building subclass_of index took %s minutes.",
                      round((time.time() - start) / 60, 2))
