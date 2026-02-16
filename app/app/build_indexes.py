@@ -44,7 +44,7 @@ def main() -> None:
     config_files = {file_name for file_name in os.listdir(f"{script_dir}/../")
                     if file_name.startswith("config") and file_name.endswith(".json")}
     for config_file in config_files:
-        print(f"Building indexes for {config_file} Plover..")
+        print(f"Building indexes for {config_file} Plover", flush=True)
         plover = PloverDB(config_file_name=config_file)
         plover.build_indexes()
 
