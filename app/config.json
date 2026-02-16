@@ -1,38 +1,41 @@
 {
-  "nodes_file": "https://kg2webhost.rtx.ai/kg2c-2.10.3-v1.0-nodes.jsonl.gz",
-  "edges_file": "https://kg2webhost.rtx.ai/kg2c-2.10.3-v1.1-edges.jsonl.gz",
-  "biolink_version": "4.2.5",
-  "kp_infores_curie": "infores:rtx-kg2",
-  "endpoint_name": "kg2c",
-  "labels": {
-    "edges": "predicate",
-    "nodes": "all_categories"
-  },
-  "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:uberon"],
-  "num_edges_per_answer_cutoff": 1000000,
-  "normalize": false,
-  "convert_input_ids": true,
-  "drug_chemical_conflation": true,
-  "ignore_edge_properties": ["domain_range_exclusion"],
-  "ignore_node_properties": ["category"],
-  "trapi_attribute_map": {
-    "all_categories": {
-      "attribute_type_id": "biolink:category",
-      "value_type_id": "metatype:Uriorcurie",
-      "description": "Categories of all nodes in this synonym set in RTX-KG2.",
-      "attribute_source": "{kp_infores_curie}"
+    "nodes_file": "/Users/sramsey/Work/big-files/kg2c-2.10.3-v1.1-nodes.jsonl",
+    "edges_file": "/Users/sramsey/Work/big-files/kg2c-2.10.3-v1.0-edges.jsonl",
+    "biolink_version": "4.2.5",
+    "kp_infores_curie": "infores:rtx-kg2",
+    "endpoint_name": "kg2c",
+    "is_test": false,
+    "debug": false,
+    "labels": {
+        "edges": "predicate",
+        "nodes": "all_categories"
     },
-    "all_names": {
-      "attribute_type_id": "biolink:synonym",
-      "value_type_id": "metatype:String",
-      "description": "Names of all nodes in this synonym set in RTX-KG2.",
-      "attribute_source": "{kp_infores_curie}"
-    },
-    "kg2_ids": {
-      "attribute_type_id": "biolink:original_predicate",
-      "value_type_id": "metatype:String",
-      "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping.",
-      "attribute_source": "{kp_infores_curie}"
+    "subclass_sources": ["infores:mondo", "infores:chebi", "infores:hpo", "infores:uberon"],
+    "num_edges_per_answer_cutoff": 1000000,
+    "assign_new_edge_ids": true,
+    "normalize": false,
+    "convert_input_ids": true,
+    "drug_chemical_conflation": true,
+    "ignore_edge_properties": ["domain_range_exclusion", "publications_info"],
+    "ignore_node_properties": [],
+    "trapi_attribute_map": {
+        "all_categories": {
+            "attribute_type_id": "biolink:category",
+            "value_type_id": "metatype:Uriorcurie",
+            "description": "Categories of all nodes in this synonym set in RTX-KG2.",
+            "attribute_source": "{kp_infores_curie}"
+        },
+        "all_names": {
+            "attribute_type_id": "biolink:synonym",
+            "value_type_id": "metatype:String",
+            "description": "Names of all nodes in this synonym set in RTX-KG2.",
+            "attribute_source": "{kp_infores_curie}"
+        },
+        "kg2_ids": {
+            "attribute_type_id": "biolink:original_predicate",
+            "value_type_id": "metatype:String",
+            "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping.",
+            "attribute_source": "{kp_infores_curie}"
+        }
     }
-  }
 }
