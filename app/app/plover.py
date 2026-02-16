@@ -870,12 +870,6 @@ class PloverDB:
 
             # Build a helper map of nodes --> category labels
             categories = _convert_to_set(node[categories_property])
-            # proper_ancestors_for_each_category = \
-            #     [set(biolink_helper
-            #          .get_ancestors(category, include_mixins=False,
-            #                         include_conflations=False)).difference({category})
-            #      for category in categories]
-            # all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
             all_proper_ancestors = set().union(*(proper_ancestors(c) for c in categories))
 
             most_specific_categories = categories.difference(all_proper_ancestors)
