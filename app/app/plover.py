@@ -46,7 +46,6 @@ import gc
 import inspect
 import itertools
 import json
-import uuid
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -185,9 +184,8 @@ def _get_current_memory_usage() -> tuple[float, float, float]:
 
 
 def _format_memory_usage(message: str,
-                         *
-                         args) -> tuple:
-    return (message + "Memory: %sG available; %s%% used; process using %sG",
+                         *args) -> tuple:
+    return (message + "System memory available: %sG (%s%% used); process using %sG",
             *args,
             *_get_current_memory_usage())
 
@@ -306,6 +304,10 @@ def _convert_to_list(input_item: Any) -> list[str]:
     return []
 
 def _is_empty(value: Any) -> bool:
+    """
+    Return True if value is structurally empty (None, "", [], etc).
+    All scalar values (including 0 and False) are treated as non-empty.
+    """
     if isinstance(value, list):
         return all(_is_empty(item) for item in value)
     if value or isinstance(value, (int, float, complex)):
@@ -814,7 +816,7 @@ class PloverDB:
         logging.info("Streaming nodes from file %s", nodes_path)
         nodes_gen = _iter_records(nodes_path, self.array_properties, self.array_delimiter)
         logging.info("Building basic node/edge lookup maps")
-        logging.info("Loading node lookup map")
+        logging.info("Loading nodes from file")
         node_to_category_labels_map: dict[str, set[int]] = {}
         node_lookup_map: dict[str, dict[str, Any]] = {}
         node_properties_to_ignore = kg_config.get("ignore_node_properties", [])
@@ -828,8 +830,18 @@ class PloverDB:
         drug_chemical_conflation = kg_config.get("drug_chemical_conflation", False)
         node_id_batch: list[str] = []
         batch_size = 1_000  # suggested max batch size
-        equivalent_ids_in_graph = False
         node_sizes_total: dict[str,int] = defaultdict(int)
+        equiv_ids_in_graph = kg_config.get("equiv_ids_in_graph", True)
+        anc_cache: dict[str, set[str]] = {}
+        def proper_ancestors(cat: str) -> set[str]:
+            if cat not in anc_cache:
+                anc = set(biolink_helper.get_ancestors(
+                    cat, include_mixins=False, include_conflations=False
+                ))
+                anc.discard(cat)
+                anc_cache[cat] = anc
+            return anc_cache[cat]
+
         for node in nodes_gen:
             node_id = cast(str, node['id'])
 
@@ -839,14 +851,13 @@ class PloverDB:
 
             # Record equivalent identifiers (if provided) for each node so we
             # can 'canonicalize' incoming queries
-            if self.kg_config.get("convert_input_ids"):
+            if convert_input_ids:
                 equivalent_ids = {
                     curie
                     for p in equivalent_curies_property_tuple
                     for curie in node.get(p, [])
                 }
                 if equivalent_ids:
-                    equivalent_ids_in_graph = True
                     for equiv_id in equivalent_ids:
                         preferred_id_map[equiv_id] = node_id
 
@@ -859,29 +870,31 @@ class PloverDB:
 
             # Build a helper map of nodes --> category labels
             categories = _convert_to_set(node[categories_property])
-            proper_ancestors_for_each_category = \
-                [set(biolink_helper
-                     .get_ancestors(category, include_mixins=False,
-                                    include_conflations=False)).difference({category})
-                 for category in categories]
-            all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
+            # proper_ancestors_for_each_category = \
+            #     [set(biolink_helper
+            #          .get_ancestors(category, include_mixins=False,
+            #                         include_conflations=False)).difference({category})
+            #      for category in categories]
+            # all_proper_ancestors = set().union(*proper_ancestors_for_each_category)
+            all_proper_ancestors = set().union(*(proper_ancestors(c) for c in categories))
+
             most_specific_categories = categories.difference(all_proper_ancestors)
             node_to_category_labels_map[node_id] = \
                 {get_category_id(category_name)
                  for category_name in most_specific_categories}
             node_lookup_map[node_id] = node
 
-            # if config file specifies to normalize input IDs, and if the graph
-            # didn't already supply equivalent node IDs, use the SRI node normalizer
+            # if config file specifies to handle node normalization at query time,
+            # and if the config specifies to get equivalent IDs, use the SRI node normalizer
             # to normalize the nodes in batches
-            if convert_input_ids and not equivalent_ids_in_graph:
-                if len(node_id_batch) == batch_size:
+            if convert_input_ids and not equiv_ids_in_graph:
+                node_id_batch.append(node_id)
+                if len(node_id_batch) >= batch_size:
                     equiv_id_map_for_batch = \
                         _get_equiv_id_map_from_sri(node_id_batch,
                                                    drug_chemical_conflation)
                     preferred_id_map.update(equiv_id_map_for_batch)
-                    node_id_batch = []
-                node_id_batch.append(node_id)
+                    node_id_batch.clear()
 
             node_ctr += 1
 
@@ -895,6 +908,14 @@ class PloverDB:
                 logging.info(*_format_memory_usage("  Processed %s nodes in %s seconds. ",
                                                    f"{node_ctr:,}",
                                                    round(time.time() - start_nodes, 1)))
+
+        if convert_input_ids and not equiv_ids_in_graph and node_id_batch:
+            equiv_id_map_for_batch = _get_equiv_id_map_from_sri(
+                node_id_batch,
+                drug_chemical_conflation
+            )
+            preferred_id_map.update(equiv_id_map_for_batch)
+            node_id_batch.clear()
 
         if debug:
             _pprint_sizes_mb(node_sizes_total, multiplier=float(debug_sample_per))
@@ -941,6 +962,12 @@ class PloverDB:
         edge_ctr = 0
         start_edges = time.time()
         edge_sizes_total: dict[str,int] = defaultdict(int)
+        # About the "normalize" config variable: if it is set to
+        # True, then the index-building function will
+        # explicitly normalize _edges_on ingest; if on the other hand, your
+        # knowledge graph's edges' subject and object CURIEs are already preferred
+        # (i.e., canonical), then the `normalize` variable in the `config.json` file
+        # should be set to False:
         normalize = kg_config.get("normalize")
         meta_triples_map: dict[tuple[int, str, int], set[str]] = defaultdict(set)
         meta_qual_map: dict[tuple[int, str, int], dict[str, set[str]]] = \
@@ -965,6 +992,7 @@ class PloverDB:
         is_test = self.is_test
         assign_new_edge_ids = kg_config.get('assign_new_edge_ids', False)
         logging.info("Value for assign_new_edge_ids: %s", assign_new_edge_ids)
+        logging.info("Loading edges from file")
 
         for edge in edges_gen:
             if not assign_new_edge_ids:
@@ -974,7 +1002,9 @@ class PloverDB:
                     raise KeyError("edge missing required 'id' field in "
                                    f"{edges_path}") from e
             else:
-                edge_id = "urn:uuid:" + str(uuid.uuid4())
+                edge_id = f"{edge_ctr:09d}"
+
+            edge.pop('id', None)
 
             # remove edge properties that are on the "ignore" list from the
             # config file
@@ -989,7 +1019,7 @@ class PloverDB:
                 edge[graph_object_aspect_property] = \
                     edge.pop("qualified_object_aspect")
 
-             # ---- Zip up specified columns into list-of-dicts ----
+            # ---- Zip up specified columns into list-of-dicts ----
             for zipped_prop_name, props in zipped_specs:
                 # Get the column arrays; if any are missing, skip or raise
                 # (choose behavior)
@@ -997,7 +1027,7 @@ class PloverDB:
                     cols = [edge[p] for p in props]
                 except KeyError as e:
                     raise KeyError(f"for edge {edge_id}, missing zip column "
-                                   f"{e.args[0]} \for {zipped_prop_name}") from e
+                                   f"{e.args[0]} for {zipped_prop_name}") from e
                 # Zip rows (assumes cols are equal-length sequences)
                 for prop, col in zip(props, cols):
                     if isinstance(col, (str, bytes, dict, set)) or \
@@ -1055,7 +1085,10 @@ class PloverDB:
                 logging.error("Edge %s has one of [predicate, qualified_predicate] that is "
                               "in canonical form and one that is not; cannot reconcile",
                               edge_id)
-                return  # TODO: look into whether we should raise an exception here
+                raise ValueError(
+                    f"Edge {edge_id} has predicate/qualified_predicate canonical mismatch; "
+                    "cannot reconcile"
+                )
             # Both predicate and qualified_pred must be non-canonical:
             if canonical_predicate != predicate:
                 # Flip the edge (because the original predicate must be the canonical
@@ -1073,7 +1106,6 @@ class PloverDB:
                 edge["object"] = preferred_id_map[edge["object"]]
                 edge_id = (f'{edge["subject"]}--{edge["predicate"]}--{edge["object"]}--'
                            f'{edge.get("primary_knowledge_source", "")}')
-                edge["id"] = edge_id
                 if edge.get("supporting_studies"):
                     study_objs_by_nctids = {study_obj["nctid"]: study_obj
                                             for study_obj in edge["supporting_studies"]}
@@ -1095,7 +1127,7 @@ class PloverDB:
                 if is_test:
                     add_edge = False
                 else:
-                    raise ValueError(f"for edge {edge['id']}, "
+                    raise ValueError(f"for edge {edge_id}, "
                                      f"subject CURIE {edge['subject']} "
                                      "is not in the nodes map")
 
@@ -1104,7 +1136,7 @@ class PloverDB:
                 if is_test:
                     add_edge = False
                 else:
-                    raise ValueError(f"for edge {edge['id']}, "
+                    raise ValueError(f"for edge {edge_id}, "
                                      f"object CURIE {edge['object']} "
                                      "is not in the nodes map")
 
@@ -1141,7 +1173,6 @@ class PloverDB:
                                  "predicate": edge["predicate"],
                                  "subject_id": edge["subject"],
                                  "object_id": edge["object"]}
-
                 edge_lookup_map[edge_id] = edge
 
             edge_ctr += 1
@@ -1259,9 +1290,9 @@ class PloverDB:
             if edge_ctr % 1_000_000 == 0:
                 memory_args = _format_memory_usage("  Processed %s edges (%s%%), "
                                                    "%s of which were qualified edges. ",
-                                                   edge_ctr,
+                                                   f"{edge_ctr:,}",
                                                    round((edge_ctr / total) * 100),
-                                                   qualified_edges_count)
+                                                   f"{qualified_edges_count:,}")
                 logging.info(*memory_args)
                 memory_usage_percent = memory_args[5]
                 if memory_usage_percent > max_allowed_percent_memory_usage:
@@ -1345,13 +1376,19 @@ class PloverDB:
         revised_html = html_string.replace("{{kp_infores_curie}}",
                                            self.kp_infores_curie).replace("{{kp_endpoint_name}}",
                                                                           self.endpoint_name)
-        with open(self.kp_home_html_path, "w+", encoding="utf-8") as kp_home_file:
+        with open(self.kp_home_html_path, "w", encoding="utf-8") as kp_home_file:
             kp_home_file.write(revised_html)
 
-        if not self.is_test:
+        delete_local_kg_files = kg_config.get("delete_local_kg_files", False)
+        if delete_local_kg_files:
             logging.info("Removing local files from the image now that index building is done")
-            subprocess.call(["rm", "-f", nodes_path])
-            subprocess.call(["rm", "-f", edges_path])
+            for p in (nodes_path, edges_path):
+                try:
+                    os.remove(p)
+                except FileNotFoundError:
+                    pass
+                except OSError as e:
+                    logging.warning("Failed to delete %s: %s", p, e)
 
         logging.info("Done building indexes! Took %s minutes.",
                      round((time.time() - start) / 60, 2))
@@ -1498,6 +1535,47 @@ class PloverDB:
             subclass_edges_path: Optional[str],
             edge_lookup_map: dict[str, dict[str, Any]]
     ) -> list[dict]:
+        """
+        Retrieve and prepare the set of subclass edges used for concept subclass reasoning.
+
+        This function primarily attempts to use subclass edges that already exist in the
+        loaded knowledge graph (i.e., edges present in ``edge_lookup_map`` whose predicate
+        is ``biolink:subclass_of`` or ``biolink:superclass_of``). If such edges are found,
+        they are used directly.
+
+        It is normal and expected to call this function with ``subclass_edges_path=None``.
+        In that case, the function will *only* use subclass edges found in the graph itself.
+        If none are present and no separate subclass edge file path is provided, the
+        function logs a warning and proceeds without subclass concept reasoning.
+
+        If the graph contains no subclass edges and ``subclass_edges_path`` is provided,
+        the function loads edges from that file and filters them down to those whose
+        subject and object CURIEs correspond to identifiers known to this build
+        (i.e., present in ``self.preferred_id_map``). Those edges are then remapped so
+        that their subject/object IDs use the preferred identifiers.
+
+        Optionally, if ``kg_config["subclass_sources"]`` is present, the subclass edge set
+        is further filtered to include only edges whose ``primary_knowledge_source`` is in
+        that configured allowlist.
+
+        Finally, the resulting subclass edges are deduplicated by (subject, predicate, object)
+        triple before being returned.
+
+        Parameters
+        ----------
+        subclass_edges_path:
+            Optional path to a separate subclass edges file. If ``None``, subclass edges
+            will be sourced exclusively from ``edge_lookup_map`` (the loaded graph).
+        edge_lookup_map:
+            Map of edge_id -> edge dict for the loaded graph.
+
+        Returns
+        -------
+        list[dict]
+            A list of subclass edge objects (dicts) suitable for building the subclass
+            reasoning index.
+        """
+
         subclass_predicates = {"biolink:subclass_of", "biolink:superclass_of"}
         subclass_edges = [edge for edge in edge_lookup_map.values()
                           if edge[self.edge_predicate_property] in subclass_predicates]
@@ -1511,8 +1589,8 @@ class PloverDB:
                              "involving our nodes",
                              subclass_edges_path)
                 edges_gen = _iter_records(subclass_edges_path, set(), self.array_delimiter)
-                    # TODO: Make smarter... need to be connected, not necessarily directly?
-                    # and add to preferred id map?
+                # TODO: Make smarter... need to be connected, not necessarily directly?
+                # and add to preferred id map?
                 subclass_edges = [edge_obj for edge_obj in edges_gen
                                   if edge_obj["subject"] in self.preferred_id_map
                                   and edge_obj["object"] in self.preferred_id_map]
@@ -2196,7 +2274,7 @@ class PloverDB:
                 attribute["attribute_source"].replace("{kp_infores_curie}",
                                                       self.kp_infores_curie)
         if attribute.get("value_url"):
-            attribute["value_url"] = attribute["value_url"].replace("{value}", value)
+            attribute["value_url"] = attribute["value_url"].replace("{value}", str(value))
         return attribute
 
     def _get_trapi_edge_attributes(self, edge_biolink: dict) -> list[dict]:
