@@ -14,10 +14,11 @@ RUN groupadd -g 1000 plover && \
 #   serves http directly and the kernel listen backlog fills up under load.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates \
-        libgit2-dev \
-        build-essential \
-        nginx && \
+    ca-certificates \
+    libgit2-dev \
+    build-essential \
+    nginx \
+    logrotate && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up log files and directories with correct ownership
@@ -41,7 +42,10 @@ COPY --chown=plover:plover ./app /app
 # install nginx config -- replaces the nginx that was built into tiangolo.
 # nginx sits in front of uwsgi as a connection-buffering reverse proxy.
 COPY ./app/nginx.conf /etc/nginx/nginx.conf
-RUN chmod +x /app/start.sh
+
+# log rotation config (prevents disk fill after multi-day uptime)
+COPY ./app/logrotate.conf /etc/logrotate.d/ploverdb
+RUN chmod 644 /etc/logrotate.d/ploverdb && chmod +x /app/start.sh
 
 # Copy .git to user's home for pygit2 /code_version endpoint
 COPY --chown=plover:plover ./.git /home/plover/.git
@@ -60,6 +64,7 @@ RUN python3 /app/app/build_indexes.py && chown -R plover:plover /app
 EXPOSE 80
 
 # Run as root so nginx can bind to port 80. start.sh runs uwsgi as plover via runuser.
+# uid/gid is NOT set in uwsgi.ini — start.sh handles it with runuser to avoid conflicts.
 USER root
 
 # start nginx + uwsgi via startup script.
