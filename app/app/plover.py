@@ -56,7 +56,6 @@ import pickle
 import pprint
 import shutil
 import statistics
-import subprocess
 import sys
 import time
 
@@ -1005,7 +1004,8 @@ class PloverDB:
             for prop_to_ignore in edge_properties_to_ignore:
                 edge.pop(prop_to_ignore, None)
 
-            # Correct qualified property names (this is really for KG2)
+            # Correct qualified property names (this is really for the KG2.10.2c
+            # to KG2.10.3c transition)
             if "qualified_object_direction" in edge:
                 edge[graph_object_direction_property] = \
                     edge.pop("qualified_object_direction")
@@ -1594,7 +1594,10 @@ class PloverDB:
                 for edge in subclass_edges:
                     edge["subject"] = self.preferred_id_map[edge["subject"]]
                     edge["object"] = self.preferred_id_map[edge["object"]]
-                subprocess.call(["rm", "-f", subclass_edges_path])
+                try:
+                    os.remove(subclass_edges_path)
+                except FileNotFoundError:
+                    pass
             else:
                 logging.warning("No URL to a subclass edges file provided in %s. Will proceed "
                                 "without subclass concept reasoning",
