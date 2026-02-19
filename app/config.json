@@ -1,6 +1,6 @@
 {
-    "nodes_file": "/Users/sramsey/Work/big-files/kg2c-2.10.3-v1.1-nodes.jsonl",
-    "edges_file": "/Users/sramsey/Work/big-files/kg2c-2.10.3-v1.0-edges.jsonl",
+    "nodes_file": "db/kg2.10.3-conflated-nodes.jsonl",
+    "edges_file": "db/kg2.10.3-conflated-edges.jsonl",
     "biolink_version": "4.2.5",
     "kp_infores_curie": "infores:rtx-kg2",
     "endpoint_name": "kg2c",
