@@ -1,10 +1,7 @@
 import json
 import os
 import sys
-from collections import defaultdict
 import pytest
-import requests
-from typing import Dict, Union, List
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from plover_tester import PloverTester
@@ -759,6 +756,38 @@ def test_subclass_reasoning():
     }
     response = tester.run_query(query)
     assert DIABETES_T1_CURIE in response["message"]["knowledge_graph"]["nodes"]
+
+
+def test_qualified_direction_slim():
+    # Test qualifiers
+    query = {
+        "edges": {
+            "e00": {
+                "subject": "n00",
+                "object": "n01",
+                "qualifier_constraints": [
+                    {"qualifier_set": [
+                        {"qualifier_type_id": "biolink:qualified_predicate",
+                         "qualifier_value": "biolink:causes"},
+                        {"qualifier_type_id": "biolink:object_direction_qualifier",
+                         "qualifier_value": "decreased"}
+                    ]}
+                ]
+            }
+        },
+        "nodes": {
+            "n00": {
+                "ids": ["CHEBI:94557"]
+            },
+            "n01": {
+                "ids": ["NCBIGene:2554"]
+            }
+        }
+    }
+    response = tester.run_query(query)
+    with open("response.json", "w") as fo:
+        json.dump(response, fo, indent=4)
+    assert "NCBIGene:2554" in response["message"]["knowledge_graph"]["nodes"]
 
 
 if __name__ == "__main__":
