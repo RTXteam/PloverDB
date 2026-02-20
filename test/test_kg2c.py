@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 import pytest
@@ -785,8 +784,6 @@ def test_qualified_direction_slim():
         }
     }
     response = tester.run_query(query)
-    with open("response.json", "w") as fo:
-        json.dump(response, fo, indent=4)
     assert "NCBIGene:2554" in response["message"]["knowledge_graph"]["nodes"]
 
 

@@ -657,7 +657,7 @@ class PloverDB:
         self.indexes_dir_path = \
             os.path.join(self.parent_dir, f"plover_indexes_{self.endpoint_name}")
 
-        self.is_test = self.kg_config.get("is_test")
+        self.is_test = self.kg_config.get("is_test", False)
         self.biolink_version = self.kg_config["biolink_version"]
         logging.info("Biolink version to use is: %s", self.biolink_version)
         self.trapi_attribute_map = self.load_trapi_attribute_map()
@@ -983,20 +983,14 @@ class PloverDB:
 
         category_map_reversed = self.category_map_reversed
         is_test = self.is_test
-        assign_new_edge_ids = kg_config.get('assign_new_edge_ids', False)
-        logging.info("Value for assign_new_edge_ids: %s", assign_new_edge_ids)
         logging.info("Loading edges from file")
 
         for edge in edges_gen:
-            if not assign_new_edge_ids:
-                try:
-                    edge_id = str(edge["id"])
-                except KeyError as e:
-                    raise KeyError("edge missing required 'id' field in "
-                                   f"{edges_path}") from e
-            else:
-                edge_id = f"{edge_ctr:09d}"
-
+            try:
+                edge_id = str(edge["id"])
+            except KeyError as e:
+                raise KeyError("edge missing required 'id' field in "
+                               f"{edges_path}") from e
             edge.pop('id', None)
 
             # remove edge properties that are on the "ignore" list from the
