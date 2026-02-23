@@ -147,3 +147,4 @@ config_secrets.json
 app/domain_name.txt
 nginx.conf
 test/*.csv
+!app/nginx.conf
