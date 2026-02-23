@@ -37,6 +37,18 @@
             "value_type_id": "metatype:String",
             "description": "The IDs of the original RTX-KG2pre edge(s) corresponding to this edge prior to any synonymization or remapping.",
             "attribute_source": "{kp_infores_curie}"
+        },
+        "in_taxon": {
+            "attribute_type_id": "biolink:in_taxon",
+            "value_type_id": "metatype:Uriorcurie",
+            "description": "The organism taxon with which this entity is associated.",
+            "attribute_source": "{kp_infores_curie}"
+        },
+        "category": {
+            "attribute_type_id": "biolink:category",
+            "value_type_id": "metatype:Uriorcurie",
+            "description": "Category of the canonical identifier for this node in RTX-KG2.",
+            "attribute_source": "{kp_infores_curie}"
         }
     }
 }
