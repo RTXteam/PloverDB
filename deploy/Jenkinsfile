@@ -1,3 +1,4 @@
+/// This is the Jenkinsfile for multiomics (pPlverDB)
 pipeline {
     options {
         timestamps()
@@ -15,13 +16,25 @@ pipeline {
         pollSCM('H/5 * * * *')
     }
     environment {
-        DOCKER_REPO_NAME = "853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-ploverdb"
+        DOCKER_REPO_NAME = "853771734544.dkr.ecr.us-east-1.amazonaws.com/translator-rtx-multiomics"
         KUBERNETES_BLUE_CLUSTER_NAME = "translator-eks-ci-blue-cluster"
-        KUBERNETES_GREEN_CLUSTER_NAME = "translator-eks-ci-green-cluster"
+        DEPLOY_ENV = "ci"
     }
     stages {
+        stage('Checkout source code') {
+            steps {
+                cleanWs()
+                checkout scm
+            }
+        }
         stage('Build Version'){
-            when { expression { return !params.BUILD_VERSION } }
+            when {
+                allOf {
+                    expression {
+                        return !params.BUILD_VERSION
+                    }
+                }
+            }
             steps{
                 script {
                     BUILD_VERSION_GENERATED = VersionNumber(
@@ -34,12 +47,12 @@ pipeline {
                 }
             }
         }
-        stage('Checkout source code') {
-            steps {
-                cleanWs()
-                checkout scm
-            }
-        }
+
+
+
+
+
+
         stage('Build Docker') {
            when { expression { return env.BUILD == 'true' }}
             steps {
@@ -59,13 +72,23 @@ pipeline {
             steps {
                 cleanWs()
                 configFileProvider([
-                    configFile(fileId: 'ploverdb-ci-values.yaml', targetLocation: 'values-ncats.yaml'),
+                    configFile(fileId: 'multiomics-ci-values.yaml', targetLocation: 'values-ncats.yaml'),
                     configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
                 ]){
-                    sh '''
+                    script {
+                        sh '''
                         aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
                         /bin/bash prepare.sh
-                       '''
+                        cd translator-ops/ops/team-expander/multiomics
+                        /bin/bash deploy.sh
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    echo " Clean up the workspace in deploy node!"
+                    cleanWs()
                 }
             }
         }
