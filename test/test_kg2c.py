@@ -786,6 +786,8 @@ def test_qualified_direction_slim():
     }
     response = tester.run_query(query)
     assert "NCBIGene:2554" in response["message"]["knowledge_graph"]["nodes"]
+    assert 'description' in response["message"]["knowledge_graph"]["nodes"]["NCBIGene:2554"]
+
 
 def test_code_version():
     endpoint = pytest.endpoint
