@@ -1,6 +1,7 @@
 import os
 import sys
 import pytest
+import requests
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from plover_tester import PloverTester
@@ -786,6 +787,21 @@ def test_qualified_direction_slim():
     response = tester.run_query(query)
     assert "NCBIGene:2554" in response["message"]["knowledge_graph"]["nodes"]
 
+def test_code_version():
+    endpoint = pytest.endpoint
+    response = requests.get(f"{endpoint}/code_version",
+                            headers = {'accept': 'application/json'})
+    assert response.ok
+    json_response = response.json()
+    assert 'endpoint_build_nodes' in json_response
+    endpoint_build_nodes_response = json_response['endpoint_build_nodes']
+    assert 'kg2c' in endpoint_build_nodes_response
+    kg2c_response = endpoint_build_nodes_response['kg2c']
+    assert 'category' in kg2c_response
+    assert 'description' in kg2c_response
+    assert 'name' in kg2c_response
+
+    
 
 if __name__ == "__main__":
     pytest.main(['-v', 'test.py'])
