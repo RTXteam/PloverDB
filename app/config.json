@@ -1,6 +1,6 @@
 {
-    "nodes_file": "https://kg2webhost.rtx.ai/kg2.10.3-conflated-nodes.jsonl.gz",
-    "edges_file": "https://kg2webhost.rtx.ai/kg2.10.3-conflated-edges.jsonl.gz",
+    "nodes_file": "https://kg2webhost.rtx.ai/kg2c-2.10.3-v1.0-nodes-conflated.jsonl.gz",
+    "edges_file": "https://kg2webhost.rtx.ai/kg2c-2.10.3-v1.0-edges-conflated.jsonl.gz",
     "biolink_version": "4.2.5",
     "kp_infores_curie": "infores:rtx-kg2",
     "endpoint_name": "kg2c",
