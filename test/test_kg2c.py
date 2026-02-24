@@ -800,6 +800,7 @@ def test_code_version():
     assert 'category' in kg2c_response
     assert 'description' in kg2c_response
     assert 'name' in kg2c_response
+    assert 'biolink_version' in kg2c_response
 
     
 
