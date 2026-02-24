@@ -925,10 +925,10 @@ class PloverDB:
         plover_build_node = \
             {"name": f"Plover deployment of {self.kp_infores_curie}",
              "category": "biolink:InformationContentEntity",
-             "description": f"This Plover build was done on {datetime.now()} "
-             "from input files "
-             f"'{kg_config['nodes_file']}' and '{kg_config['edges_file']}'. "
-             f"Biolink version used was {self.biolink_version}."}
+             "description": (f"This Plover build was done on {datetime.now()} "
+                             f"from input files '{kg_config['nodes_file']}' "
+                             f"and '{kg_config['edges_file']}'."),
+             "biolink_version": self.biolink_version}
         node_lookup_map["PloverDB"] = plover_build_node
 
          # Save the node lookup map now that we're done using/modifying it
