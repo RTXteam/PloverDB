@@ -591,8 +591,13 @@ if __name__ == "__main__":
     port = int(os.environ.get("PLOVER_PORT", "9990"))
     host = os.environ.get("PLOVER_HOST", "0.0.0.0")
     do_otel = os.environ.get("PLOVER_OTEL", "false")
+    # when running with python -m (dev machine), turn off telemetry by default
     if do_otel == "true":
         instrument(app)
     app.run(host=host, port=port, debug=False, use_reloader=False)
 else:
-    instrument(app)
+    do_otel = os.environ.get("PLOVER_OTEL", "true")
+    # when running from docker, turn on telemetry by default, but
+    # it can be turned off using the PLOVER_OTEL environment variable
+    if do_otel == "true":
+        instrument(app)
