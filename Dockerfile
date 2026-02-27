@@ -52,6 +52,8 @@ COPY --chown=plover:plover ./.git /home/plover/.git
 
 # Set environment
 ENV HOME=/home/plover
+# Disable OpenTelemetry/Jaeger by default; set PLOVER_OTEL=true when agent is reachable
+ENV PLOVER_OTEL=false
 
 # Match legacy tiangolo uWSGI worker defaults (tunable at runtime)
 ENV UWSGI_PROCESSES=16
