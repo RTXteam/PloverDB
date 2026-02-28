@@ -484,7 +484,7 @@ def _load_column_value(
 def _open_maybe_gzip(path: Path):
     # Returns a text-mode file handle
     if path.suffixes[-1:] == [".gz"]:
-        return gzip.open(path, "r", encoding="utf-8", newline="")
+        return gzip.open(path, "rt", encoding="utf-8", newline="")
     return open(path, "r", encoding="utf-8", newline="")
 
 def _raise_http_error(http_code: int, err_message: str):
