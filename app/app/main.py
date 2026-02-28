@@ -46,12 +46,6 @@ except OSError:
                         handlers=[logging.StreamHandler(),
                                   logging.FileHandler(alt_log_file_path)])
 
-def _env_flag(name: str, default: bool = False) -> bool:
-    val = os.environ.get(name)
-    if val is None:
-        return default
-    return val.strip().lower() in {"1", "true", "yes", "on"}
-
 def load_plovers() -> tuple[dict[str, plover.PloverDB], str]:
     # Load a Plover for each KP (each KP has its own Plover config file - e.g., 'config_kg2c.json')
     config_files = sorted(
@@ -642,6 +636,14 @@ def get_kp_home_page(kp_endpoint_name: str):
         return send_file(plover_objs_map[kp_endpoint_name].kp_home_html_path, as_attachment=False)
     flask.abort(404,
                 f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
 
 if __name__ == "__main__":
     logging.info("Running as __main__ (dev server mode)")
