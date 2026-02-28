@@ -66,7 +66,7 @@ def load_plovers() -> tuple[dict[str, plover.PloverDB], str]:
         plover_endpoints_map[plover_obj.endpoint_name] = plover_obj
     if not plover_endpoints_map:
         raise RuntimeError("No Plover config files found / no endpoints loaded")
-    default_endpoint = sorted(list(plover_endpoints_map.keys()))[0]
+    default_endpoint = min(plover_endpoints_map)
     return plover_endpoints_map, default_endpoint
 
 
@@ -98,8 +98,8 @@ def instrument(flask_app):
 
     # Then figure out which jaeger host to use
     domain_name_file_path = SCRIPT_DIR.parent / "domain_name.txt"
-    if os.path.exists(domain_name_file_path):
-        with open(domain_name_file_path, "r", encoding="utf-8") as domain_name_file:
+    if domain_name_file_path.exists():
+        with domain_name_file_path.open("r", encoding="utf-8") as domain_name_file:
             domain_name = domain_name_file.read()
             logging.info("Domain name is: %s", domain_name)
     else:
