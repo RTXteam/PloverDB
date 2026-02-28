@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import traceback
+from pathlib import Path
 from typing import NoReturn
 
 import flask
@@ -24,7 +25,7 @@ from . import plover
 # Reserved path segments — must not be treated as KP endpoint names
 _RESERVED_PATHS = frozenset({"debug", "get_logs", "logs", "code_version", "healthcheck"})
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = Path(__file__).resolve().parent
 hide_traceback_in_errors = False
 debug_snapshots_enabled = False
 
@@ -39,7 +40,7 @@ try:
                         handlers=[logging.StreamHandler(),
                                   logging.FileHandler(plover.LOG_FILE_PATH)])
 except OSError:
-    alt_log_file_path = os.path.join(SCRIPT_DIR, "ploverdb.log")
+    alt_log_file_path = SCRIPT_DIR / "ploverdb.log"
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(levelname)s: %(message)s',
                         handlers=[logging.StreamHandler(),
@@ -54,8 +55,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
 def load_plovers() -> tuple[dict[str, plover.PloverDB], str]:
     # Load a Plover for each KP (each KP has its own Plover config file - e.g., 'config_kg2c.json')
     config_files = sorted(
-        fn for fn in os.listdir(f"{SCRIPT_DIR}/../")
-        if fn.startswith("config") and fn.endswith(".json")
+        fn.name for fn in SCRIPT_DIR.parent.iterdir()
+        if fn.name.startswith("config") and fn.suffix == ".json"
     )
     logging.info("Plover config files are %s", config_files)
     plover_endpoints_map: dict[str, plover.PloverDB] = {}
@@ -96,7 +97,7 @@ def instrument(flask_app):
     logging.info("Service name for opentelemetry tracing is %s", service_name)
 
     # Then figure out which jaeger host to use
-    domain_name_file_path = f"{SCRIPT_DIR}/../domain_name.txt"
+    domain_name_file_path = SCRIPT_DIR.parent / "domain_name.txt"
     if os.path.exists(domain_name_file_path):
         with open(domain_name_file_path, "r", encoding="utf-8") as domain_name_file:
             domain_name = domain_name_file.read()
@@ -578,7 +579,7 @@ def handle_internal_error(e: Exception) -> NoReturn:
 
 @app.get("/code_version")
 def run_code_version():
-    repo_path = pygit2.discover_repository(SCRIPT_DIR)
+    repo_path = pygit2.discover_repository(os.fspath(SCRIPT_DIR))
     if repo_path is None:
         return flask.jsonify({"code_info": "git repo not found"}), 200
 
