@@ -573,33 +573,39 @@ def handle_internal_error(e: Exception) -> NoReturn:
 
 @app.get("/code_version")
 def run_code_version():
-    repo_path = pygit2.discover_repository(os.fspath(SCRIPT_DIR))
+    endpoint_build_nodes = {
+        endpoint_name: plover_obj.node_lookup_map["PloverDB"]
+        for endpoint_name, plover_obj in plover_objs_map.items()
+    }
+
+    start_dir = os.fspath(Path("~").expanduser())
+    repo_path = pygit2.discover_repository(start_dir)
     if repo_path is None:
-        return flask.jsonify({"code_info": "git repo not found"}), 200
+        return flask.jsonify({
+            "code_info": "git repo not found",
+            "endpoint_build_nodes": endpoint_build_nodes,
+        }), 200
 
     try:
         repo = pygit2.Repository(repo_path)
     except pygit2.GitError:
-        return flask.jsonify({"code_info": "git repo could not be opened"}), 200
+        return flask.jsonify({
+            "code_info": f"git repo could not be opened at path: {repo_path}",
+            "endpoint_build_nodes": endpoint_build_nodes,
+        }), 200
 
-    # Branch / head label
     repo_head_name = "DETACHED" if repo.head_is_detached else repo.head.shorthand
 
-    # Commit date (may be unavailable in empty repos)
     try:
         ts = repo.revparse_single("HEAD").commit_time
         date_str = str(datetime.date.fromtimestamp(ts))
     except pygit2.GitError:
         date_str = "UNKNOWN"
 
-    response = {
+    return flask.jsonify({
         "code_info": f"HEAD: {repo_head_name}; Date: {date_str}",
-        "endpoint_build_nodes": {
-            endpoint_name: plover_obj.node_lookup_map["PloverDB"]
-            for endpoint_name, plover_obj in plover_objs_map.items()
-        },
-    }
-    return flask.jsonify(response), 200
+        "endpoint_build_nodes": endpoint_build_nodes,
+    }), 200
 
 
 @app.get("/get_logs")
