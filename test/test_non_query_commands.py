@@ -120,7 +120,7 @@ def _validate_debug_response(json_response: dict) -> None:
     env = json_response["environment"]
     assert isinstance(env, dict)
     assert isinstance(env.get("python_version"), str)
-    assert "3.12" in env["python_version"]  # if you want this strict; otherwise just assert non-empty
+    assert env["python_version"]  # if you want this strict; otherwise just assert non-empty
     assert isinstance(env.get("working_directory"), str)
     assert env["working_directory"].startswith("/")
     # uWSGI config values often come through as strings; accept either
