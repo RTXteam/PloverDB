@@ -48,6 +48,11 @@ echo "nginx started successfully"
 nginx_watchdog &
 echo "nginx watchdog started (pid $!)"
 
+# Start FastAPI rebuild server in background (port 8000)
+# Runs as plover user for consistency
+runuser -u plover -g plover -- uvicorn rebuild_main:app --host 0.0.0.0 --port 8000 --log-config /dev/null &
+echo "FastAPI rebuild server started (port 8000, pid $!)"
+
 # Run uwsgi as plover (same user as before we added in-container nginx).
 # Starting uwsgi as root and dropping via uid/gid in uwsgi.ini breaks
 # pkg_resources import; starting as plover from the beginning restores it.

@@ -39,6 +39,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code (includes uwsgi.ini, nginx.conf, start.sh)
 COPY --chown=plover:plover ./app /app
 
+# Copy rebuild server (FastAPI for /rebuild endpoint)
+COPY --chown=plover:plover rebuild_main.py /app/rebuild_main.py
+
 # install nginx config -- replaces the nginx that was built into tiangolo.
 # nginx sits in front of uwsgi as a connection-buffering reverse proxy.
 COPY ./app/nginx.conf /etc/nginx/nginx.conf
@@ -60,8 +63,10 @@ ENV UWSGI_CHEAPER=8
 # Build indexes as root (site-packages visible). Then restore plover ownership.
 RUN python3 /app/app/build_indexes.py && chown -R plover:plover /app
 
-# Expose port
-EXPOSE 80
+# Expose ports
+# port 80: main Plover app (Flask/uWSGI via nginx)
+# port 8000: rebuild server (FastAPI)
+EXPOSE 80 8000
 
 # Run as root so nginx can bind to port 80. start.sh runs uwsgi as plover via runuser.
 # uid/gid is NOT set in uwsgi.ini — start.sh handles it with runuser to avoid conflicts.
