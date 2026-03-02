@@ -67,6 +67,7 @@ The PloverDB software has been tested with the following EC2 configuration:
    1. [Config file](#config-file)
 1. [Debugging](#debugging)
 1. [Migration Notes](#migration-notes)
+1. [Developer notes](#dev-notes)
 
 
 ## How to run
@@ -453,7 +454,7 @@ curl -L -X POST -d @test20.json -H 'Content-Type: application/json' -H 'accept: 
 
 ## Migration Notes
 
-### Migration from tiangolo/uwsgi-nginx-flask to python:3.12
+### Migration from tiangolo/uwsgi-nginx-flask base Docker image to python:3.12 base Docker image
 
 As of February 2026, PloverDB migrated from the `tiangolo/uwsgi-nginx-flask:python3.11` base image to the official `python:3.12.12` image. This section documents the rationale and key technical details for reproducibility.
 
@@ -530,6 +531,17 @@ echo "kg2cplover.rtx.ai" > PloverDB/app/domain_name.txt
 - **Other dependencies:** See `requirements.txt` for the complete list of pinned versions.
 
 ---
+
+## Developer notes
+
+### Automated code checks
+PloverDB is equipped with a shell script, `PloverDB/run-code-checks.sh`, that will run automated checks
+of the main python modules in the code-base using four tools: `ruff`, `mypy`, `vulture`, and `pylint`.
+Ideally these checks should be run before committing code changes. All ruff, vulture, and mypy checks
+should pass before committing; any error from any of those three tools will cause the `run-code-checks.sh`
+script to abort. For pylint, instead of 100% passing, the expectation is to not regress the
+module's pylint score below the baseline score it had before the commit (thus, pylint errors do not
+automatically cause the `run-code-checks.sh` script to abort).
 
 ## Credits
 
