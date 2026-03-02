@@ -242,7 +242,7 @@ https://multiomics.rtx.ai:9990/ctkp/sri_test_triples
 
 ### Opentelemetry
 
-Plover automatically logs Jaeger opentelemetry traces per [Translator's monitoring requirements](https://github.com/NCATSTranslator/TranslatorTechnicalDocumentation/blob/telemetry-FAQ/docs/deployment-guide/monitoring.md). To view tracings for an ITRB- deployed Plover application, go to https://translator-otel.ci.transltr.io/search (this is the CI otel link; swap `test` or `prod` for `ci` in that URL as appropriate) and select the proper service name from the dropdown menu. Each Plover instance corresponds to one opentelemetry 'service'; its service name will follow the pattern `{app_name}-plover`, where Plover derives the `app_name` using the local identifier from the default KP's infores curie (e.g., `rtx-kg2-plover` or `multiomics-plover`).
+Plover can be configured to automatically log Jaeger opentelemetry traces per [Translator's monitoring requirements](https://github.com/NCATSTranslator/TranslatorTechnicalDocumentation/blob/telemetry-FAQ/docs/deployment-guide/monitoring.md). To view tracings for an ITRB- deployed Plover application, go to https://translator-otel.ci.transltr.io/search (this is the CI otel link; swap `test` or `prod` for `ci` in that URL as appropriate) and select the proper service name from the dropdown menu. Each Plover instance corresponds to one opentelemetry 'service'; its service name will follow the pattern `{app_name}-plover`, where Plover derives the `app_name` using the local identifier from the default KP's infores curie (e.g., `rtx-kg2-plover` or `multiomics-plover`).
 
 Plover determines what Jaeger host to use according to the contents of the user-created `PloverDB/app/domain_name.txt` file as follows:
 * `jaeger.rtx.ai` if the Plover host domain name exists and does not contain `transltr.io`
@@ -250,10 +250,10 @@ Plover determines what Jaeger host to use according to the contents of the user-
 
 The use (or not) of Open Telemetry within PloverDB can be controlled using the
 `PLOVER_OTEL` environment variable. When PloverDB is run via `python -m app.main`
-at the command-line, by default, telemetry is disabled. But if the `PLOVER_OTEL`
+at the command-line, by default, telemetry is _disabled_. But if the `PLOVER_OTEL`
 environment variable is set to the value `true` (case-sensitive), telemetry
 will be activated at PloverDB start-up. On the other hand, when PloverDB is run
-via uWSGI (which is the case when it is started using `bash -x run.sh` and
+via WSGI (which is the case when it is started using `bash -x run.sh` and
 running in a Docker container), by default, telemetry is _activated_. In that case,
 telemetry can be optionally turned off by setting the `PLOVER_OTEL` environment
 variable to have the value `false` inside the container (which can be accomplished
