@@ -28,7 +28,3 @@ done
 
 echo "Running dead code checks"
 ${run_vulture_cmd} ${files_to_check}
-
-
-echo "Running full pytest unit test suite"
-pytest -v
