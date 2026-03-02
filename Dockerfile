@@ -52,13 +52,14 @@ COPY --chown=plover:plover ./.git /home/plover/.git
 
 # Set environment
 ENV HOME=/home/plover
+# Disable OpenTelemetry/Jaeger by default; set PLOVER_OTEL=true when agent is reachable
+ENV PLOVER_OTEL=false
 
 # Match legacy tiangolo uWSGI worker defaults (tunable at runtime)
 ENV UWSGI_PROCESSES=16
 ENV UWSGI_CHEAPER=8
 
-# Build indexes as root (site-packages visible). Then restore plover ownership.
-RUN python3 /app/app/build_indexes.py && chown -R plover:plover /app
+RUN python -m app.build_indexes && chown -R plover:plover /app
 
 # Expose port
 EXPOSE 80

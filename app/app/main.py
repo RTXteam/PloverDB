@@ -1,16 +1,17 @@
+import datetime
 import gc
 import json
+import logging
 import os
 import sys
 import traceback
-from typing import Tuple
+from pathlib import Path
+from typing import NoReturn
 
 import flask
 from flask import send_file
 from flask_cors import CORS
 import pygit2
-import datetime
-import logging
 
 from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
@@ -19,37 +20,54 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import plover
+from . import plover
 
-SCRIPT_DIR = f"{os.path.dirname(os.path.abspath(__file__))}"
+# Reserved path segments — must not be treated as KP endpoint names
+_RESERVED_PATHS = frozenset({"debug", "get_logs", "logs", "code_version", "healthcheck"})
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+hide_traceback_in_errors = False
+debug_snapshots_enabled = False
 
 app = flask.Flask(__name__)
-cors = CORS(app)
+CORS(app)
+_last_debug_snapshot: dict | None = None
+_last_debug_timestamp: str | None = None
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s %(levelname)s: %(message)s',
-                    handlers=[logging.StreamHandler(),
-                              logging.FileHandler(plover.LOG_FILE_PATH)])
+try:
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s %(levelname)s: %(message)s',
+                        handlers=[logging.StreamHandler(),
+                                  logging.FileHandler(plover.LOG_FILE_PATH)])
+except OSError:
+    alt_log_file_path = SCRIPT_DIR / "ploverdb.log"
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s %(levelname)s: %(message)s',
+                        handlers=[logging.StreamHandler(),
+                                  logging.FileHandler(alt_log_file_path)])
 
-
-def load_plovers() -> Tuple[dict, str]:
+def load_plovers() -> tuple[dict[str, plover.PloverDB], str]:
     # Load a Plover for each KP (each KP has its own Plover config file - e.g., 'config_kg2c.json')
-    config_files = {file_name for file_name in os.listdir(f"{SCRIPT_DIR}/../")
-                    if file_name.startswith("config") and file_name.endswith(".json")}
-    logging.info(f"Plover config files are {config_files}")
-    plover_endpoints_map = dict()
+    config_files = sorted(
+        fn.name for fn in SCRIPT_DIR.parent.iterdir()
+        if fn.name.startswith("config") and fn.suffix == ".json"
+    )
+    logging.info("Plover config files are %s", config_files)
+    plover_endpoints_map: dict[str, plover.PloverDB] = {}
     for config_file_name in config_files:
         plover_obj = plover.PloverDB(config_file_name=config_file_name)
         plover_obj.load_indexes()
         plover_endpoints_map[plover_obj.endpoint_name] = plover_obj
-    default_endpoint = sorted(list(plover_endpoints_map.keys()))[0]
+    if not plover_endpoints_map:
+        raise RuntimeError("No Plover config files found / no endpoints loaded")
+    default_endpoint = min(plover_endpoints_map)
     return plover_endpoints_map, default_endpoint
 
 
 # Load a Plover object per KP/endpoint; these will be shared amongst workers
 plover_objs_map, default_endpoint_name = load_plovers()
-logging.info(f"Plover objs map is: {plover_objs_map}. Default endpoint is {default_endpoint_name}.")
+logging.info("Plover objs map keys are: %s. Default endpoint is %s.",
+             list(plover_objs_map), default_endpoint_name)
 
 # Freeze all objects currently tracked by GC to preserve copy-on-write memory sharing.
 # Without this, Python's reference counting modifies objects when they're accessed,
@@ -62,25 +80,27 @@ logging.info("Froze GC objects to preserve copy-on-write memory sharing across w
 def instrument(flask_app):
     """
     Adapted from Kevin Vizhalil's opentelemetry code in:
-    github.com/RTXteam/RTX/blob/master/code/UI/OpenAPI/python-flask-server/KG2/openapi_server/__main__.py
+    RTXteam/RTX/code/UI/OpenAPI/python-flask-server/KG2/openapi_server/__main__.py
     """
     # First figure out what to call this service in jaeger
     default_infores = plover_objs_map[default_endpoint_name].kp_infores_curie
     default_infores_val = default_infores.split(":")[-1]
-    app_name = default_infores_val if len(plover_objs_map) == 1 else default_infores_val.split("-")[0]
+    app_name = default_infores_val \
+        if len(plover_objs_map) == 1 else default_infores_val.split("-")[0]
     service_name = f"{app_name}-plover"
-    logging.info(f"Service name for opentelemetry tracing is {service_name}")
+    logging.info("Service name for opentelemetry tracing is %s", service_name)
 
     # Then figure out which jaeger host to use
-    domain_name_file_path = f"{SCRIPT_DIR}/../domain_name.txt"
-    if os.path.exists(domain_name_file_path):
-        with open(domain_name_file_path, "r") as domain_name_file:
+    domain_name_file_path = SCRIPT_DIR.parent / "domain_name.txt"
+    if domain_name_file_path.exists():
+        with domain_name_file_path.open("r", encoding="utf-8") as domain_name_file:
             domain_name = domain_name_file.read()
-            logging.info(f"Domain name is: {domain_name}")
+            logging.info("Domain name is: %s", domain_name)
     else:
         domain_name = None
-    jaeger_host = "jaeger.rtx.ai" if domain_name and "transltr.io" not in domain_name else "jaeger-otel-agent.sri"
-    logging.info(f"jaeger host to use is {jaeger_host}")
+    jaeger_host = "jaeger.rtx.ai" \
+        if domain_name and "transltr.io" not in domain_name else "jaeger-otel-agent.sri"
+    logging.info("jaeger host to use is %s", jaeger_host)
 
     tracer_provider = TracerProvider(
         resource=Resource.create({
@@ -105,14 +125,19 @@ def instrument(flask_app):
     )
 
 
-instrument(app)
-
 
 @app.get("/")
 def get_home_page():
-    endpoints_info = [(f"<li>{plover_obj.kp_infores_curie}{'*' if plover_obj.endpoint_name == default_endpoint_name else ''}:"
-                       f" <a href='/{kp_name}'>/{kp_name}</a></li>")
-                      for kp_name, plover_obj in plover_objs_map.items()]
+    endpoints_info = [
+        (
+            f"<li>"
+            f"{plover_obj.kp_infores_curie}"
+            f"{'*' if plover_obj.endpoint_name == default_endpoint_name else ''}: "
+            f"<a href='/{kp_name}'>/{kp_name}</a>"
+            f"</li>"
+        )
+        for kp_name, plover_obj in plover_objs_map.items()
+    ]
     return f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -124,8 +149,8 @@ def get_home_page():
         <body>
             <h2>Plover API</h2>
             <h4>Querying</h4>
-            <p>Individual TRAPI APIs for the <b>{len(plover_objs_map)} knowledge graph(s)</b> hosted on this Plover 
-            instance are available at the following sub-endpoints:
+            <p>Individual TRAPI APIs for the <b>{len(plover_objs_map)} knowledge graph(s)</b> hosted
+            on this Plover instance are available at the following sub-endpoints:
             <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
             <i>* Default KP (i.e., can be accessed via <code>/query</code> or 
             <code>/{default_endpoint_name}/query</code>)</i></p>
@@ -135,7 +160,8 @@ def get_home_page():
                     <li><a href="/healthcheck">/healthcheck</a> (GET)</li>
                     <li><a href="/logs">/logs</a> (GET)</li>
                     <li><a href="/code_version">/code_version</a> (GET)</li>
-                    <li><a href="/debug">/debug</a> (GET) - ownership, memory, kernel network, environment info</li>
+                    <li><a href="/debug">/debug</a> (GET) - ownership, memory, kernel network, environment
+                        info</li>
                     <li><a href="/debug/last">/debug/last</a> (GET) - cached snapshot (lightweight)</li>
                 </ul>
             </p>
@@ -144,13 +170,20 @@ def get_home_page():
     """
 
 
-def _tail_text_file(file_path: str, num_lines: int, *, max_bytes: int = 8 * 1024 * 1024) -> list[str]:
+def _tail_text_file(
+        file_path: str,
+        num_lines: int,
+        *,
+        max_bytes: int = 8 * 1024 * 1024
+) -> list[str]:
     # Return last N lines without reading the full file into memory.
     # Used by /logs to avoid large allocations on big log files.
     if num_lines <= 0:
         return []
 
     try:
+        # this seems weird for a text file, but "rb" is intentional since we are doing
+        # byte-level chunk reads from the file; don't open as "rt" in this case
         with open(file_path, "rb") as f:
             f.seek(0, os.SEEK_END)
             file_size = f.tell()
@@ -162,7 +195,8 @@ def _tail_text_file(file_path: str, num_lines: int, *, max_bytes: int = 8 * 1024
             data = b""
 
             # Read backwards until we have enough newlines or we hit the safety cap.
-            while bytes_read < min(file_size, max_bytes) and data.count(b"\n") <= num_lines:
+            read_limit = min(file_size, max_bytes)
+            while bytes_read < read_limit and data.count(b"\n") < num_lines:
                 to_read = min(chunk_size, file_size - bytes_read)
                 bytes_read += to_read
                 f.seek(file_size - bytes_read)
@@ -171,11 +205,7 @@ def _tail_text_file(file_path: str, num_lines: int, *, max_bytes: int = 8 * 1024
             lines = data.splitlines()
             tail = lines[-num_lines:]
             return [line.decode("utf-8", errors="replace") for line in tail]
-    except FileNotFoundError:
-        return [f"[missing file] {file_path}"]
-    except PermissionError:
-        return [f"[permission denied] {file_path}"]
-    except Exception as e:
+    except OSError as e:
         return [f"[error reading file] {file_path}: {e}"]
 
 
@@ -184,11 +214,11 @@ def _tail_text_file(file_path: str, num_lines: int, *, max_bytes: int = 8 * 1024
 def run_query(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
-        logging.info(f"{kp_endpoint_name}: Received a TRAPI query")
+        logging.info("%s: Received a TRAPI query", kp_endpoint_name)
         answer = plover_objs_map[kp_endpoint_name].answer_query(query)
         return flask.jsonify(answer)
-    else:
-        flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+    flask.abort(404,
+                f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
 
 
 @app.post("/<kp_endpoint_name>/get_edges")
@@ -199,11 +229,12 @@ def get_edges(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         query = flask.request.json
         pairs = query['pairs']
-        logging.info(f"{kp_endpoint_name}: Received a query to get edges for {len(pairs)} node pairs")
+        logging.info("%s: Received a query to get edges for %s node pairs",
+                     kp_endpoint_name, len(pairs))
         answer = plover_objs_map[kp_endpoint_name].get_edges(pairs)
         return flask.jsonify(answer)
-    else:
-        flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+    flask.abort(404,
+                f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
 
 
 @app.post("/<kp_endpoint_name>/get_neighbors")
@@ -216,22 +247,24 @@ def get_neighbors(kp_endpoint_name: str = default_endpoint_name):
         node_ids = query["node_ids"]
         categories = query.get("categories", ["biolink:NamedThing"])
         predicates = query.get("predicates", ["biolink:related_to"])
-        logging.info(f"{kp_endpoint_name}: Received a query to get neighbors for {len(node_ids)} nodes")
+        logging.info("%s: Received a query to get neighbors for %s nodes",
+                     kp_endpoint_name, len(node_ids))
         answer = plover_objs_map[kp_endpoint_name].get_neighbors(node_ids, categories, predicates)
         return flask.jsonify(answer)
-    else:
-        flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+    flask.abort(404,
+                f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
 
 
 @app.get("/<kp_endpoint_name>/sri_test_triples")
 @app.get("/sri_test_triples")
 def get_sri_test_triples(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
-        with open(plover_objs_map[kp_endpoint_name].sri_test_triples_path, "r") as sri_test_file:
+        with open(plover_objs_map[kp_endpoint_name].sri_test_triples_path,
+                  "r", encoding="utf-8") as sri_test_file:
             sri_test_triples = json.load(sri_test_file)
         return flask.jsonify(sri_test_triples)
-    else:
-        flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+    flask.abort(404,
+                f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
 
 
 @app.get("/<kp_endpoint_name>/meta_knowledge_graph")
@@ -239,8 +272,8 @@ def get_sri_test_triples(kp_endpoint_name: str = default_endpoint_name):
 def get_meta_knowledge_graph(kp_endpoint_name: str = default_endpoint_name):
     if kp_endpoint_name in plover_objs_map:
         return flask.jsonify(plover_objs_map[kp_endpoint_name].meta_kg)
-    else:
-        flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+    flask.abort(404,
+                f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
 
 
 @app.get("/healthcheck")
@@ -254,25 +287,27 @@ def run_health_check():
 def _read_proc_file(path: str) -> str | None:
     # Read a /proc file safely, return None if not available.
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             return f.read().strip()
-    except (FileNotFoundError, PermissionError, ProcessLookupError):
+    except OSError:
         return None
 
 
-def _get_memory_from_status(status_content: str) -> dict | None:
+def _get_memory_from_status(status_content: str) -> dict[str, float|int] | None:
     # Parse VmRSS and VmSize from /proc/<pid>/status content.
     if not status_content:
         return None
 
-    mem_info = {}
+    mem_info: dict[str, float|int] = {}
     for line in status_content.split("\n"):
         if line.startswith("VmRSS:"):  # Resident Set Size (physical memory)
-            mem_info["rss_kb"] = int(line.split()[1])
-            mem_info["rss_mb"] = round(mem_info["rss_kb"] / 1024, 2)
+            rss_kb = int(line.split()[1])
+            mem_info["rss_kb"] = rss_kb
+            mem_info["rss_mb"] = round(rss_kb / 1024, 2)
         elif line.startswith("VmSize:"):  # Virtual memory size
-            mem_info["vms_kb"] = int(line.split()[1])
-            mem_info["vms_mb"] = round(mem_info["vms_kb"] / 1024, 2)
+            vms_kb = int(line.split()[1])
+            mem_info["vms_kb"] = vms_kb
+            mem_info["vms_mb"] = round(vms_kb / 1024, 2)
     return mem_info if mem_info else None
 
 
@@ -343,15 +378,17 @@ def _get_all_workers_info(include_pss: bool = False) -> dict:
 
             # Get memory info for this worker
             status_content = _read_proc_file(f"/proc/{pid}/status")
-            mem_info = _get_memory_from_status(status_content)
-
+            if status_content is not None:
+                mem_info = _get_memory_from_status(status_content)
+            else:
+                mem_info = None
             if mem_info:
-                rss_kb = mem_info.get("rss_kb", 0)
+                rss_kb = int(mem_info.get("rss_kb", 0))
                 total_rss_kb += rss_kb
                 worker_info = {
                     "pid": pid,
                     "is_self": pid == my_pid,
-                    "rss_mb": mem_info.get("rss_mb", 0),
+                    "rss_mb": float(mem_info.get("rss_mb", 0.0)),
                 }
 
                 # PSS from smaps_rollup — only when explicitly requested
@@ -390,7 +427,7 @@ def _get_all_workers_info(include_pss: bool = False) -> dict:
 
 def _get_container_memory_info() -> dict:
     # Read container memory limits and usage from cgroup files.
-    cgroup_info = {}
+    cgroup_info: dict[str, int|float|str] = {}
 
     # Try cgroup v2 paths first, then v1
     paths = {
@@ -437,21 +474,21 @@ def _get_ownership_info() -> dict:
         try:
             git_stat = os.stat(git_dir)
             info["git_owner_uid"] = git_stat.st_uid
-            info["ownership_match"] = (uid == git_stat.st_uid)
+            info["ownership_match"] = uid == git_stat.st_uid
         except OSError:
             pass
 
     return info
 
 
-def _get_kernel_network_info() -> dict:
+def _get_kernel_network_info() -> dict[str, str|int]:
     # Read kernel network parameters relevant to backpressure tuning.
     params = {
         "somaxconn": "/proc/sys/net/core/somaxconn",
         "tcp_max_syn_backlog": "/proc/sys/net/ipv4/tcp_max_syn_backlog",
         "netdev_max_backlog": "/proc/sys/net/core/netdev_max_backlog",
     }
-    result = {}
+    result: dict[str, str|int] = {}
     for name, path in params.items():
         val = _read_proc_file(path)
         if val and val.isdigit():
@@ -486,19 +523,14 @@ def _capture_debug_snapshot(include_pss: bool = False) -> dict:
     }
 
 
-# Cache for /debug/last: stores the most recent debug snapshot per worker.
-# Populated at startup and refreshed on each /debug call.
-_last_debug_snapshot = _capture_debug_snapshot()
-_last_debug_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-logging.info("Captured startup debug snapshot for /debug/last.")
-
-
 @app.get("/debug")
 def run_debug():
     # Debug endpoint providing ownership, memory, environment, and kernel network info.
     # Uses /proc and /sys reads to avoid psutil-related memory overhead.
     # Caches the result for the lightweight /debug/last endpoint.
-    global _last_debug_snapshot, _last_debug_timestamp
+    global _last_debug_snapshot, _last_debug_timestamp  # pylint: disable=global-statement
+    if not debug_snapshots_enabled:
+        flask.abort(404, "404 ERROR: debug snapshots are disabled by configuration.")
     try:
         include_pss = flask.request.args.get("pss", "").lower() in ("true", "1", "yes")
         snapshot = _capture_debug_snapshot(include_pss=include_pss)
@@ -510,12 +542,17 @@ def run_debug():
         _last_debug_timestamp = timestamp
 
         return flask.jsonify(snapshot)
-    except Exception as e:
-        handle_internal_error(e)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return handle_internal_error(e)
 
 
 @app.get("/debug/last")
 def run_debug_last():
+    if not debug_snapshots_enabled:
+        flask.abort(404, "404 ERROR: debug snapshots are disabled.")
+    if _last_debug_snapshot is None or \
+       _last_debug_timestamp is None:
+        flask.abort(404, "404 ERROR: no last debug snapshot available.")
     # Return the last cached debug snapshot. Lightweight -- no /proc scanning.
     # Useful when the server is under heavy load and /debug might be slow.
     return flask.jsonify({
@@ -525,26 +562,50 @@ def run_debug_last():
     })
 
 
-def handle_internal_error(e: Exception):
+def handle_internal_error(e: Exception) -> NoReturn:
+    if hide_traceback_in_errors:
+        logging.exception("Internal error: %s", e)
+        flask.abort(500, f"500 ERROR: {e}")
     tb = traceback.format_exc()
-    error_msg = f"{e}. Traceback: {tb}"
-    logging.error(error_msg)
-    flask.abort(500, f"500 ERROR: {error_msg}")
+    logging.exception("Internal error (debug): %s", e)
+    flask.abort(500, f"500 ERROR: {e}. Traceback: {tb}")
 
 
 @app.get("/code_version")
 def run_code_version():
+    endpoint_build_nodes = {
+        endpoint_name: plover_obj.node_lookup_map["PloverDB"]
+        for endpoint_name, plover_obj in plover_objs_map.items()
+    }
+
+    start_dir = os.fspath(Path("~").expanduser())
+    repo_path = pygit2.discover_repository(start_dir)
+    if repo_path is None:
+        return flask.jsonify({
+            "code_info": "git repo not found",
+            "endpoint_build_nodes": endpoint_build_nodes,
+        }), 200
+
     try:
-        repo = pygit2.Repository(os.environ["HOME"])
-        repo_head_name = repo.head.name
-        timestamp_int = repo.revparse_single("HEAD").commit_time
-        date_str = str(datetime.date.fromtimestamp(timestamp_int))
-        response = {"code_info": f"HEAD: {repo_head_name}; Date: {date_str}",
-                    "endpoint_build_nodes": {endpoint_name: plover_obj.node_lookup_map["PloverDB"]
-                                             for endpoint_name, plover_obj in plover_objs_map.items()}}
-        return response
-    except Exception as e:
-        handle_internal_error(e)
+        repo = pygit2.Repository(repo_path)
+    except pygit2.GitError:
+        return flask.jsonify({
+            "code_info": f"git repo could not be opened at path: {repo_path}",
+            "endpoint_build_nodes": endpoint_build_nodes,
+        }), 200
+
+    repo_head_name = "DETACHED" if repo.head_is_detached else repo.head.shorthand
+
+    try:
+        ts = repo.revparse_single("HEAD").commit_time
+        date_str = str(datetime.date.fromtimestamp(ts))
+    except pygit2.GitError:
+        date_str = "UNKNOWN"
+
+    return flask.jsonify({
+        "code_info": f"HEAD: {repo_head_name}; Date: {date_str}",
+        "endpoint_build_nodes": endpoint_build_nodes,
+    }), 200
 
 
 @app.get("/get_logs")
@@ -561,24 +622,68 @@ def run_get_logs():
         log_data_plover = _tail_text_file(plover.LOG_FILE_PATH, num_lines)
         log_data_uwsgi = _tail_text_file("/var/log/uwsgi.log", num_lines)
         response = {"description": f"The last {num_lines} lines from two logs (Plover and uwsgi) "
-                                   f"are included below. You can control the number of lines shown with the "
+                                   f"are included below. You can control the number of lines shown "
+                                   "with the "
                                    f"num_lines parameter (e.g., ?num_lines=500). Max is 2000.",
                     "plover": log_data_plover,
                     "uwsgi": log_data_uwsgi}
         return flask.jsonify(response)
-    except Exception as e:
-        handle_internal_error(e)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        return handle_internal_error(e)
 
 
-# Reserved path segments — must not be treated as KP endpoint names
-_RESERVED_PATHS = frozenset({"debug", "get_logs", "logs", "code_version", "healthcheck"})
 
 @app.get("/<kp_endpoint_name>")
 def get_kp_home_page(kp_endpoint_name: str):
     if kp_endpoint_name in _RESERVED_PATHS:
-        flask.abort(404, f"404 ERROR: Use the full path (e.g. /{kp_endpoint_name}) not as an endpoint name.")
+        flask.abort(404, f"404 ERROR: '{kp_endpoint_name}' is a reserved path segment.")
     if kp_endpoint_name in plover_objs_map:
-        logging.info(f"{kp_endpoint_name}: Going to homepage.")
+        logging.info("%s: Going to homepage.", kp_endpoint_name)
         return send_file(plover_objs_map[kp_endpoint_name].kp_home_html_path, as_attachment=False)
-    else:
-        flask.abort(404, f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+    flask.abort(404,
+                f"404 ERROR: Endpoint specified in request ('/{kp_endpoint_name}') does not exist")
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+if __name__ == "__main__":
+    logging.info("Running as __main__ (dev server mode)")
+    # Dev/test server only. In production use uWSGI/gunicorn.
+    port = int(os.environ.get("PLOVER_PORT", "9990"))
+    host = os.environ.get("PLOVER_HOST", "0.0.0.0")
+    do_otel = _env_flag("PLOVER_OTEL", default=False)
+    logging.info("PLOVER_OTEL=%r -> %s",
+                 os.environ.get("PLOVER_OTEL"), do_otel)
+    # when running the dev server (python -m / direct run), turn off telemetry by default
+    if do_otel:
+        logging.info("Enabling OpenTelemetry instrumentation")
+        instrument(app)
+    logging.info("Starting dev server (Flask built-in)")
+    app.run(host=host, port=port, debug=False, use_reloader=False)
+else:
+    logging.info("Running under WSGI (imported module)")
+    hide_traceback_in_errors = True
+    logging.info("Traceback will be hidden from errors (production mode)")
+    debug_snapshots_enabled = _env_flag("PLOVER_DEBUG_SNAPSHOTS", default=True)
+    logging.info("PLOVER_DEBUG_SNAPSHOTS=%r -> %s",
+                 os.environ.get("PLOVER_DEBUG_SNAPSHOTS"), debug_snapshots_enabled)
+    # Cache for /debug/last: stores the most recent debug snapshot per worker.
+    # Populated at startup and refreshed on each /debug call.
+    if debug_snapshots_enabled:
+        _last_debug_snapshot = _capture_debug_snapshot()
+        _last_debug_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        logging.info("Captured startup debug snapshot for /debug/last.")
+    do_otel = _env_flag("PLOVER_OTEL", default=True)
+    logging.info("PLOVER_OTEL=%r -> %s",
+                 os.environ.get("PLOVER_OTEL"), do_otel)
+    # when running from docker, turn on telemetry by default, but
+    # it can be turned off using the PLOVER_OTEL environment variable
+    if do_otel:
+        logging.info("Enabling OpenTelemetry instrumentation")
+        instrument(app)
+    logging.info("WSGI init complete (app object ready)")

@@ -147,4 +147,9 @@ config_secrets.json
 app/domain_name.txt
 nginx.conf
 test/*.csv
+app/sri_test_triples_kg2c.json
+app/home_kg2c.html
+app/app/biolink_model_*.yaml
 !app/nginx.conf
+
+app/db
