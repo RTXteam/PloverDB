@@ -17,7 +17,7 @@
     "convert_input_ids": true,
     "equiv_ids_in_graph": true,
     "drug_chemical_conflation": false,
-    "ignore_edge_properties": ["domain_range_exclusion", "publications_info"],
+    "ignore_edge_properties": ["domain_range_exclusion"],
     "ignore_node_properties": [],
     "trapi_attribute_map": {
         "all_categories": {
