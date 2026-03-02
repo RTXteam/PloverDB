@@ -7,6 +7,7 @@ pygit2
 jsonlines
 fastapi
 fastapi[standard]
+uvicorn[standard]
 flask
 flask-cors
 uwsgi==2.0.31

@@ -63,7 +63,8 @@ done
 set -e  # Stop on error
 
 # Run the docker container (HTTP only - SSL handled externally if needed)
-${docker_command} run -d --name ${container_name} -p ${host_port}:80 ${image_name}
+# Map 9991 -> 80 (Main App) AND 8000 -> 8000 (Rebuild Server)
+${docker_command} run -d --name ${container_name} -p ${host_port}:80 -p 8000:8000 ${image_name}
 
 # Clean up unused/stopped docker items
 ${docker_command} container prune --force
