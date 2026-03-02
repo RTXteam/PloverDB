@@ -543,7 +543,26 @@ script to abort. For pylint, instead of 100% passing, the expectation is to not 
 module's pylint score below the baseline score it had before the commit (thus, pylint errors do not
 automatically cause the `run-code-checks.sh` script to abort).
 
+### Prepping a fresh AWS Ubuntu 24.04 instance for testing deploying and hosting PloverDB
+To be able to setup a python3.12 virtualenv and install (into that virtualenv) 
+the `requirements.txt` requirements for PloverDB, you'll need some Ubuntu packages 
+installed:
+```
+sudo apt-get update
+sudo apt-get install -y python3.12-venv build-essential python3.12-dev
+```
+Further, to be able to run a test of Docker-deploying PloverDB, you'll need Docker:
+```
+sudo apt-get update
+sudo apt-get install -y docker.io
+```
+If this is an AWS instance and you want to be able to connect a client to the PloverDB API on your AWS
+instance, don't forget to modify the AWS instance's security group policy to allow inbound 
+traffic to TCP ports 9991 (if using `http://`) and/or 9990 (if using nginx to TLS-terminate inbound `https://`
+traffic and to proxy).
+
 ## Credits
 
-* Author: Amy Glen
+* Original author: Amy Glen
+* Code contributors: Adilbek Bazarkulov, Frankie Hodges, Stephen Ramsey
 * Inspiration/advice: Stephen Ramsey, Eric Deutsch, David Koslicki
