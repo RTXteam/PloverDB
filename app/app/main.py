@@ -152,7 +152,7 @@ def get_home_page():
             <p>Individual TRAPI APIs for the <b>{len(plover_objs_map)} knowledge graph(s)</b> hosted
             on this Plover instance are available at the following sub-endpoints:
             <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
-            <i>* Default KP (i.e., can be accessed via <code>/query</code> or 
+            <i>* Default KP (i.e., can be accessed via <code>/query</code> or
             <code>/{default_endpoint_name}/query</code>)</i></p>
         </body>
         </html>
@@ -512,7 +512,18 @@ def _capture_debug_snapshot(include_pss: bool = False) -> dict:
     }
 
 
+<<<<<<< HEAD
 @app.get("/debug")
+=======
+# Cache for /debug/last: stores the most recent debug snapshot per worker.
+# Populated at startup and refreshed on each /debug call.
+_last_debug_snapshot = _capture_debug_snapshot()
+_last_debug_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+logging.info("Captured startup debug snapshot for /debug/last.")
+
+
+# @app.get("/debug")
+>>>>>>> origin/main
 def run_debug():
     # Debug endpoint providing ownership, memory, environment, and kernel network info.
     # Uses /proc and /sys reads to avoid psutil-related memory overhead.
@@ -535,7 +546,7 @@ def run_debug():
         return handle_internal_error(e)
 
 
-@app.get("/debug/last")
+# @app.get("/debug/last")
 def run_debug_last():
     if not debug_snapshots_enabled:
         flask.abort(404, "404 ERROR: debug snapshots are disabled.")

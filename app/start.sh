@@ -48,6 +48,11 @@ echo "nginx started successfully"
 nginx_watchdog &
 echo "nginx watchdog started (pid $!)"
 
+# stream uwsgi log to stderr so kubectl logs / CloudWatch can see it.
+# logto in uwsgi.ini writes to the file (needed by /logs endpoint);
+# tail -F follows the file and copies new lines to stderr.
+tail -F /var/log/uwsgi.log >&2 &
+
 # Run uwsgi as plover (same user as before we added in-container nginx).
 # Starting uwsgi as root and dropping via uid/gid in uwsgi.ini breaks
 # pkg_resources import; starting as plover from the beginning restores it.
