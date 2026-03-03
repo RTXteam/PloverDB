@@ -129,16 +129,6 @@ def get_home_page():
             <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
             <i>* Default KP (i.e., can be accessed via <code>/query</code> or 
             <code>/{default_endpoint_name}/query</code>)</i></p>
-            <h4>Other endpoints</h4>
-            <p>Instance-level (as opposed to KP-level) endpoints helpful in debugging include:
-                <ul>
-                    <li><a href="/healthcheck">/healthcheck</a> (GET)</li>
-                    <li><a href="/logs">/logs</a> (GET)</li>
-                    <li><a href="/code_version">/code_version</a> (GET)</li>
-                    <li><a href="/debug">/debug</a> (GET) - ownership, memory, kernel network, environment info</li>
-                    <li><a href="/debug/last">/debug/last</a> (GET) - cached snapshot (lightweight)</li>
-                </ul>
-            </p>
         </body>
         </html>
     """
@@ -493,7 +483,7 @@ _last_debug_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 logging.info("Captured startup debug snapshot for /debug/last.")
 
 
-@app.get("/debug")
+# @app.get("/debug")
 def run_debug():
     # Debug endpoint providing ownership, memory, environment, and kernel network info.
     # Uses /proc and /sys reads to avoid psutil-related memory overhead.
@@ -514,7 +504,7 @@ def run_debug():
         handle_internal_error(e)
 
 
-@app.get("/debug/last")
+# @app.get("/debug/last")
 def run_debug_last():
     # Return the last cached debug snapshot. Lightweight -- no /proc scanning.
     # Useful when the server is under heavy load and /debug might be slow.
