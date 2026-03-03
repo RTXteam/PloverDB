@@ -127,8 +127,21 @@ def get_home_page():
             <p>Individual TRAPI APIs for the <b>{len(plover_objs_map)} knowledge graph(s)</b> hosted on this Plover 
             instance are available at the following sub-endpoints:
             <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
-            <i>* Default KP (i.e., can be accessed via <code>/query</code> or 
+            <i>* Default KP (i.e., can be accessed via <code>/query</code> or
             <code>/{default_endpoint_name}/query</code>)</i></p>
+            <h4>Other endpoints</h4>
+            <p>Instance-level (as opposed to KP-level) endpoints helpful in debugging include:
+                <ul>
+                    <li><a href="/healthcheck">/healthcheck</a> (GET)</li>
+                    <li><a href="/logs">/logs</a> (GET)</li>
+                    <li><a href="/code_version">/code_version</a> (GET)</li>
+                    <!-- /debug and /debug/last routes are disabled (decorators commented out
+                         in main.py). Uncomment the @app.get decorators to re-enable them.
+                    <li><a href="/debug">/debug</a> (GET) - ownership, memory, kernel network, environment info</li>
+                    <li><a href="/debug/last">/debug/last</a> (GET) - cached snapshot (lightweight)</li>
+                    -->
+                </ul>
+            </p>
         </body>
         </html>
     """
