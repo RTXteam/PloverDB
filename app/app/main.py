@@ -512,9 +512,6 @@ def _capture_debug_snapshot(include_pss: bool = False) -> dict:
     }
 
 
-<<<<<<< HEAD
-@app.get("/debug")
-=======
 # Cache for /debug/last: stores the most recent debug snapshot per worker.
 # Populated at startup and refreshed on each /debug call.
 _last_debug_snapshot = _capture_debug_snapshot()
@@ -522,8 +519,7 @@ _last_debug_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 logging.info("Captured startup debug snapshot for /debug/last.")
 
 
-# @app.get("/debug")
->>>>>>> origin/main
+@app.get("/debug")
 def run_debug():
     # Debug endpoint providing ownership, memory, environment, and kernel network info.
     # Uses /proc and /sys reads to avoid psutil-related memory overhead.
@@ -546,7 +542,7 @@ def run_debug():
         return handle_internal_error(e)
 
 
-# @app.get("/debug/last")
+@app.get("/debug/last")
 def run_debug_last():
     if not debug_snapshots_enabled:
         flask.abort(404, "404 ERROR: debug snapshots are disabled.")
