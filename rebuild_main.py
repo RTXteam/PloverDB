@@ -54,8 +54,8 @@ def rebuild_app(body: dict, authenticated: bool = Depends(auth_request)):
         else:
             start = time.time()
             host_port = body.get("port", "9990")
-            image_name = f"ploverimage{f'-{branch_name}' if branch_name else ''}"
-            container_name = f"plovercontainer{f'-{branch_name}' if branch_name else ''}"
+            image_name = f"ploverimage-{branch_name}"
+            container_name = f"plovercontainer-{branch_name}"
             build_err = os.system(f"bash -x {SCRIPT_DIR}/run.sh -b {branch_name} -i {image_name} -c {container_name} "
                                   f"-p {host_port}")
             if build_err:

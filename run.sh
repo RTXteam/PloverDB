@@ -16,15 +16,11 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 # Specify default values for optional parameters
 branch=""
 host_port="9991"  # Internal port; nginx handles external 9990 with SSL
-image_name=ploverimage
-container_name=plovercontainer
+image_name=ploverimage-multiomics
+container_name=plovercontainer-multiomics
 no_cache="--no-cache"  # Default to fresh builds; use -C flag to enable cache
-# Auto-detect if "docker" can run without sudo
-if docker info &>/dev/null; then
-  docker_command="docker"
-else
-  docker_command="sudo docker"
-fi
+docker_command="sudo docker"
+
 
 # Override defaults with values from any optional parameters provided
 while getopts "i:c:d:b:p:C" flag; do
@@ -38,9 +34,19 @@ case "$flag" in
 esac
 done
 
+# If a branch was provided and image/container were not manually overridden
+if [ -n "$branch" ]; then
+  if [ "$image_name" = "ploverimage-multiomics" ]; then
+    image_name="ploverimage-$branch"
+  fi
+  if [ "$container_name" = "plovercontainer-multiomics" ]; then
+    container_name="plovercontainer-$branch"
+  fi
+fi
+
 # Check out the requested branch, if one was given
 cd ${SCRIPT_DIR}
-if [ ${branch} ]; then
+if [ -n "$branch" ]; then
   git fetch
   git checkout ${branch}
   git pull origin ${branch}
