@@ -90,7 +90,12 @@ To run Plover locally for development (assuming you have installed Docker), simp
 1. Run the following command:
     * `bash -x run.sh`
 
-This will build a Plover Docker image and run a container off of it, publishing it at port 9991 (`http://localhost:9991`).
+This will build a Plover Docker image and run a container off of it, publishing it at port 9991 (`http://localhost:9991`). 
+
+WARNING: `run.sh` does not seem to check for, and stop, any existing PloverDB
+container that might already be running on your system. So if there is one,
+you need to first stop it using `sudo docker stop plovercontainer` before running
+`run.sh`.
 
 **Note on ports:**
 - The container serves HTTP on port 80 internally
