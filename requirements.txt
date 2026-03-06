@@ -13,4 +13,10 @@ uwsgi==2.0.31
 opentelemetry-exporter-jaeger==1.17.0
 opentelemetry-instrumentation-flask==0.38b0
 biolink-helper-pkg==1.0.0
+orjson==3.11.7
+pympler==1.1
+vulture==2.14
+pylint==4.0.4
+mypy==1.19.1
+ruff==0.15.0
 setuptools==81.0.0

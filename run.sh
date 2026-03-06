@@ -63,7 +63,8 @@ done
 set -e  # Stop on error
 
 # Run the docker container (HTTP only - SSL handled externally if needed)
-${docker_command} run -d --name ${container_name} -p ${host_port}:80 ${image_name}
+# PLOVER_OTEL=false avoids Jaeger export errors and 504s when agent is unreachable
+${docker_command} run -d --name ${container_name} -p ${host_port}:80 -e PLOVER_OTEL=false ${image_name}
 
 # Clean up unused/stopped docker items
 ${docker_command} container prune --force
