@@ -1836,33 +1836,34 @@ class PloverDB:
                                          {subject_qnode_key: defaultdict(set),
                                           object_qnode_key: defaultdict(set)}
         if subject_qnode.get("ids"):
-            subject_qnode_curies_with_descendants = []
+            # Build the expanded set directly instead of accumulating a list
+            # and deduplicating afterwards. Avoids a large intermediate list
+            # when multiple query curies share descendants.
             subject_qnode_curies = set(subject_qnode["ids"])
+            subject_expanded = set()
             for query_curie in subject_qnode_curies:
                 descendants = self._get_descendants(query_curie)
                 for descendant in descendants:
-                    # We only want to record the mapping in the case of a true descendant
                     if descendant not in subject_qnode_curies:
                         descendant_to_query_id_map[subject_qnode_key][descendant].add(query_curie)
-                subject_qnode_curies_with_descendants += descendants
-            subject_qnode["ids"] = list(set(subject_qnode_curies_with_descendants))
-            log_message = "After expansion to descendant concepts, subject qnode has " \
-                f"{len(subject_qnode['ids'])} ids"
-            self.log_trapi("INFO", log_message)
+                subject_expanded.update(descendants)
+            subject_qnode["ids"] = list(subject_expanded)
+            self.log_trapi("INFO",
+                           f"After expansion to descendant concepts, subject qnode has "
+                           f"{len(subject_qnode['ids'])} ids")
         if object_qnode.get("ids"):
-            object_qnode_curies_with_descendants = []
             object_qnode_curies = set(object_qnode["ids"])
+            object_expanded = set()
             for query_curie in object_qnode_curies:
                 descendants = self._get_descendants(query_curie)
                 for descendant in descendants:
-                    # We only want to record the mapping in the case of a true descendant
                     if descendant not in object_qnode_curies:
                         descendant_to_query_id_map[object_qnode_key][descendant].add(query_curie)
-                object_qnode_curies_with_descendants += descendants
-            object_qnode["ids"] = list(set(object_qnode_curies_with_descendants))
-            log_message = "After expansion to descendant concepts, object qnode has " \
-                f"{len(object_qnode['ids'])} ids"
-            self.log_trapi("INFO", log_message)
+                object_expanded.update(descendants)
+            object_qnode["ids"] = list(object_expanded)
+            self.log_trapi("INFO",
+                           f"After expansion to descendant concepts, object qnode has "
+                           f"{len(object_qnode['ids'])} ids")
 
         # Actually answer the query
         input_qnode_key = self._determine_input_qnode_key(trapi_qg["nodes"])
@@ -2081,30 +2082,25 @@ class PloverDB:
                                         matching_output_curies = \
                                             output_curies.intersection(curies_present)
                                         for output_curie in matching_output_curies:
-                                            answer_edge_ids += \
-                                                list(main_index[
-                                                    input_curie
-                                                ][
-                                                    output_category
-                                                ][
-                                                    predicate
-                                                ][
-                                                    direction
-                                                ][
-                                                    output_curie
-                                                ])
+                                            # extend() appends in-place; avoids
+                                            # the intermediate list that += list()
+                                            # would allocate and immediately discard.
+                                            answer_edge_ids.extend(
+                                                main_index[input_curie]
+                                                [output_category]
+                                                [predicate]
+                                                [direction]
+                                                [output_curie])
                                 else:
                                     for direction in directions:
-                                        answer_edge_ids += \
-                                            list(set().union(*main_index[
-                                                input_curie
-                                            ][
-                                                output_category
-                                            ][
-                                                predicate
-                                            ][
-                                                direction
-                                            ].values()))
+                                        # Collect edge IDs from all output curies
+                                        # for this predicate+direction. Duplicates
+                                        # across output curies are filtered out
+                                        # downstream by final_qedge_answers (a set).
+                                        bucket = main_index[input_curie] \
+                                            [output_category][predicate][direction]
+                                        for edge_ids in bucket.values():
+                                            answer_edge_ids.extend(edge_ids)
 
             # Add everything we found for this input curie to our answers so far
             for answer_edge_id in answer_edge_ids:
@@ -2198,12 +2194,12 @@ class PloverDB:
 
     def _convert_edge_to_trapi_format(self, edge_biolink: dict) -> dict:
         if self.kg_config.get("sources_template"):
-            # Need to copy because source urls change per edge:
-            sources_template = copy.deepcopy(self.edge_sources)
-            if edge_biolink["predicate"] in sources_template:
-                sources = sources_template[edge_biolink["predicate"]]
-            else:
-                sources = sources_template["default"]
+            # Copy only the predicate-specific entry, not the entire sources dict.
+            # deepcopy is needed here because edge_sources contains nested lists
+            # of dicts (with upstream_resource_ids lists inside).
+            predicate = edge_biolink["predicate"]
+            source_key = predicate if predicate in self.edge_sources else "default"
+            sources = copy.deepcopy(self.edge_sources[source_key])
         else:
             # Craft sources based on primary knowledge source on edges
             primary_ks_id = edge_biolink["primary_knowledge_source"]
@@ -2254,18 +2250,22 @@ class PloverDB:
         return trapi_edge
 
     def _get_trapi_node_attribute(self, property_name: str, value: Any) -> dict:
-        # Just use a default attribute for any properties/attributes not yet defined in
-        # kg_config.json
-        attribute = \
-            copy.deepcopy(self.trapi_attribute_map.get(property_name,
-                                                       {"attribute_type_id": property_name}))
+        # Shallow copy is safe here: all template values are strings (immutable).
+        # deepcopy was used previously but is unnecessary for flat dicts and
+        # creates per-request heap allocations that are never returned to the OS.
+        template = self.trapi_attribute_map.get(property_name)
+        if template:
+            attribute = template.copy()
+        else:
+            attribute = {"attribute_type_id": property_name}
         attribute["value"] = value
         if attribute.get("attribute_source"):
             attribute["attribute_source"] = \
                 attribute["attribute_source"].replace("{kp_infores_curie}",
                                                       self.kp_infores_curie)
         if attribute.get("value_url"):
-            attribute["value_url"] = attribute["value_url"].replace("{value}", str(value))
+            attribute["value_url"] = \
+                attribute["value_url"].replace("{value}", str(value))
         return attribute
 
     def _get_trapi_edge_attributes(self, edge_biolink: dict) -> list[dict]:
@@ -2303,11 +2303,13 @@ class PloverDB:
             value: Any,
             edge_biolink: dict
     ) -> dict:
-        # Just use a default attribute for any properties/attributes not yet defined in
-        # kg_config.json
-        attribute = \
-            copy.deepcopy(self.trapi_attribute_map.get(property_name,
-                                                       {"attribute_type_id": property_name}))
+        # Shallow copy is safe here: all template values are strings (immutable).
+        # See _get_trapi_node_attribute for rationale on avoiding deepcopy.
+        template = self.trapi_attribute_map.get(property_name)
+        if template:
+            attribute = template.copy()
+        else:
+            attribute = {"attribute_type_id": property_name}
         attribute["value"] = value
         if attribute.get("attribute_source"):
             source_property_name = attribute["attribute_source"].strip("{").strip("}")
