@@ -22,9 +22,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up log files and directories with correct ownership
-RUN mkdir -p /var/log/nginx && \
-    touch /var/log/ploverdb.log /var/log/uwsgi.log && \
-    chown -R plover:plover /var/log/ploverdb.log /var/log/uwsgi.log /var/log/nginx
+RUN touch /var/log/ploverdb.log /var/log/uwsgi.log && \
+    chown plover:plover /var/log/ploverdb.log /var/log/uwsgi.log
 
 # Create /app directory with correct ownership
 RUN mkdir -p /app && chown plover:plover /app
