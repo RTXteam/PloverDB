@@ -154,6 +154,14 @@ def get_home_page():
             <ul>{"".join(kp_endpoint_info for kp_endpoint_info in endpoints_info)}</ul>
             <i>* Default KP (i.e., can be accessed via <code>/query</code> or
             <code>/{default_endpoint_name}/query</code>)</i></p>
+            <h4>Other endpoints</h4>
+            <p>Instance-level (as opposed to KP-level) endpoints helpful in debugging include:
+                <ul>
+                    <li><a href="/healthcheck">/healthcheck</a> (GET)</li>
+                    <li><a href="/logs">/logs</a> (GET)</li>
+                    <li><a href="/code_version">/code_version</a> (GET)</li>
+                </ul>
+            </p>
         </body>
         </html>
     """
@@ -593,13 +601,15 @@ def run_code_version():
     repo_head_name = "DETACHED" if repo.head_is_detached else repo.head.shorthand
 
     try:
-        ts = repo.revparse_single("HEAD").commit_time
-        date_str = str(datetime.date.fromtimestamp(ts))
+        commit = repo.revparse_single("HEAD")
+        timestamp_str = datetime.datetime.fromtimestamp(
+            commit.commit_time, tz=datetime.timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
     except pygit2.GitError:
-        date_str = "UNKNOWN"
+        timestamp_str = "UNKNOWN"
 
     return flask.jsonify({
-        "code_info": f"HEAD: {repo_head_name}; Date: {date_str}",
+        "code_info": f"HEAD: {repo_head_name}; Timestamp: {timestamp_str}",
         "endpoint_build_nodes": endpoint_build_nodes,
     }), 200
 
