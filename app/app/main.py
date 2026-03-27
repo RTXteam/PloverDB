@@ -7,6 +7,7 @@ import sys
 import traceback
 from pathlib import Path
 from typing import NoReturn
+from zoneinfo import ZoneInfo
 
 import flask
 from flask import send_file
@@ -602,14 +603,22 @@ def run_code_version():
 
     try:
         commit = repo.revparse_single("HEAD")
-        timestamp_str = datetime.datetime.fromtimestamp(
+        commit_sha = str(commit.id)[:7]
+        commit_dt = datetime.datetime.fromtimestamp(
             commit.commit_time, tz=datetime.timezone.utc
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
+        timestamp_utc = commit_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        timestamp_pt = commit_dt.astimezone(
+            ZoneInfo("America/Los_Angeles")
+        ).strftime("%Y-%m-%d %H:%M:%S %Z")
     except pygit2.GitError:
-        timestamp_str = "UNKNOWN"
+        commit_sha = "UNKNOWN"
+        timestamp_utc = "UNKNOWN"
+        timestamp_pt = "UNKNOWN"
 
     return flask.jsonify({
-        "code_info": f"HEAD: {repo_head_name}; Timestamp: {timestamp_str}",
+        "code_info": f"HEAD: {repo_head_name}; Commit: {commit_sha}; "
+                     f"Timestamp: {timestamp_utc} ({timestamp_pt})",
         "endpoint_build_nodes": endpoint_build_nodes,
     }), 200
 
