@@ -1,0 +1,35 @@
+{
+  "nodes_file": "nodes_final.tsv",
+  "edges_file": "edges_final.tsv",
+  "biolink_version": "4.2.0",
+  "kp_infores_curie": "infores:mds-saml-evo-kp",
+  "endpoint_name": "mds_kp",
+  "labels": {
+    "edges": "predicate",
+    "nodes": "category"
+  },
+  "array_delimiter": "|",
+  "convert_input_ids": false,
+  "normalize": false,
+  "sources_template": {
+    "default": [
+      {
+        "resource_id": "{kp_infores_curie}",
+        "resource_role": "primary_knowledge_source"
+      }
+    ]
+  },
+  "trapi_attribute_map": {
+    "publications": {
+      "attribute_type_id": "biolink:publications"
+    },
+    "lfs_hr": {
+      "attribute_type_id": "biolink:hazard_ratio",
+      "description": "Leukemia-Free Survival Hazard Ratio"
+    },
+    "has_weight": {
+      "attribute_type_id": "biolink:weight",
+      "description": "Model Cox Regression Coefficient Weight"
+    }
+  }
+}
