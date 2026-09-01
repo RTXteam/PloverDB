@@ -1,6 +1,6 @@
 {
-  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_node_09_04_2025.tsv",
-  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_edge_09_04_2025.tsv",
+  "nodes_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_node_08_10_2026.tsv",
+  "edges_file": "https://storage.googleapis.com/multiomics_provider_kp_data/pharmacogenomics/Pharmacogenomics_KG_parsed_edge_08_10_2026.tsv",
   "biolink_version": "4.2.5",
   "kp_infores_curie": "infores:catrax-pharmacogenomics",
   "endpoint_name": "PharmacogenomicsKG",
@@ -11,7 +11,7 @@
   "remote_subclass_edges_file_url": "https://kg2webhost.rtx.ai/kg2.10.0pre_subclass_edges_manual_agent.jsonl.gz",
 
   "subclass_sources": ["infores:drugbank", "infores:ncbi-gene", "infores:hpo", "infores:mondo", "infores:hpo-annotations", "infores:sider",
-                      "infores:drugcentral", "infores:pharmgkb", "infores:primekg", "infores:cellmarker", "infores:signor"],
+                      "infores:drugcentral", "infores:pharmgkb", "infores:primekg", "infores:cellmarker", "infores:signor", "infores:civic"],
   "num_edges_per_answer_cutoff": 100000,
   "normalize": false,
   "convert_input_ids": true,
