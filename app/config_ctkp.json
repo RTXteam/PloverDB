@@ -2,7 +2,7 @@
   "nodes_file": "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_nodes_v4.2.2.tsv",
   "edges_file":  "https://db.systemsbiology.net/gestalt/KG/clinical_trials_kg_edges_p4.2.2.tsv.gz", 
   "biolink_version": "4.2.1",
-  "kp_infores_curie": "infores:clinicaltrials-kg",
+  "kp_infores_curie": "infores:clinicaltrials-kp",
   "endpoint_name": "ctkp",
   "labels": {
     "edges": "predicate",
